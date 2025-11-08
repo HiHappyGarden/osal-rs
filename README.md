@@ -128,6 +128,8 @@ let elapsed = start.elapsed();
 - `posix` (default): Enable POSIX implementation
 - `freertos`: Enable FreeRTOS implementation (experimental)
 
+**Note:** Only one platform feature can be enabled at a time. The library enforces this at compile-time.
+
 To use with FreeRTOS:
 
 ```toml

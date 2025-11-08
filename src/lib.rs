@@ -32,6 +32,13 @@
 //! println!("Value: {}", *guard);
 //! ```
 
+// Ensure only one platform feature is enabled
+#[cfg(all(feature = "posix", feature = "freertos"))]
+compile_error!("Cannot enable both 'posix' and 'freertos' features simultaneously");
+
+#[cfg(not(any(feature = "posix", feature = "freertos")))]
+compile_error!("Must enable either 'posix' or 'freertos' feature");
+
 pub mod thread;
 pub mod mutex;
 pub mod semaphore;

@@ -1,0 +1,5 @@
+[build]
+# Configurazione di build personalizzata se necessario
+
+[target.x86_64-unknown-linux-gnu]
+# Configurazione per target Linux

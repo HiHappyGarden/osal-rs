@@ -48,15 +48,15 @@ pub trait ThreadPriority {
 
 #[derive(Clone)]
 pub enum ThreadDefaultPriority {
-    None,
-    Idle,
-    Low,
-    BelowNormal,
-    Normal,
-    AboveNormal,
-    High,
-    Realtime,
-    ISR,
+    None = 0,
+    Idle = 1,
+    Low = 2,
+    BelowNormal = 3,
+    Normal = 4,
+    AboveNormal = 5,
+    High = 6,
+    Realtime = 7,
+    ISR = 8,
 }
 
 impl ThreadPriority for ThreadDefaultPriority {
@@ -91,8 +91,8 @@ unsafe extern "C" fn callback(param_ptr: *mut c_void) {
 }
 
 
-impl Thread {
-    pub fn new<F>(
+impl crate::traits::thread::Thread<Thread> for  Thread {
+    fn new<F>(
         callback: F,
         name: &str,
         stack: u32,
@@ -133,29 +133,206 @@ impl Thread {
         }
     }
 
-    pub fn delete(&self) {
+    fn delete(&self) {
         unsafe {
             vTaskDelete(self.handler);
         }
     }
 
-    pub fn delete_current() {
+    fn delete_current() {
         unsafe {
             vTaskDelete(null_mut());
         }
     }
 
-    pub fn suspend(&self) {
+    fn suspend(&self) {
         unsafe {
             vTaskSuspend(self.handler);
         }
     }
 
-    pub fn resume(&self) {
+    fn resume(&self) {
         unsafe {
             vTaskResume(self.handler);
         }
     }
 
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use alloc::sync::Arc;
+
+    // NOTA: Questi test verificano solo la logica di compilazione e validazione.
+    // I test che coinvolgono l'esecuzione effettiva di FreeRTOS richiedono
+    // un ambiente embedded o un emulatore FreeRTOS e non possono essere
+    // eseguiti con `cargo test` standard su Linux/macOS/Windows.
+
+    #[test]
+    fn test_thread_priority_values() {
+        // Test valori priorità - questi non richiedono FreeRTOS runtime
+        assert_eq!(ThreadDefaultPriority::None.get_priority(), 0);
+        assert_eq!(ThreadDefaultPriority::Idle.get_priority(), 1);
+        assert_eq!(ThreadDefaultPriority::Low.get_priority(), 2);
+        assert_eq!(ThreadDefaultPriority::BelowNormal.get_priority(), 3);
+        assert_eq!(ThreadDefaultPriority::Normal.get_priority(), 4);
+        assert_eq!(ThreadDefaultPriority::AboveNormal.get_priority(), 5);
+        assert_eq!(ThreadDefaultPriority::High.get_priority(), 6);
+        assert_eq!(ThreadDefaultPriority::Realtime.get_priority(), 7);
+        assert_eq!(ThreadDefaultPriority::ISR.get_priority(), 8);
+    }
+
+    #[test]
+    fn test_thread_priority_trait() {
+        // Test trait personalizzato
+        struct CustomPriority(u32);
+
+        impl ThreadPriority for CustomPriority {
+            fn get_priority(&self) -> u32 {
+                self.0
+            }
+        }
+
+        let custom = CustomPriority(42);
+        assert_eq!(custom.get_priority(), 42);
+    }
+
+    #[test]
+    fn test_thread_priority_clone() {
+        // Test clone delle priorità
+        let priority = ThreadDefaultPriority::Normal;
+        let cloned = priority.clone();
+        assert_eq!(priority.get_priority(), cloned.get_priority());
+    }
+
+    #[test]
+    fn test_arc_callback_type() {
+        // Test che il tipo di callback sia corretto
+        let callback: Arc<ThreadFunc> = Arc::new(|param| {
+            // Questa callback può essere clonata e condivisa
+            param
+        });
+
+        let callback_clone = callback.clone();
+        let test_param = Arc::new(42u32) as Arc<dyn Any + Send + Sync>;
+        let result = callback_clone(test_param.clone());
+
+        // Verifica che il parametro sia stato passato correttamente
+        assert!(result.downcast_ref::<u32>().is_some());
+    }
+
+    #[test]
+    fn test_thread_struct_clone() {
+        // Test che Thread abbia tutti i campi clonabili
+        let callback: Arc<ThreadFunc> = Arc::new(|p| p);
+        let param = Some(Arc::new(()) as Arc<dyn Any + Send + Sync>);
+
+        let thread = Thread {
+            handler: core::ptr::null_mut(),
+            callback: callback.clone(),
+            param: param.clone(),
+        };
+
+        // Il clone dovrebbe funzionare
+        let cloned = thread.clone();
+        assert_eq!(thread.handler, cloned.handler);
+    }
+}
+
+// Test di integrazione che richiedono FreeRTOS runtime
+// Questi test sono commentati perché non possono essere eseguiti su host Linux/macOS/Windows
+// Per eseguirli, è necessario un ambiente embedded con FreeRTOS o un emulatore
+
+/*
+#[cfg(all(test, target_os = "none"))]
+mod integration_tests {
+    use super::*;
+    use alloc::sync::Arc;
+    use core::sync::atomic::{AtomicBool, AtomicU32, Ordering};
+
+    #[test]
+    fn test_thread_creation() {
+        // Test creazione thread di base
+        let executed = Arc::new(AtomicBool::new(false));
+        let executed_clone = executed.clone();
+
+        let thread = Thread::new(
+            move |_param| {
+                executed_clone.store(true, Ordering::SeqCst);
+                Arc::new(())
+            },
+            "test_thread",
+            1024,
+            None,
+            ThreadDefaultPriority::Normal,
+        );
+
+        assert!(thread.is_ok(), "Thread creation should succeed");
+    }
+
+    #[test]
+    fn test_thread_with_param() {
+        // Test thread con parametro
+        let result = Arc::new(AtomicU32::new(0));
+        let result_clone = result.clone();
+
+        let input_value = Arc::new(42u32);
+
+        let thread = Thread::new(
+            move |param| {
+                if let Some(value) = param.downcast_ref::<u32>() {
+                    result_clone.store(*value, Ordering::SeqCst);
+                }
+                Arc::new(())
+            },
+            "test_param",
+            1024,
+            Some(input_value),
+            ThreadDefaultPriority::Normal,
+        );
+
+        assert!(thread.is_ok(), "Thread with parameter should be created");
+    }
+
+    #[test]
+    fn test_thread_priorities() {
+        // Test diverse priorità
+        let priorities = alloc::vec![
+            ThreadDefaultPriority::Idle,
+            ThreadDefaultPriority::Low,
+            ThreadDefaultPriority::Normal,
+            ThreadDefaultPriority::High,
+            ThreadDefaultPriority::Realtime,
+        ];
+
+        for (idx, priority) in priorities.into_iter().enumerate() {
+            let thread = Thread::new(
+                |_| Arc::new(()),
+                &alloc::format!("priority_test_{}", idx),
+                1024,
+                None,
+                priority,
+            );
+
+            assert!(thread.is_ok(), "Thread with priority should be created");
+        }
+    }
+
+    #[test]
+    fn test_thread_name_validation() {
+        // Test nome thread con carattere null (dovrebbe fallire)
+        let thread = Thread::new(
+            |_| Arc::new(()),
+            "test\0invalid",
+            1024,
+            None,
+            ThreadDefaultPriority::Normal,
+        );
+
+        assert!(thread.is_err(), "Thread with null character in name should fail");
+        assert_eq!(thread.err(), Some("Name not valid"));
+    }
+}
+*/
 

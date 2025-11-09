@@ -28,10 +28,7 @@ pub mod manual {
 
     unsafe extern "C" {
         // Task Management
-        pub fn vTaskDelayUntil(pxPreviousWakeTime: *mut TickType_t, xTimeIncrement: TickType_t);
-        pub fn xTaskGetTickCount() -> TickType_t;
-        pub fn vTaskStartScheduler();
-        pub fn vTaskEndScheduler();
+
         // Queue Management
         pub fn xQueueCreate(uxQueueLength: UBaseType_t, uxItemSize: UBaseType_t) -> QueueHandle_t;
         pub fn vQueueDelete(xQueue: QueueHandle_t);

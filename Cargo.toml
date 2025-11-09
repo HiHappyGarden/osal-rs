@@ -4,7 +4,7 @@ version = "0.2.0"
 edition = "2024"
 authors = ["Antonio Salsi <passy.linux@zresa.it>"]
 description = "Operating System Abstraction Layer in Rust with FreeRTOS kernel integration"
-license = "MIT"
+license = "GPL-3"
 
 [dependencies]
 

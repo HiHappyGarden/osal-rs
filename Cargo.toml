@@ -1,0 +1,24 @@
+[package]
+name = "osal-rs"
+version = "0.2.0"
+edition = "2024"
+authors = ["Antonio Salsi <passy.linux@zresa.it>"]
+description = "Operating System Abstraction Layer in Rust with FreeRTOS kernel integration"
+license = "MIT"
+
+[dependencies]
+
+[build-dependencies]
+cmake = "0.1"
+wee_alloc = { version = "0.4", optional = true }
+bindgen = { version = "0.72", optional = true }
+
+[features]
+default = ["freertos"]
+freertos = []
+posix = []
+bindgen = ["dep:bindgen"]
+
+[lib]
+name = "osal_rs"
+path = "src/lib.rs"

@@ -1,0 +1,83 @@
+cmake_minimum_required(VERSION 3.15)
+project(osal_rs_freertos C)
+
+# Set build type
+if(NOT CMAKE_BUILD_TYPE)
+    set(CMAKE_BUILD_TYPE Release)
+endif()
+
+# Define FreeRTOS version
+set(FREERTOS_VERSION "V11.2.0" CACHE STRING "FreeRTOS version to download")
+
+# Define configurable parameters for FreeRTOS
+set(FREERTOS_PORT "" CACHE STRING "FreeRTOS port to use (e.g., GCC/ARM_CM4F, ThirdParty/GCC/Posix)")
+set(FREERTOS_HEAP "4" CACHE STRING "FreeRTOS heap implementation (1-5)")
+
+# Include module to download FreeRTOS
+include(cmake/FreeRTOS.cmake)
+
+# Determine port based on system if not specified
+if(NOT FREERTOS_PORT)
+    if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+        set(FREERTOS_PORT "ThirdParty/GCC/Posix")
+        set(FREERTOS_PORT_ASM "")
+    elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "arm")
+        set(FREERTOS_PORT "GCC/ARM_CM4F")
+        set(FREERTOS_PORT_ASM "")
+    else()
+        # Default to Posix for testing/simulation
+        set(FREERTOS_PORT "ThirdParty/GCC/Posix")
+        set(FREERTOS_PORT_ASM "")
+    endif()
+    message(STATUS "Auto-detected FreeRTOS port: ${FREERTOS_PORT}")
+else()
+    message(STATUS "Using custom FreeRTOS port: ${FREERTOS_PORT}")
+    set(FREERTOS_PORT_ASM "")
+endif()
+
+# Heap validation
+if(NOT (FREERTOS_HEAP MATCHES "^[1-5]$"))
+    message(FATAL_ERROR "FREERTOS_HEAP must be 1, 2, 3, 4, or 5. Got: ${FREERTOS_HEAP}")
+endif()
+
+message(STATUS "Using FreeRTOS heap implementation: heap_${FREERTOS_HEAP}.c")
+
+# Create FreeRTOS library
+add_library(freertos STATIC
+    ${FREERTOS_SOURCE_DIR}/tasks.c
+    ${FREERTOS_SOURCE_DIR}/queue.c
+    ${FREERTOS_SOURCE_DIR}/list.c
+    ${FREERTOS_SOURCE_DIR}/timers.c
+    ${FREERTOS_SOURCE_DIR}/event_groups.c
+    ${FREERTOS_SOURCE_DIR}/stream_buffer.c
+    ${FREERTOS_SOURCE_DIR}/portable/MemMang/heap_${FREERTOS_HEAP}.c
+    ${FREERTOS_SOURCE_DIR}/portable/${FREERTOS_PORT}/port.c
+    ${FREERTOS_PORT_ASM}
+)
+
+# Add include directories
+target_include_directories(freertos PUBLIC
+    ${FREERTOS_SOURCE_DIR}/include
+    ${FREERTOS_SOURCE_DIR}/portable/${FREERTOS_PORT}
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+)
+
+# Compilation options
+target_compile_options(freertos PRIVATE
+    -Wall
+    -Wextra
+    -ffunction-sections
+    -fdata-sections
+)
+
+# Install library
+install(TARGETS freertos
+    ARCHIVE DESTINATION lib
+    LIBRARY DESTINATION lib
+)
+
+# Install headers
+install(DIRECTORY ${FREERTOS_SOURCE_DIR}/include/
+    DESTINATION include/freertos
+    FILES_MATCHING PATTERN "*.h"
+)

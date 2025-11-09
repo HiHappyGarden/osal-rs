@@ -11,7 +11,7 @@ mod ffi;
 
 // OSAL modules
 
-pub mod constants;
+mod constants;
 
 pub mod event;
 

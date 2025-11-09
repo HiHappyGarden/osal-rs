@@ -29,10 +29,6 @@ pub use osal::thread::*;
 pub use osal::time::*;
 pub use osal::timer::*;
 
-// Export FreeRTOS constants
-#[cfg(feature = "freertos")]
-pub use crate::freertos::constants;
-
 
 
 

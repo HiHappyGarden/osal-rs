@@ -1,6 +1,6 @@
 use alloc::sync::Arc;
 use core::any::Any;
-use crate::ThreadPriority;
+use super::ThreadPriority;
 
 pub trait Thread<T> {
 
@@ -13,8 +13,6 @@ pub trait Thread<T> {
     ) -> Result<T, &'static str>
      where
          F: Fn(Arc<dyn Any + Send + Sync>) -> Arc<dyn Any + Send + Sync> + Send + Sync + 'static;
-
-    fn delete(&self);
 
     fn delete_current();
 

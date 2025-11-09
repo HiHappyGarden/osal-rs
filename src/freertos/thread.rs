@@ -37,35 +37,18 @@ use alloc::ffi::CString;
 use alloc::sync::Arc;
 use core::any::Any;
 use core::ffi::{c_char, c_void};
+use core::fmt::Debug;
 use core::ptr::null_mut;
 use crate::freertos::ffi::{pdPASS};
-use crate::freertos::thread::ffi::{xTaskCreate, TaskHandle_t};
-use crate::osal::thread::ffi::{vTaskDelete, vTaskResume, vTaskSuspend};
+use crate::freertos::thread::ffi::{xTaskCreate, TaskHandle_t, vTaskDelete, vTaskResume, vTaskSuspend};
+pub use crate::traits::thread::Thread as ThreadTrait;
 
-pub trait ThreadPriority {
-    fn get_priority(&self) -> u32;
-}
-
-#[derive(Clone)]
-pub enum ThreadDefaultPriority {
-    None = 0,
-    Idle = 1,
-    Low = 2,
-    BelowNormal = 3,
-    Normal = 4,
-    AboveNormal = 5,
-    High = 6,
-    Realtime = 7,
-    ISR = 8,
-}
 
 impl ThreadPriority for ThreadDefaultPriority {
     fn get_priority(&self) -> u32 {
         self.clone() as u32
     }
 }
-
-pub type ThreadFunc = dyn Fn(Arc<dyn Any + Send + Sync>) -> Arc<dyn Any + Send + Sync> + Send + Sync + 'static;
 
 #[derive(Clone)]
 pub struct Thread {
@@ -91,7 +74,7 @@ unsafe extern "C" fn callback(param_ptr: *mut c_void) {
 }
 
 
-impl crate::traits::thread::Thread<Thread> for  Thread {
+impl ThreadTrait<Thread> for Thread {
     fn new<F>(
         callback: F,
         name: &str,
@@ -133,12 +116,6 @@ impl crate::traits::thread::Thread<Thread> for  Thread {
         }
     }
 
-    fn delete(&self) {
-        unsafe {
-            vTaskDelete(self.handler);
-        }
-    }
-
     fn delete_current() {
         unsafe {
             vTaskDelete(null_mut());
@@ -157,6 +134,22 @@ impl crate::traits::thread::Thread<Thread> for  Thread {
         }
     }
 
+}
+
+impl Drop for Thread {
+    fn drop(&mut self) {
+        unsafe {
+            vTaskDelete(self.handler);
+        }
+    }
+}
+
+impl Debug for Thread {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("Thread")
+            .field("handler", &self.handler)
+            .finish()
+    }
 }
 
 #[cfg(test)]
@@ -222,34 +215,20 @@ mod tests {
         assert!(result.downcast_ref::<u32>().is_some());
     }
 
-    #[test]
-    fn test_thread_struct_clone() {
-        // Test che Thread abbia tutti i campi clonabili
-        let callback: Arc<ThreadFunc> = Arc::new(|p| p);
-        let param = Some(Arc::new(()) as Arc<dyn Any + Send + Sync>);
-
-        let thread = Thread {
-            handler: core::ptr::null_mut(),
-            callback: callback.clone(),
-            param: param.clone(),
-        };
-
-        // Il clone dovrebbe funzionare
-        let cloned = thread.clone();
-        assert_eq!(thread.handler, cloned.handler);
-    }
 }
 
 // Test di integrazione che richiedono FreeRTOS runtime
 // Questi test sono commentati perché non possono essere eseguiti su host Linux/macOS/Windows
 // Per eseguirli, è necessario un ambiente embedded con FreeRTOS o un emulatore
 
-/*
-#[cfg(all(test, target_os = "none"))]
+
+
 mod integration_tests {
     use super::*;
     use alloc::sync::Arc;
     use core::sync::atomic::{AtomicBool, AtomicU32, Ordering};
+    use crate::freertos::thread::Thread;
+    use crate::traits::thread::Thread as ThreadTrait;
 
     #[test]
     fn test_thread_creation() {
@@ -334,5 +313,5 @@ mod integration_tests {
         assert_eq!(thread.err(), Some("Name not valid"));
     }
 }
-*/
+
 

@@ -1,28 +1,44 @@
 //! Esempio base di utilizzo di OSAL-RS
 
-use osal_rs::{os_version, init, Thread};
+
+use std::sync::Arc;
+use osal_rs::{os_version, start_scheduler, stop_scheduler, Thread, ThreadDefaultPriority, ThreadTrait};
 
 fn main() {
     println!("===========================================");
     println!("  OSAL-RS - Operating System Abstraction Layer");
     println!("===========================================");
     println!();
-    println!("Sistema Operativo: {}", os_version());
+    println!("OS: {}", os_version());
     println!();
-    println!("Inizializzazione OSAL...");
-    
-    init();
-    
-    println!("✓ OSAL inizializzato con successo!");
-    println!();
-    
-    // Esempio di utilizzo dell'API unificata
-    //let _task = Thread::new();
-    println!("✓ Task creato usando l'interfaccia unificata");
 
-    #[cfg(feature = "freertos")]
-    println!("Compilato con backend FreeRTOS v11.2.0");
-    
-    #[cfg(feature = "posix")]
-    println!("Compilato con backend POSIX");
+
+    let thread = Thread::new(
+        |_| {
+            for _ in 0..5 {
+                println!("Esecuzione del task di base...");
+            }
+            stop_scheduler();
+            Arc::new(())
+        },
+        "base_task",
+        1024,
+        None,
+        ThreadDefaultPriority::Normal,
+    );
+
+    match thread {
+        Ok(t) => {
+            println!("✓ Task creato con successo: {:?}", t);
+        }
+        Err(e) => {
+            println!("✗ Errore nella creazione del task: {}", e);
+        }
+    }
+    println!();
+
+    start_scheduler();
+
+    println!("End execution {}", os_version());
+
 }

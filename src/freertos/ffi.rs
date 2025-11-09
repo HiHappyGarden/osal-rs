@@ -30,18 +30,6 @@ pub mod manual {
         // Task Management
 
         // Queue Management
-        pub fn xQueueCreate(uxQueueLength: UBaseType_t, uxItemSize: UBaseType_t) -> QueueHandle_t;
-        pub fn vQueueDelete(xQueue: QueueHandle_t);
-        pub fn xQueueSend(
-            xQueue: QueueHandle_t,
-            pvItemToQueue: *const c_void,
-            xTicksToWait: TickType_t,
-        ) -> BaseType_t;
-        pub fn xQueueReceive(
-            xQueue: QueueHandle_t,
-            pvBuffer: *mut c_void,
-            xTicksToWait: TickType_t,
-        ) -> BaseType_t;
 
         // Semaphore Management
         pub fn xSemaphoreCreateBinary() -> SemaphoreHandle_t;

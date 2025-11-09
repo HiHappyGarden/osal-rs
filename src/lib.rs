@@ -4,12 +4,12 @@
 #![allow(dead_code)]
 extern crate alloc;
 
-mod commons;
+pub mod commons;
 #[cfg(feature = "freertos")]
 mod freertos;
 #[cfg(feature = "posix")]
 mod posix;
-mod traits;
+pub mod traits;
 
 #[cfg(feature = "freertos")]
 use crate::freertos as osal;
@@ -28,16 +28,21 @@ pub use osal::thread::*;
 #[allow(unused_imports)]
 pub use osal::time::*;
 pub use osal::timer::*;
+pub use commons::ThreadDefaultPriority;
+pub use traits::Thread as ThreadTrait;
 
+#[macro_export]
+macro_rules! ms_to_us {
+    ($ms:expr) => {
+        { ($ms as u64) * 1_000 }
+    };
+}
 
-
-
-
-
-pub fn init() {
-
-
-    
+#[macro_export]
+macro_rules! sec_to_us {
+    ($sec:expr) => {
+        { ($sec as u64) * 1_000_000 }
+    };
 }
 
 

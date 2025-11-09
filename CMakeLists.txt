@@ -42,8 +42,8 @@ endif()
 
 message(STATUS "Using FreeRTOS heap implementation: heap_${FREERTOS_HEAP}.c")
 
-# Create FreeRTOS library
-add_library(freertos STATIC
+# Prepare source files list
+set(FREERTOS_SOURCES
     ${FREERTOS_SOURCE_DIR}/tasks.c
     ${FREERTOS_SOURCE_DIR}/queue.c
     ${FREERTOS_SOURCE_DIR}/list.c
@@ -54,6 +54,15 @@ add_library(freertos STATIC
     ${FREERTOS_SOURCE_DIR}/portable/${FREERTOS_PORT}/port.c
     ${FREERTOS_PORT_ASM}
 )
+
+# Add event_posix.c if using POSIX port
+if(FREERTOS_PORT MATCHES "Posix")
+    list(APPEND FREERTOS_SOURCES freertos_posix/event_posix.c)
+    message(STATUS "Adding event_posix.c for POSIX port support")
+endif()
+
+# Create FreeRTOS library
+add_library(freertos STATIC ${FREERTOS_SOURCES})
 
 # Add include directories
 target_include_directories(freertos PUBLIC
@@ -69,6 +78,12 @@ target_compile_options(freertos PRIVATE
     -ffunction-sections
     -fdata-sections
 )
+
+# Link pthread if using POSIX port
+if(FREERTOS_PORT MATCHES "Posix")
+    target_link_libraries(freertos PUBLIC pthread)
+    message(STATUS "Linking pthread for POSIX port")
+endif()
 
 # Install library
 install(TARGETS freertos

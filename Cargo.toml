@@ -10,11 +10,10 @@ license = "GPL-3"
 
 [build-dependencies]
 cmake = "0.1"
-wee_alloc = { version = "0.4", optional = true }
 bindgen = { version = "0.72", optional = true }
 
 [features]
-default = ["freertos"]
+default = ["posix"]
 freertos = []
 posix = []
 bindgen = ["dep:bindgen"]

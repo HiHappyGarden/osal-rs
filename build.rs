@@ -3,6 +3,7 @@ use std::path::PathBuf;
 use std::fs;
 
 /// Extracts the value of a define from FreeRTOSConfig.h
+#[allow(dead_code)]
 fn extract_define_value(content: &str, define_name: &str) -> Option<String> {
     for line in content.lines() {
         let line = line.trim();
@@ -26,7 +27,8 @@ fn extract_define_value(content: &str, define_name: &str) -> Option<String> {
     None
 }
 
-/// Generates the constants.rs file synchronized with FreeRTOSConfig.h
+/// Generates the commons file synchronized with FreeRTOSConfig.h
+#[allow(dead_code)]
 fn generate_constants_from_config() -> std::io::Result<()> {
     let config_path = PathBuf::from("include/FreeRTOSConfig.h");
 
@@ -193,10 +195,12 @@ fn main() {
         println!("cargo:rustc-env=FREERTOS_CONFIG_DIR={}", freertos_config_include.display());
     }
     
-    // For POSIX no external libraries need to be compiled
+    // For POSIX link pthread library
     #[cfg(feature = "posix")]
     {
         println!("cargo:warning=Building with POSIX backend");
+        println!("cargo:rustc-link-lib=pthread");
+        println!("cargo:warning=Linking pthread library for POSIX threads");
     }
     
     // Rebuild if CMake files change (only for FreeRTOS)

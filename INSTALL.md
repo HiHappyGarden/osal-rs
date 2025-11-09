@@ -256,5 +256,5 @@ For issues or questions:
 
 ## License
 
-OSAL-RS is licensed under MIT License.
+OSAL-RS is licensed under GPL-3 License.
 FreeRTOS Kernel is licensed under MIT License by Amazon.

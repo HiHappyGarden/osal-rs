@@ -156,6 +156,49 @@ fn posix_specific() {
 }
 ```
 
+### Reading FreeRTOS Configuration
+
+You can read FreeRTOS configuration constants directly from Rust. **The values are automatically synchronized** from `FreeRTOSConfig.h` during compilation:
+
+```rust
+use osal_rs::constants::*;
+
+fn main() {
+    // Read CONFIG_TICK_RATE_HZ (auto-synced from FreeRTOSConfig.h)
+    println!("Tick rate: {} Hz", CONFIG_TICK_RATE_HZ);
+    
+    // Convert milliseconds to ticks
+    let delay_ticks = ms_to_ticks(500);
+    println!("500ms = {} ticks", delay_ticks);
+    
+    // Other constants
+    println!("Max priorities: {}", CONFIG_MAX_PRIORITIES);
+    println!("Heap size: {} bytes", CONFIG_TOTAL_HEAP_SIZE);
+}
+```
+
+**Automatic Synchronization**: When you modify `include/FreeRTOSConfig.h`, the Rust constants are automatically updated during the next `cargo build`. No manual synchronization needed! ✨
+
+See [AUTO_SYNC.md](AUTO_SYNC.md), [FREERTOS_CONSTANTS.md](FREERTOS_CONSTANTS.md) and [QUICK_START_CONFIG.md](QUICK_START_CONFIG.md) for more details.
+
+## Testing
+
+OSAL-RS includes comprehensive tests for verifying code correctness. Due to the nature of FreeRTOS requiring an embedded environment, tests are categorized into:
+
+- **Unit Tests**: Logic verification without requiring RTOS runtime (can run on host)
+- **Integration Tests**: Require actual FreeRTOS or POSIX runtime
+
+For detailed testing instructions, see [TESTING.md](TESTING.md).
+
+Quick start:
+```bash
+# Check compilation (no execution needed)
+cargo check --lib --features freertos
+
+# Run unit tests (logic only, no RTOS execution)
+cargo test --lib --features freertos --doc
+```
+
 ## FreeRTOS Kernel
 
 When using the `freertos` feature, the project automatically downloads the FreeRTOS kernel from the official repository:
@@ -167,10 +210,11 @@ When using the `freertos` feature, the project automatically downloads the FreeR
 
 - [FEATURES.md](FEATURES.md) - Detailed guide to using feature flags
 - [FREERTOS_CONFIG.md](FREERTOS_CONFIG.md) - Advanced FreeRTOS configuration
+- [TESTING.md](TESTING.md) - Complete testing guide
 
 ## License
 
-MIT
+GPL-3
 
 ## References
 

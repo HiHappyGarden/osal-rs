@@ -10,13 +10,25 @@
 mod ffi;
 
 // OSAL modules
-pub mod queue;
-pub mod thread;
-pub mod semaphore;
-pub mod stream_buffer;
-pub mod mutex;
+
+pub mod constants;
+
 pub mod event;
-pub mod timer;
-pub mod time;
+
 pub mod memory;
-mod constants;
+
+pub mod mutex;
+
+pub mod queue;
+
+pub mod semaphore;
+
+pub mod stream_buffer;
+
+pub mod system;
+
+pub mod thread;
+
+pub mod time;
+pub mod timer;
+

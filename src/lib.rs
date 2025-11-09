@@ -1,7 +1,6 @@
 
 
 #![no_std]
-#![no_main]
 #![allow(dead_code)]
 extern crate alloc;
 
@@ -24,10 +23,16 @@ pub use osal::mutex::*;
 pub use osal::queue::*;
 pub use osal::semaphore::*;
 pub use osal::stream_buffer::*;
+pub use osal::system::*;
 pub use osal::thread::*;
 #[allow(unused_imports)]
 pub use osal::time::*;
 pub use osal::timer::*;
+
+// Export FreeRTOS constants
+#[cfg(feature = "freertos")]
+pub use crate::freertos::constants;
+
 
 
 
@@ -39,15 +44,6 @@ pub fn init() {
     
 }
 
-#[cfg(feature = "freertos")]
-pub fn os_version() -> &'static str {
-    "FreeRTOS V11.2.0"
-}
-
-#[cfg(feature = "posix")]
-pub fn os_version() -> &'static str {
-    "POSIX"
-}
 
 #[cfg(test)]
 mod tests {

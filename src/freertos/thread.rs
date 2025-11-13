@@ -43,10 +43,23 @@ use crate::freertos::ffi::{pdPASS};
 use crate::freertos::thread::ffi::{xTaskCreate, TaskHandle_t, vTaskDelete, vTaskResume, vTaskSuspend};
 pub use crate::traits::thread::Thread as ThreadTrait;
 
+#[derive(Clone)]
+pub enum ThreadDefaultPriority {
+    None = 0,
+    Idle = 1,
+    Low = 2,
+    BelowNormal = 3,
+    Normal = 4,
+    AboveNormal = 5,
+    High = 6,
+    Realtime = 7,
+    ISR = 8,
+}
+
 
 impl ThreadPriority for ThreadDefaultPriority {
-    fn get_priority(&self) -> u32 {
-        self.clone() as u32
+    fn get_priority(&self) -> i32 {
+        self.clone() as i32
     }
 }
 
@@ -134,6 +147,10 @@ impl ThreadTrait<Thread> for Thread {
         }
     }
 
+    fn join(&self, mut _retval: *mut c_void) -> Result<(), &'static str> {
+
+        Ok(())
+    }
 }
 
 impl Drop for Thread {
@@ -151,6 +168,9 @@ impl Debug for Thread {
             .finish()
     }
 }
+
+unsafe impl Send for crate::Thread {}
+unsafe impl Sync for crate::Thread {}
 
 #[cfg(test)]
 mod tests {

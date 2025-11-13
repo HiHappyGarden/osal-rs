@@ -1,6 +1,7 @@
 use alloc::sync::Arc;
 use core::any::Any;
-use super::ThreadPriority;
+use core::ffi::c_void;
+use crate::traits::thread_priority::ThreadPriority;
 
 pub trait Thread<T> {
 
@@ -19,4 +20,6 @@ pub trait Thread<T> {
     fn suspend(&self);
 
     fn resume(&self);
+
+    fn join(&self, retval: *mut c_void) -> Result<(), &'static str>;
 }

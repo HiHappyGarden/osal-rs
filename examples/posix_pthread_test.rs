@@ -21,12 +21,12 @@ fn main() {
                 std::thread::sleep(std::time::Duration::from_millis(100));
             }
             println!("Thread completed!");
-            Arc::new(())
+            Arc::new(10)
         },
         "test_thread",
-        1024,
+        16 * 1024, // Use default stack size (0) or minimum 16KB
         None,
-        ThreadDefaultPriority::Normal,
+        ThreadDefaultPriority::High,
     );
 
     match thread {

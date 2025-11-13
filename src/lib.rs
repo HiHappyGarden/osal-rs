@@ -10,6 +10,7 @@ mod freertos;
 #[cfg(feature = "posix")]
 mod posix;
 pub mod traits;
+pub mod error;
 
 #[cfg(feature = "freertos")]
 use crate::freertos as osal;
@@ -28,7 +29,6 @@ pub use osal::thread::*;
 #[allow(unused_imports)]
 pub use osal::time::*;
 pub use osal::timer::*;
-pub use commons::ThreadDefaultPriority;
 pub use traits::Thread as ThreadTrait;
 
 #[macro_export]

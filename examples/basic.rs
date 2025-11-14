@@ -13,16 +13,16 @@ fn main() {
     println!();
 
 
-    let thread = Thread::new(
+    let thread = Thread::create(
         |_| {
             for _ in 0..5 {
                 println!("Esecuzione del task di base...");
             }
             stop_scheduler();
-            Arc::new(())
+            Arc::new(5)
         },
         "base_task",
-        1024,
+        1024 * 16,
         None,
         ThreadDefaultPriority::Normal,
     );
@@ -32,7 +32,7 @@ fn main() {
             println!("✓ Task creato con successo: {:?}", t);
         }
         Err(e) => {
-            println!("✗ Errore nella creazione del task: {}", e);
+            println!("✗ Errore nella creazione del task: {:?}", e);
         }
     }
     println!();

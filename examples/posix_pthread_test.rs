@@ -1,7 +1,7 @@
 //! Test example for POSIX pthread support
 
 use std::sync::Arc;
-use osal_rs::{os_version, Thread, ThreadDefaultPriority, ThreadTrait};
+use osal_rs::{os_version, Error, Thread, ThreadDefaultPriority, ThreadTrait};
 
 fn main() {
     println!("===========================================");
@@ -13,7 +13,7 @@ fn main() {
 
     println!("Creating thread with pthread...");
 
-    let thread = Thread::new(
+    let thread = Thread::create(
         |_| {
             println!("Thread is running!");
             for i in 0..5 {
@@ -36,7 +36,7 @@ fn main() {
             std::thread::sleep(std::time::Duration::from_millis(600));
         }
         Err(e) => {
-            println!("✗ Error creating thread: {}", e);
+            println!("✗ Error creating thread: {:?}", e);
         }
     }
 

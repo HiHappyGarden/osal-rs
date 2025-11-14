@@ -152,7 +152,7 @@ Se modifichi `CONFIG_TICK_RATE_HZ` in `FreeRTOSConfig.h`, ricorda di aggiornare 
 ```
 
 ```rust
-// constants.rs
+// commons
 pub const CONFIG_TICK_RATE_HZ: TickType_t = 1000;
 ```
 

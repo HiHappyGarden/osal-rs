@@ -10,8 +10,8 @@ mod freertos;
 #[cfg(feature = "posix")]
 mod posix;
 pub mod traits;
-pub mod error;
 
+use core::fmt::Debug;
 #[cfg(feature = "freertos")]
 use crate::freertos as osal;
 #[cfg(feature = "posix")]
@@ -30,6 +30,20 @@ pub use osal::thread::*;
 pub use osal::time::*;
 pub use osal::timer::*;
 pub use traits::Thread as ThreadTrait;
+
+pub type Result<T, E = Error> = core::result::Result<T, E>;
+
+pub enum Error {
+    Std(i32, &'static str)
+}
+
+impl Debug for Error {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            Error::Std(code, msg) => write!(f, "Error::Std({}, {})", code, msg),
+        }
+    }
+}
 
 #[macro_export]
 macro_rules! ms_to_us {

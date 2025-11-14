@@ -6,7 +6,7 @@ use osal_rs::{Thread, ThreadDefaultPriority, ThreadTrait};
 
 #[test]
 fn test_thread_creation() {
-    let result = Thread::new(
+    let result = Thread::create(
         |_| {
             Arc::new(())
         },
@@ -24,7 +24,7 @@ fn test_thread_execution() {
     let counter = Arc::new(Mutex::new(0));
     let counter_clone = counter.clone();
 
-    let thread = Thread::new(
+    let thread = Thread::create(
         move |_| {
             let mut count = counter_clone.lock().unwrap();
             *count += 1;
@@ -51,7 +51,7 @@ fn test_thread_with_parameter() {
     let result_clone = result.clone();
     let param_value = 42;
 
-    let thread = Thread::new(
+    let thread = Thread::create(
         move |param| {
             if let Some(value) = param.downcast_ref::<i32>() {
                 let mut res = result_clone.lock().unwrap();
@@ -76,7 +76,7 @@ fn test_thread_with_parameter() {
 
 #[test]
 fn test_thread_with_name() {
-    let thread = Thread::new(
+    let thread = Thread::create(
         |_| {
             Arc::new(())
         },
@@ -94,7 +94,7 @@ fn test_thread_with_name() {
 
 #[test]
 fn test_thread_with_stack_size() {
-    let thread = Thread::new(
+    let thread = Thread::create(
         |_| {
             Arc::new(())
         },
@@ -109,7 +109,7 @@ fn test_thread_with_stack_size() {
 
 #[test]
 fn test_thread_with_priority() {
-    let thread_low = Thread::new(
+    let thread_low = Thread::create(
         |_| Arc::new(()),
         "low_priority",
         0,
@@ -117,7 +117,7 @@ fn test_thread_with_priority() {
         ThreadDefaultPriority::Low,
     );
 
-    let thread_normal = Thread::new(
+    let thread_normal = Thread::create(
         |_| Arc::new(()),
         "normal_priority",
         0,
@@ -125,7 +125,7 @@ fn test_thread_with_priority() {
         ThreadDefaultPriority::Normal,
     );
 
-    let thread_high = Thread::new(
+    let thread_high = Thread::create(
         |_| Arc::new(()),
         "high_priority",
         0,
@@ -145,7 +145,7 @@ fn test_multiple_threads() {
 
     for i in 0..5 {
         let counter_clone = counter.clone();
-        let thread = Thread::new(
+        let thread = Thread::create(
             move |_| {
                 let mut count = counter_clone.lock().unwrap();
                 *count += 1;
@@ -170,7 +170,7 @@ fn test_multiple_threads() {
 
 #[test]
 fn test_thread_with_return_value() {
-    let thread = Thread::new(
+    let thread = Thread::create(
         |_| {
             Arc::new(100)
         },
@@ -185,7 +185,7 @@ fn test_thread_with_return_value() {
 
 #[test]
 fn test_thread_join() {
-    let thread = Thread::new(
+    let thread = Thread::create(
         |_| {
             std::thread::sleep(Duration::from_millis(100));
             Arc::new(())
@@ -205,7 +205,7 @@ fn test_thread_join() {
 
 #[test]
 fn test_thread_with_empty_name() {
-    let thread = Thread::new(
+    let thread = Thread::create(
         |_| Arc::new(()),
         "",
         0,
@@ -218,7 +218,7 @@ fn test_thread_with_empty_name() {
 
 #[test]
 fn test_thread_suspend_resume() {
-    let thread = Thread::new(
+    let thread = Thread::create(
         |_| {
             std::thread::sleep(Duration::from_millis(100));
             Arc::new(())
@@ -241,7 +241,7 @@ fn test_thread_suspend_resume() {
 
 #[test]
 fn test_thread_debug_format() {
-    let thread = Thread::new(
+    let thread = Thread::create(
         |_| {
             std::thread::sleep(Duration::from_millis(100));
             Arc::new(())
@@ -278,7 +278,7 @@ fn test_thread_with_complex_parameter() {
         text: "test".to_string(),
     };
 
-    let thread = Thread::new(
+    let thread = Thread::create(
         move |param| {
             if let Some(complex) = param.downcast_ref::<ComplexParam>() {
                 let mut res = result_clone.lock().unwrap();
@@ -317,7 +317,7 @@ fn test_concurrent_thread_creation() {
     let handles: Vec<_> = (0..10)
         .map(|i| {
             std::thread::spawn(move || {
-                Thread::new(
+                Thread::create(
                     |_| Arc::new(()),
                     &format!("concurrent_{}", i),
                     0,

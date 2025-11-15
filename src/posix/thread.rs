@@ -248,150 +248,152 @@ unsafe impl Send for Thread {}
 unsafe impl Sync for Thread {}
 
 
-//
-// #[cfg(test)]
-// mod tests {
-//     use super::*;
-//     extern crate std;
-//     use std::thread;
-//     use std::time::Duration;
-//     use alloc::vec::Vec;
-//
-//     #[test]
-//     fn test_thread_priority_mapping() {
-//         assert_eq!(ThreadDefaultPriority::None.get_priority(), 19);
-//         assert_eq!(ThreadDefaultPriority::Idle.get_priority(), 15);
-//         assert_eq!(ThreadDefaultPriority::Low.get_priority(), 13);
-//         assert_eq!(ThreadDefaultPriority::BelowNormal.get_priority(), 7);
-//         assert_eq!(ThreadDefaultPriority::Normal.get_priority(), 0);
-//         assert_eq!(ThreadDefaultPriority::AboveNormal.get_priority(), -7);
-//         assert_eq!(ThreadDefaultPriority::High.get_priority(), -13);
-//         assert_eq!(ThreadDefaultPriority::Realtime.get_priority(), -17);
-//         assert_eq!(ThreadDefaultPriority::ISR.get_priority(), -20);
-//     }
-//
-//     #[test]
-//     #[cfg(feature = "posix")]
-//     fn test_basic_thread_creation() {
-//         let thread = Thread::create(
-//             |_| Arc::new(()),
-//             "test",
-//             0,
-//             None,
-//             ThreadDefaultPriority::Normal,
-//         );
-//         assert!(thread.is_ok(), "Thread creation failed: {:?}", thread.err());
-//     }
-//
-//     #[test]
-//     #[cfg(feature = "posix")]
-//     fn test_thread_with_name() {
-//         let thread = Thread::create(
-//             |_| Arc::new(()),
-//             "my_thread",
-//             0,
-//             None,
-//             ThreadDefaultPriority::Normal,
-//         );
-//         assert!(thread.is_ok());
-//     }
-//
-//     #[test]
-//     #[cfg(feature = "posix")]
-//     fn test_thread_with_stack() {
-//         let thread = Thread::create(
-//             |_| Arc::new(()),
-//             "stack_test",
-//             16384, // Use 16KB stack (8192 was too small)
-//             None,
-//             ThreadDefaultPriority::Normal,
-//         );
-//         assert!(thread.is_ok(), "Thread creation failed: {:?}", thread.err());
-//     }
-//
-//     #[test]
-//     #[cfg(feature = "posix")]
-//     fn test_thread_with_param() {
-//         let thread = Thread::create(
-//             |param| {
-//                 if let Some(val) = param.downcast_ref::<i32>() {
-//                     assert_eq!(*val, 42);
-//                 }
-//                 Arc::new(())
-//             },
-//             "param_test",
-//             0,
-//             Some(Arc::new(42i32)),
-//             ThreadDefaultPriority::Normal,
-//         );
-//         assert!(thread.is_ok());
-//
-//         // Give thread time to execute
-//         thread::sleep(Duration::from_millis(50));
-//     }
-//
-//     #[test]
-//     #[cfg(feature = "posix")]
-//     fn test_thread_priorities() {
-//         let priorities = Vec::from([
-//             ThreadDefaultPriority::Idle,
-//             ThreadDefaultPriority::Low,
-//             ThreadDefaultPriority::BelowNormal,
-//             ThreadDefaultPriority::Normal,
-//             ThreadDefaultPriority::AboveNormal,
-//             ThreadDefaultPriority::High,
-//             ThreadDefaultPriority::Realtime,
-//         ]);
-//
-//         for priority in priorities {
-//             let thread = Thread::create(
-//                 |_| Arc::new(()),
-//                 "priority_test",
-//                 0,
-//                 None,
-//                 priority.clone(),
-//             );
-//             assert!(thread.is_ok(), "Failed to create thread with priority: {}", priority.get_priority());
-//         }
-//     }
-//
-//     #[test]
-//     #[cfg(feature = "posix")]
-//     fn test_thread_priority_application() {
-//         use std::sync::{Arc as StdArc, Mutex};
-//
-//         // Create a shared variable to store the priority read from inside the thread
-//         let priority_read = StdArc::new(Mutex::new(None));
-//         let priority_read_clone = priority_read.clone();
-//
-//         let thread = Thread::create(
-//             move |_| {
-//                 // Read the current thread's nice value using getpriority
-//                 unsafe extern "C" {
-//                     fn getpriority(which: i32, who: i32) -> i32;
-//                 }
-//                 let nice_value = unsafe { getpriority(0, 0) };
-//                 *priority_read_clone.lock().unwrap() = Some(nice_value);
-//                 Arc::new(())
-//             },
-//             "priority_check",
-//             0,
-//             None,
-//             ThreadDefaultPriority::High, // Should set nice to -13
-//         );
-//
-//         assert!(thread.is_ok());
-//
-//         // Give thread time to execute and set priority
-//         thread::sleep(Duration::from_millis(100));
-//
-//         // Check that the priority was actually set
-//         let read_value = *priority_read.lock().unwrap();
-//         assert!(read_value.is_some(), "Thread did not read priority value");
-//
-//         // Note: setpriority might fail without proper permissions, so we just verify it was called
-//         // In a privileged environment, we would expect read_value == Some(-13)
-//     }
-// }
-//
-//
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    extern crate std;
+    use std::thread;
+    use std::time::Duration;
+    use alloc::vec::Vec;
+
+    #[test]
+    fn test_thread_priority_mapping() {
+        assert_eq!(ThreadDefaultPriority::None.get_priority(), 19);
+        assert_eq!(ThreadDefaultPriority::Idle.get_priority(), 15);
+        assert_eq!(ThreadDefaultPriority::Low.get_priority(), 13);
+        assert_eq!(ThreadDefaultPriority::BelowNormal.get_priority(), 7);
+        assert_eq!(ThreadDefaultPriority::Normal.get_priority(), 0);
+        assert_eq!(ThreadDefaultPriority::AboveNormal.get_priority(), -7);
+        assert_eq!(ThreadDefaultPriority::High.get_priority(), -13);
+        assert_eq!(ThreadDefaultPriority::Realtime.get_priority(), -17);
+        assert_eq!(ThreadDefaultPriority::ISR.get_priority(), -20);
+    }
+
+    #[test]
+    #[cfg(feature = "posix")]
+    fn test_basic_thread_creation() {
+        let thread = Thread::create(
+            |_| Ok(Arc::new(())),
+            "test",
+            0,
+            None,
+            ThreadDefaultPriority::Normal,
+        );
+        assert!(thread.is_ok(), "Thread creation failed: {:?}", thread.err());
+    }
+
+    #[test]
+    #[cfg(feature = "posix")]
+    fn test_thread_with_name() {
+        let thread = Thread::create(
+            |_| Ok(Arc::new(())),
+            "my_thread",
+            0,
+            None,
+            ThreadDefaultPriority::Normal,
+        );
+        assert!(thread.is_ok());
+    }
+
+    #[test]
+    #[cfg(feature = "posix")]
+    fn test_thread_with_stack() {
+        let thread = Thread::create(
+            |_| Ok(Arc::new(())),
+            "stack_test",
+            16384, // Use 16KB stack (8192 was too small)
+            None,
+            ThreadDefaultPriority::Normal,
+        );
+        assert!(thread.is_ok(), "Thread creation failed: {:?}", thread.err());
+    }
+
+    #[test]
+    #[cfg(feature = "posix")]
+    fn test_thread_with_param() {
+        let thread = Thread::create(
+            |param| {
+                if let Some(arc) = param {
+                    if let Some(val) = arc.downcast_ref::<i32>() {
+                        assert_eq!(*val, 42);
+                    }
+                }
+                Ok(Arc::new(()))
+            },
+            "param_test",
+            0,
+            Some(Arc::new(42i32)),
+            ThreadDefaultPriority::Normal,
+        );
+        assert!(thread.is_ok());
+
+        // Give thread time to execute
+        thread::sleep(Duration::from_millis(50));
+    }
+
+    #[test]
+    #[cfg(feature = "posix")]
+    fn test_thread_priorities() {
+        let priorities = Vec::from([
+            ThreadDefaultPriority::Idle,
+            ThreadDefaultPriority::Low,
+            ThreadDefaultPriority::BelowNormal,
+            ThreadDefaultPriority::Normal,
+            ThreadDefaultPriority::AboveNormal,
+            ThreadDefaultPriority::High,
+            ThreadDefaultPriority::Realtime,
+        ]);
+
+        for priority in priorities {
+            let thread = Thread::create(
+                |_| Ok(Arc::new(())),
+                "priority_test",
+                0,
+                None,
+                priority.clone(),
+            );
+            assert!(thread.is_ok(), "Failed to create thread with priority: {}", priority.get_priority());
+        }
+    }
+
+    #[test]
+    #[cfg(feature = "posix")]
+    fn test_thread_priority_application() {
+        use std::sync::{Arc as StdArc, Mutex};
+
+        // Create a shared variable to store the priority read from inside the thread
+        let priority_read = StdArc::new(Mutex::new(None));
+        let priority_read_clone = priority_read.clone();
+
+        let thread = Thread::create(
+            move |_| {
+                // Read the current thread's nice value using getpriority
+                unsafe extern "C" {
+                    fn getpriority(which: i32, who: i32) -> i32;
+                }
+                let nice_value = unsafe { getpriority(0, 0) };
+                *priority_read_clone.lock().unwrap() = Some(nice_value);
+                Ok(Arc::new(()))
+            },
+            "priority_check",
+            0,
+            None,
+            ThreadDefaultPriority::High, // Should set nice to -13
+        );
+
+        assert!(thread.is_ok());
+
+        // Give thread time to execute and set priority
+        thread::sleep(Duration::from_millis(100));
+
+        // Check that the priority was actually set
+        let read_value = *priority_read.lock().unwrap();
+        assert!(read_value.is_some(), "Thread did not read priority value");
+
+        // Note: setpriority might fail without proper permissions, so we just verify it was called
+        // In a privileged environment, we would expect read_value == Some(-13)
+    }
+}
+
+

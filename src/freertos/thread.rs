@@ -38,7 +38,7 @@ use alloc::sync::Arc;
 use core::any::Any;
 use core::ffi::{c_char, c_ushort, c_void};
 use core::fmt::Debug;
-use core::ptr::null_mut;
+use core::ptr::{null, null_mut};
 use crate::types::{Result, ThreadFunc};
 use crate::types::Error::Std;
 use crate::freertos::ffi::{pdPASS, UBaseType_t};
@@ -152,7 +152,8 @@ impl ThreadTrait<Thread> for Thread {
         }
     }
 
-    fn join(&self, mut _retval: *mut c_void) -> Result<i32> {
+    fn join(&self, mut retval: *mut c_void) -> Result<i32> {
+        *retval = null();
         Ok(0)
     }
 }

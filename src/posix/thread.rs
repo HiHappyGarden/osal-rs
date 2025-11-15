@@ -58,8 +58,7 @@ use core::ptr::null_mut;
 use core::fmt::Debug;
 use core::mem::zeroed;
 use crate::traits::{ThreadPriority, Thread as ThreadTrait};
-use crate::commons::ThreadFunc;
-use crate::{Error, Error::Std};
+use crate::commons::{ThreadFunc, Result, Error::Std};
 use crate::posix::thread::ffi::{pthread_t, pthread_attr_destroy, pthread_attr_init, pthread_attr_setstacksize, pthread_attr_t, pthread_create, pthread_detach, pthread_exit, pthread_getname_np, pthread_join, pthread_setname_np, setpriority, PRIO_PROCESS};
 
 #[derive(Clone)]
@@ -122,7 +121,7 @@ impl ThreadTrait<Thread> for Thread {
         stack: u32,
         param: Option<Arc<dyn Any + Send + Sync>>,
         priority: impl ThreadPriority
-    ) -> Result<Self, Error>
+    ) -> Result<Self>
     where
         F: Fn(Arc<dyn Any + Send + Sync>) -> Arc<dyn Any + Send + Sync> + Send + Sync + 'static,
     {
@@ -165,8 +164,6 @@ impl ThreadTrait<Thread> for Thread {
                 crate::posix::thread::callback,
                 context_ptr as *mut c_void,
             )
-
-
         };
 
         // Destroy the thread attributes as they are no longer needed after pthread_create
@@ -211,15 +208,15 @@ impl ThreadTrait<Thread> for Thread {
         // For now, this is a no-op
     }
 
-    fn join(&self, mut retval: *mut c_void) -> Result<(), &'static str> {
+    fn join(&self, mut retval: *mut c_void) -> Result<i32> {
         let result = unsafe {
             pthread_join(self.handle, &mut retval)
         };
 
         if result == 0 {
-            Ok(())
+            Ok(result)
         } else {
-            Err("Failed to join pthread")
+            Err(Std(result, "Failed to join pthread"))
         }
     }
 }
@@ -228,6 +225,7 @@ impl Drop for Thread {
     fn drop(&mut self) {
         unsafe {
             pthread_detach(self.handle);
+            pthread_exit(self.handle as *mut c_void);
         }
     }
 }

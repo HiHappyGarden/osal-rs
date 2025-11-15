@@ -1,7 +1,7 @@
 use alloc::sync::Arc;
 use core::any::Any;
 use core::ffi::c_void;
-use crate::Error;
+use crate::commons::Result;
 use crate::traits::thread_priority::ThreadPriority;
 
 pub trait Thread<T> {
@@ -12,7 +12,7 @@ pub trait Thread<T> {
         stack: u32,
         param: Option<Arc<dyn Any + Send + Sync>>,
         priority: impl ThreadPriority
-    ) -> crate::Result<T, Error>
+    ) -> Result<T>
      where
          F: Fn(Arc<dyn Any + Send + Sync>) -> Arc<dyn Any + Send + Sync> + Send + Sync + 'static;
 
@@ -22,5 +22,5 @@ pub trait Thread<T> {
 
     fn resume(&self);
 
-    fn join(&self, retval: *mut c_void) -> Result<(), &'static str>;
+    fn join(&self, retval: *mut c_void) -> Result<i32>;
 }

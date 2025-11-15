@@ -7,7 +7,7 @@
     improper_ctypes
 )]
 mod ffi {
-    use core::ffi::{c_char, c_void};
+    use core::ffi::{c_char, c_ushort, c_void};
     use crate::freertos::ffi::{BaseType_t, TickType_t, UBaseType_t};
 
     pub type TaskHandle_t = *mut c_void;
@@ -20,7 +20,7 @@ mod ffi {
         pub fn xTaskCreate(
             pvTaskCode: TaskFunction_t,
             pcName: *const c_char,
-            usStackDepth: u16,
+            usStackDepth: c_ushort,
             pvParameters: *mut c_void,
             uxPriority: UBaseType_t,
             pxCreatedTask: *mut TaskHandle_t,
@@ -36,14 +36,17 @@ use alloc::boxed::Box;
 use alloc::ffi::CString;
 use alloc::sync::Arc;
 use core::any::Any;
-use core::ffi::{c_char, c_void};
+use core::ffi::{c_char, c_ushort, c_void};
 use core::fmt::Debug;
 use core::ptr::null_mut;
-use crate::freertos::ffi::{pdPASS};
+use crate::commons::{Result, ThreadFunc};
+use crate::commons::Error::Std;
+use crate::freertos::ffi::{pdPASS, UBaseType_t};
 use crate::freertos::thread::ffi::{xTaskCreate, TaskHandle_t, vTaskDelete, vTaskResume, vTaskSuspend};
-pub use crate::traits::thread::Thread as ThreadTrait;
+use crate::traits::{Thread as ThreadTrait, ThreadPriority};
 
 #[derive(Clone)]
+#[repr(i32)]
 pub enum ThreadDefaultPriority {
     None = 0,
     Idle = 1,
@@ -88,17 +91,19 @@ unsafe extern "C" fn callback(param_ptr: *mut c_void) {
 
 
 impl ThreadTrait<Thread> for Thread {
-    fn new<F>(
+    fn create<F>(
         callback: F,
         name: &str,
         stack: u32,
         param: Option<Arc<dyn Any + Send + Sync>>,
         priority: impl ThreadPriority
-    ) -> Result<Self, &'static str>
+    ) -> Result<Self>
     where
         F: Fn(Arc<dyn Any + Send + Sync>) -> Arc<dyn Any + Send + Sync> + Send + Sync + 'static,
     {
-        let name_c = CString::new(name).map_err(|_| "Name not valid")?;
+        let name_c = CString::new(name).map_err(|_| {
+            Std(-1, "Name not valid")
+        })?;
         let name_ptr = name_c.as_ptr() as *const c_char;
 
 
@@ -115,9 +120,9 @@ impl ThreadTrait<Thread> for Thread {
             xTaskCreate(
                 crate::freertos::thread::callback,
                 name_ptr,
-                stack as u16,
+                stack as c_ushort,
                 Box::into_raw(thread_box) as *mut c_void,
-                priority.get_priority(),
+                priority.get_priority() as UBaseType_t,
                 &mut handler,
             )
         };
@@ -125,7 +130,7 @@ impl ThreadTrait<Thread> for Thread {
         if result == pdPASS {
             Ok(Thread { handler, callback: callback_arc, param })
         } else {
-            Err("Impossible create thread")
+            Err(Std(result, "Impossible create thread"))
         }
     }
 
@@ -147,9 +152,8 @@ impl ThreadTrait<Thread> for Thread {
         }
     }
 
-    fn join(&self, mut _retval: *mut c_void) -> Result<(), &'static str> {
-
-        Ok(())
+    fn join(&self, mut _retval: *mut c_void) -> Result<i32> {
+        Ok(0)
     }
 }
 
@@ -169,8 +173,8 @@ impl Debug for Thread {
     }
 }
 
-unsafe impl Send for crate::Thread {}
-unsafe impl Sync for crate::Thread {}
+unsafe impl Send for Thread {}
+unsafe impl Sync for Thread {}
 
 #[cfg(test)]
 mod tests {
@@ -199,10 +203,10 @@ mod tests {
     #[test]
     fn test_thread_priority_trait() {
         // Test trait personalizzato
-        struct CustomPriority(u32);
+        struct CustomPriority(i32);
 
         impl ThreadPriority for CustomPriority {
-            fn get_priority(&self) -> u32 {
+            fn get_priority(&self) -> i32 {
                 self.0
             }
         }
@@ -248,7 +252,6 @@ mod integration_tests {
     use alloc::sync::Arc;
     use core::sync::atomic::{AtomicBool, AtomicU32, Ordering};
     use crate::freertos::thread::Thread;
-    use crate::traits::thread::Thread as ThreadTrait;
 
     #[test]
     fn test_thread_creation() {
@@ -256,7 +259,7 @@ mod integration_tests {
         let executed = Arc::new(AtomicBool::new(false));
         let executed_clone = executed.clone();
 
-        let thread = Thread::new(
+        let thread = Thread::create(
             move |_param| {
                 executed_clone.store(true, Ordering::SeqCst);
                 Arc::new(())
@@ -278,7 +281,7 @@ mod integration_tests {
 
         let input_value = Arc::new(42u32);
 
-        let thread = Thread::new(
+        let thread = Thread::create(
             move |param| {
                 if let Some(value) = param.downcast_ref::<u32>() {
                     result_clone.store(*value, Ordering::SeqCst);
@@ -306,7 +309,7 @@ mod integration_tests {
         ];
 
         for (idx, priority) in priorities.into_iter().enumerate() {
-            let thread = Thread::new(
+            let thread = Thread::create(
                 |_| Arc::new(()),
                 &alloc::format!("priority_test_{}", idx),
                 1024,
@@ -321,7 +324,7 @@ mod integration_tests {
     #[test]
     fn test_thread_name_validation() {
         // Test nome thread con carattere null (dovrebbe fallire)
-        let thread = Thread::new(
+        let thread = Thread::create(
             |_| Arc::new(()),
             "test\0invalid",
             1024,
@@ -330,7 +333,7 @@ mod integration_tests {
         );
 
         assert!(thread.is_err(), "Thread with null character in name should fail");
-        assert_eq!(thread.err(), Some("Name not valid"));
+        assert_eq!(thread.err(), Some(Std(-1, "Name not valid")));
     }
 }
 

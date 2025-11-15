@@ -40,6 +40,21 @@ const POSIX_TICK_RATE_HZ: u64 = 1000;
 
 type TickType = u32;
 
+#[macro_export]
+macro_rules! ms_to_us {
+    ($ms:expr) => {
+        { ($ms as u64) * 1_000 }
+    };
+}
+
+#[macro_export]
+macro_rules! sec_to_us {
+    ($sec:expr) => {
+        { ($sec as u64) * 1_000_000 }
+    };
+}
+
+
 /// Get current time in nanoseconds
 fn get_time_ns() -> u64 {
     unsafe {

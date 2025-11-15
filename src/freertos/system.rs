@@ -67,8 +67,25 @@ pub fn stop_scheduler() {
     }
 }
 
+
+#[macro_export]
+macro_rules! ms_to_us {
+    ($ms:expr) => {
+        { ($ms as u64) * 1_000 }
+    };
+}
+
+#[macro_export]
+macro_rules! sec_to_us {
+    ($sec:expr) => {
+        { ($sec as u64) * 1_000_000 }
+    };
+}
+
+
 #[cfg(test)]
 mod tests {
+    use crate::{ms_to_us, sec_to_us};
     use super::*;
 
     #[test]

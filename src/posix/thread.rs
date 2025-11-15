@@ -57,8 +57,10 @@ use core::ffi::{c_char, c_void};
 use core::ptr::null_mut;
 use core::fmt::Debug;
 use core::mem::zeroed;
+use crate::Error::Type;
+use crate::ErrorType;
 use crate::traits::{ThreadPriority, Thread as ThreadTrait};
-use crate::commons::{ThreadFunc, Result, Error::Std};
+use crate::types::{ThreadFunc, Result, Error::Std};
 use crate::posix::thread::ffi::{pthread_t, pthread_attr_destroy, pthread_attr_init, pthread_attr_setstacksize, pthread_attr_t, pthread_create, pthread_detach, pthread_exit, pthread_getname_np, pthread_join, pthread_setname_np, setpriority, PRIO_PROCESS};
 
 #[derive(Clone)]
@@ -209,7 +211,7 @@ impl ThreadTrait<Thread> for Thread {
         if result == 0 {
             Ok(result)
         } else {
-            Err(Std(result, "Failed to join pthread"))
+            Err(Type(ErrorType::new(result), "Failed to join pthread"))
         }
     }
 }

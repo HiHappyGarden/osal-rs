@@ -1,7 +1,7 @@
 use alloc::sync::Arc;
 use core::any::Any;
 use core::ffi::c_void;
-use crate::commons::Result;
+use crate::types::Result;
 use crate::traits::thread_priority::ThreadPriority;
 
 pub trait Thread<T> {

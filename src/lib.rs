@@ -4,7 +4,7 @@
 #![allow(dead_code)]
 extern crate alloc;
 
-pub mod commons;
+pub mod types;
 #[cfg(feature = "freertos")]
 mod freertos;
 #[cfg(feature = "posix")]
@@ -29,7 +29,7 @@ pub use osal::thread::*;
 pub use osal::time::*;
 pub use osal::timer::*;
 pub use traits::Thread as ThreadTrait;
-pub use commons::*;
+pub use types::*;
 
 #[cfg(test)]
 mod tests {

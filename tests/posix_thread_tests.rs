@@ -8,7 +8,7 @@ use osal_rs::{Thread, ThreadDefaultPriority, ThreadTrait};
 fn test_thread_creation() {
     let result = Thread::create(
         |_| {
-            Arc::new(())
+            Ok(Arc::new(()))
         },
         "test_thread",
         0,
@@ -28,7 +28,7 @@ fn test_thread_execution() {
         move |_| {
             let mut count = counter_clone.lock().unwrap();
             *count += 1;
-            Arc::new(())
+            Ok(Arc::new(()))
         },
         "exec_thread",
         0,
@@ -53,11 +53,11 @@ fn test_thread_with_parameter() {
 
     let thread = Thread::create(
         move |param| {
-            if let Some(value) = param.downcast_ref::<i32>() {
+            if let Some(value) = param.unwrap().downcast_ref::<i32>() {
                 let mut res = result_clone.lock().unwrap();
                 *res = *value;
             }
-            Arc::new(())
+            Ok(Arc::new(()))
         },
         "param_thread",
         0,
@@ -78,7 +78,7 @@ fn test_thread_with_parameter() {
 fn test_thread_with_name() {
     let thread = Thread::create(
         |_| {
-            Arc::new(())
+            Ok(Arc::new(()))
         },
         "named_thread",
         0,
@@ -96,7 +96,7 @@ fn test_thread_with_name() {
 fn test_thread_with_stack_size() {
     let thread = Thread::create(
         |_| {
-            Arc::new(())
+            Ok(Arc::new(()))
         },
         "stack_thread",
         16384, // 16KB stack
@@ -110,7 +110,7 @@ fn test_thread_with_stack_size() {
 #[test]
 fn test_thread_with_priority() {
     let thread_low = Thread::create(
-        |_| Arc::new(()),
+        |_| Ok(Arc::new(())),
         "low_priority",
         0,
         None,
@@ -118,7 +118,7 @@ fn test_thread_with_priority() {
     );
 
     let thread_normal = Thread::create(
-        |_| Arc::new(()),
+        |_| Ok(Arc::new(())),
         "normal_priority",
         0,
         None,
@@ -126,7 +126,7 @@ fn test_thread_with_priority() {
     );
 
     let thread_high = Thread::create(
-        |_| Arc::new(()),
+        |_| Ok(Arc::new(())),
         "high_priority",
         0,
         None,
@@ -149,7 +149,7 @@ fn test_multiple_threads() {
             move |_| {
                 let mut count = counter_clone.lock().unwrap();
                 *count += 1;
-                Arc::new(())
+                Ok(Arc::new(()))
             },
             &format!("thread_{}", i),
             0,
@@ -172,7 +172,7 @@ fn test_multiple_threads() {
 fn test_thread_with_return_value() {
     let thread = Thread::create(
         |_| {
-            Arc::new(100)
+            Ok(Arc::new(100))
         },
         "return_thread",
         0,
@@ -188,7 +188,7 @@ fn test_thread_join() {
     let thread = Thread::create(
         |_| {
             std::thread::sleep(Duration::from_millis(100));
-            Arc::new(())
+            Ok(Arc::new(()))
         },
         "join_thread",
         0,
@@ -206,7 +206,7 @@ fn test_thread_join() {
 #[test]
 fn test_thread_with_empty_name() {
     let thread = Thread::create(
-        |_| Arc::new(()),
+        |_| Ok(Arc::new(())),
         "",
         0,
         None,
@@ -221,7 +221,7 @@ fn test_thread_suspend_resume() {
     let thread = Thread::create(
         |_| {
             std::thread::sleep(Duration::from_millis(100));
-            Arc::new(())
+            Ok(Arc::new(()))
         },
         "suspend_thread",
         0,
@@ -244,7 +244,7 @@ fn test_thread_debug_format() {
     let thread = Thread::create(
         |_| {
             std::thread::sleep(Duration::from_millis(100));
-            Arc::new(())
+            Ok(Arc::new(()))
         },
         "debug_thread",
         0,
@@ -280,12 +280,12 @@ fn test_thread_with_complex_parameter() {
 
     let thread = Thread::create(
         move |param| {
-            if let Some(complex) = param.downcast_ref::<ComplexParam>() {
+            if let Some(complex) = param.unwrap().downcast_ref::<ComplexParam>() {
                 let mut res = result_clone.lock().unwrap();
                 res.value = complex.value;
                 res.text = complex.text.clone();
             }
-            Arc::new(())
+            Ok(Arc::new(()))
         },
         "complex_thread",
         0,
@@ -318,7 +318,7 @@ fn test_concurrent_thread_creation() {
         .map(|i| {
             std::thread::spawn(move || {
                 Thread::create(
-                    |_| Arc::new(()),
+                    |_| Ok(Arc::new(())),
                     &format!("concurrent_{}", i),
                     0,
                     None,

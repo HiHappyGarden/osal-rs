@@ -14,7 +14,7 @@ pub trait Thread<T> {
         priority: impl ThreadPriority
     ) -> Result<T>
      where
-         F: Fn(Arc<dyn Any + Send + Sync>) -> Arc<dyn Any + Send + Sync> + Send + Sync + 'static;
+         F: Fn(Option<Arc<dyn Any + Send + Sync>>) -> Result<Arc<dyn Any + Send + Sync>> + Send + Sync + 'static;
 
     fn delete_current();
 

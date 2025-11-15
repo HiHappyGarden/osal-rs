@@ -21,7 +21,7 @@ fn main() {
                 std::thread::sleep(std::time::Duration::from_millis(100));
             }
             println!("Thread completed!");
-            Arc::new(10)
+            Ok(Arc::new(10))
         },
         "test_thread",
         16 * 1024, // Use default stack size (0) or minimum 16KB

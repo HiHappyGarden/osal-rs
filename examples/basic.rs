@@ -19,7 +19,7 @@ fn main() {
                 println!("Esecuzione del task di base...");
             }
             stop_scheduler();
-            Arc::new(5)
+            Ok(Arc::new(5))
         },
         "base_task",
         1024 * 16,

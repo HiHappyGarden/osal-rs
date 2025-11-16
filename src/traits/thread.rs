@@ -6,15 +6,15 @@ use crate::traits::thread_priority::ThreadPriority;
 
 pub trait Thread<T> {
 
-     fn create<F>(
-        callback: F,
-        name: &str,
-        stack: u32,
-        param: Option<Arc<dyn Any + Send + Sync>>,
-        priority: impl ThreadPriority
+    fn new<F>(callback: F,
+            name: &str,
+            stack: u32,
+            priority: impl ThreadPriority
     ) -> Result<T>
-     where
-         F: Fn(Option<Arc<dyn Any + Send + Sync>>) -> Result<Arc<dyn Any + Send + Sync>> + Send + Sync + 'static;
+    where
+        F: Fn(Option<Arc<dyn Any + Send + Sync>>) -> Result<Arc<dyn Any + Send + Sync>> + Send + Sync + 'static;
+     fn create(&mut self, param: Option<Arc<dyn Any + Send + Sync>>) -> Result<()>;
+
 
     fn delete_current();
 
@@ -22,5 +22,5 @@ pub trait Thread<T> {
 
     fn resume(&self);
 
-    fn join(&self, retval: *mut c_void) -> Result<i32>;
+    fn join(&self, retval: *mut *mut c_void) -> Result<i32>;
 }

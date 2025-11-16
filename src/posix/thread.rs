@@ -52,6 +52,7 @@ mod ffi {
 use alloc::sync::Arc;
 use alloc::boxed::Box;
 use alloc::ffi::CString;
+use alloc::string::String;
 use core::any::Any;
 use core::ffi::{c_char, c_void};
 use core::ptr::null_mut;
@@ -86,6 +87,8 @@ impl ThreadPriority for ThreadDefaultPriority {
 #[derive(Clone)]
 pub struct Thread {
     handle: pthread_t,
+    name: String,
+    stack: u32,
     callback: Arc<ThreadFunc>,
     param: Option<Arc<dyn Any + Send + Sync>>,
     priority: i32,
@@ -102,33 +105,42 @@ extern "C" fn callback(param_ptr: *mut c_void) -> *mut c_void {
         setpriority(PRIO_PROCESS, 0, boxed_context.priority);
     }
 
+
+
     match  (boxed_context.callback)(boxed_context.param.clone()) {
-        Ok(retval) => Box::into_raw(Box::new(retval)) as *mut c_void,
+        Ok(retval) => Arc::into_raw(retval) as *mut c_void,
         Err(_) => null_mut(),
     }
 }
 
 impl ThreadTrait<Thread> for Thread {
-    fn create<F>(
+
+    fn new<F>(
         callback: F,
         name: &str,
         stack: u32,
-        param: Option<Arc<dyn Any + Send + Sync>>,
         priority: impl ThreadPriority
     ) -> Result<Self>
     where
         F: Fn(Option<Arc<dyn Any + Send + Sync>>) -> Result<Arc<dyn Any + Send + Sync>> + Send + Sync + 'static,
     {
-
         if stack % 0x4000 != 0 {
             return Err(Std(-2, "Stack size must be a multiple of 16384 bytes"));
         }
 
-        let callback_arc = Arc::new(callback);
-        //let mut handle: pthread_t = 0;
+        Ok(Self {
+            handle: 0,
+            callback: Arc::new(callback),
+            name: String::from(name),
+            stack,
+            param: None,
+            priority: priority.get_priority(),
+        })
+    }
+
+    fn create(&mut self, param: Option<Arc<dyn Any + Send + Sync>>) -> Result<()> {
+
         let mut attr: pthread_attr_t = unsafe { zeroed() };
-
-
 
         unsafe {
             let rc = pthread_attr_init(&mut attr);
@@ -136,8 +148,8 @@ impl ThreadTrait<Thread> for Thread {
                 return Err(Std(rc, "Failed to initialize pthread attributes"));
             }
 
-            if stack > 0 {
-                let rc = pthread_attr_setstacksize(&mut attr, stack as usize);
+            if self.stack > 0 {
+                let rc = pthread_attr_setstacksize(&mut attr, self.stack as usize);
                 if rc != 0 {
                     pthread_attr_destroy(&mut attr);
                     return Err(Std(rc, "Failed to set pthread stack size"));
@@ -145,20 +157,12 @@ impl ThreadTrait<Thread> for Thread {
             }
         }
 
-        let mut thread = Thread {
-            handle: 0,
-            callback: callback_arc,
-            param,
-            priority: priority.get_priority(),
-        };
-
-        let context_ptr = Box::into_raw(Box::new(thread.clone())) as *mut c_void;
-
+        let context_ptr = Box::into_raw(Box::new(self.clone())) as *mut c_void;
         let result = unsafe {
             pthread_create(
-                &mut thread.handle,
+                &mut self.handle,
                 &attr,
-                crate::posix::thread::callback,
+                callback,
                 context_ptr,
             )
         };
@@ -170,15 +174,15 @@ impl ThreadTrait<Thread> for Thread {
 
         if result == 0 {
             // Set thread name if provided
-            if !name.is_empty() {
-                if let Ok(name_c) = CString::new(name) {
+            if !self.name.is_empty() {
+                if let Ok(name_c) = CString::new(self.name.clone()) {
                     unsafe {
-                        pthread_setname_np(thread.handle, name_c.as_ptr());
+                        pthread_setname_np(self.handle, name_c.as_ptr());
                     }
                 }
             }
 
-            Ok(thread)
+            Ok(())
         } else {
             _ = unsafe { Box::from_raw(context_ptr) };
             Err(Std(-1, "Failed to create pthread"))
@@ -203,9 +207,9 @@ impl ThreadTrait<Thread> for Thread {
         // For now, this is a no-op
     }
 
-    fn join(&self, mut retval: *mut c_void) -> Result<i32> {
+    fn join(&self, retval: *mut *mut c_void) -> Result<i32> {
         let result = unsafe {
-            pthread_join(self.handle, &mut retval)
+            pthread_join(self.handle, retval)
         };
 
         if result == 0 {
@@ -273,46 +277,53 @@ mod tests {
     #[test]
     #[cfg(feature = "posix")]
     fn test_basic_thread_creation() {
-        let thread = Thread::create(
+
+        let thread = Thread::new(
             |_| Ok(Arc::new(())),
             "test",
             0,
-            None,
             ThreadDefaultPriority::Normal,
         );
+
+        let thread = thread.unwrap().create(None);
+
         assert!(thread.is_ok(), "Thread creation failed: {:?}", thread.err());
     }
 
     #[test]
     #[cfg(feature = "posix")]
     fn test_thread_with_name() {
-        let thread = Thread::create(
+        let thread = Thread::new(
             |_| Ok(Arc::new(())),
             "my_thread",
             0,
-            None,
             ThreadDefaultPriority::Normal,
         );
+
+        let thread = thread.unwrap().create(None);
+
         assert!(thread.is_ok());
     }
 
     #[test]
     #[cfg(feature = "posix")]
     fn test_thread_with_stack() {
-        let thread = Thread::create(
+        let thread = Thread::new(
             |_| Ok(Arc::new(())),
             "stack_test",
             16384, // Use 16KB stack (8192 was too small)
-            None,
             ThreadDefaultPriority::Normal,
         );
+
+        let thread = thread.unwrap().create(None);
+
         assert!(thread.is_ok(), "Thread creation failed: {:?}", thread.err());
     }
 
     #[test]
     #[cfg(feature = "posix")]
     fn test_thread_with_param() {
-        let thread = Thread::create(
+        let thread = Thread::new(
             |param| {
                 if let Some(arc) = param {
                     if let Some(val) = arc.downcast_ref::<i32>() {
@@ -323,9 +334,11 @@ mod tests {
             },
             "param_test",
             0,
-            Some(Arc::new(42i32)),
             ThreadDefaultPriority::Normal,
         );
+
+        let thread = thread.unwrap().create(Some(Arc::new(42i32)));
+
         assert!(thread.is_ok());
 
         // Give thread time to execute
@@ -346,13 +359,15 @@ mod tests {
         ]);
 
         for priority in priorities {
-            let thread = Thread::create(
+            let thread = Thread::new(
                 |_| Ok(Arc::new(())),
                 "priority_test",
                 0,
-                None,
                 priority.clone(),
             );
+
+            let thread = thread.unwrap().create(None);
+
             assert!(thread.is_ok(), "Failed to create thread with priority: {}", priority.get_priority());
         }
     }
@@ -366,7 +381,7 @@ mod tests {
         let priority_read = StdArc::new(Mutex::new(None));
         let priority_read_clone = priority_read.clone();
 
-        let thread = Thread::create(
+        let thread = Thread::new(
             move |_| {
                 // Read the current thread's nice value using getpriority
                 unsafe extern "C" {
@@ -378,9 +393,10 @@ mod tests {
             },
             "priority_check",
             0,
-            None,
             ThreadDefaultPriority::High, // Should set nice to -13
         );
+
+        let thread = thread.unwrap().create(None);
 
         assert!(thread.is_ok());
 

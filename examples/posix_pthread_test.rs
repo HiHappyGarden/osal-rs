@@ -13,7 +13,7 @@ fn main() {
 
     println!("Creating thread with pthread...");
 
-    let thread = Thread::create(
+    let thread = Thread::new(
         |_| {
             println!("Thread is running!");
             for i in 0..5 {
@@ -25,9 +25,10 @@ fn main() {
         },
         "test_thread",
         16 * 1024, // Use default stack size (0) or minimum 16KB
-        None,
         ThreadDefaultPriority::High,
     );
+;
+    let thread = thread.unwrap().create(None);
 
     match thread {
         Ok(_t) => {

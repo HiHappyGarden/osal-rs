@@ -142,6 +142,8 @@ impl ThreadTrait<Thread> for Thread {
 
         let mut attr: pthread_attr_t = unsafe { zeroed() };
 
+        self.param = param;
+
         unsafe {
             let rc = pthread_attr_init(&mut attr);
             if rc != 0 {

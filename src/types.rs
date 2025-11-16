@@ -5,8 +5,9 @@ use core::fmt::Debug;
 use crate::Error::{Std, Type};
 use crate::ErrorType::*;
 
-pub const WAIT_FOREVER: u32 = 0xFFFFFFFF;
-
+pub const WAIT_FOREVER: u64 = 0xFFFF_FFFF_FFFF_FFFF;
+pub(crate) const USECS_PER_SEC: u64 = 1_000_000;
+pub(crate) const NSECS_PER_SEC: u64 = 1_000_000_000;
 
 pub type Result<T, E = Error> = core::result::Result<T, E>;
 
@@ -187,6 +188,7 @@ pub enum ErrorType {
     OsValconv = 137, /* Value conversion error */
     OsErcrc = 138, /* Crc error */
     OsExcmaxval = 139, /* Exceed max values permitted */
+    OsGenerr = 140
 }
 
 impl ErrorType {
@@ -331,6 +333,7 @@ impl ErrorType {
             137 => OsValconv,
             138 => OsErcrc,
             139 => OsExcmaxval,
+            140 => OsGenerr,
             _ => Invalid,
         }
     }
@@ -482,6 +485,7 @@ impl ToString for ErrorType {
             OsValconv => "Value conversion error".to_string(),
             OsErcrc => "Crc error".to_string(),
             OsExcmaxval => "Exceed max values permitted".to_string(),
+            OsGenerr => "Generic error".to_string(),
         }
     }
 }

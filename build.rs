@@ -177,6 +177,7 @@ fn main() {
             let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
             let bindings = bindgen::Builder::default()
                 .header("wrapper.h")
+                .use_core()
                 .clang_arg(format!("-I{}", freertos_include.display()))
                 .clang_arg(format!("-I{}", freertos_config_include.display()))
                 .parse_callbacks(Box::new(bindgen::CargoCallbacks::new()))
@@ -198,6 +199,27 @@ fn main() {
     // For POSIX link pthread library
     #[cfg(feature = "posix")]
     {
+        #[cfg(feature = "bindgen")]
+        {
+            let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
+            let bindings = bindgen::Builder::default()
+                .header_contents("wrapper.h", r#"
+                #include <pthread.h>
+                #include <sys/time.h>
+                #include <sys/resource.h>
+                "#)
+                .clang_arg("-I/usr/include")
+                .use_core()
+                .parse_callbacks(Box::new(bindgen::CargoCallbacks::new()))
+                .generate()
+                .expect("Unable to generate bindings");
+
+            bindings
+                .write_to_file(out_dir.join("posix_bindings.rs"))
+                .expect("Couldn't write bindings!");
+
+            println!("cargo:warning=Generated POSIX bindings at: {}/posix_bindings.rs", out_dir.display());
+        }
         println!("cargo:warning=Building with POSIX backend");
         println!("cargo:rustc-link-lib=pthread");
         println!("cargo:warning=Linking pthread library for POSIX threads");

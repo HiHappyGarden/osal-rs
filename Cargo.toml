@@ -15,9 +15,10 @@ bindgen = { version = "0.72", optional = true }
 [features]
 default = ["posix"]
 freertos = []
-posix = []
+posix = ["bindgen"]
 bindgen = ["dep:bindgen"]
 
 [lib]
 name = "osal_rs"
 path = "src/lib.rs"
+crate-type = ["rlib", "staticlib"]

@@ -7,29 +7,7 @@
     improper_ctypes
 )]
 mod ffi {
-    use core::ffi::{c_char, c_ushort, c_void};
-    use crate::freertos::ffi::{BaseType_t, TickType_t, UBaseType_t};
-
-    pub type TaskHandle_t = *mut c_void;
-
-    pub type TaskFunction_t = unsafe extern "C" fn(*mut c_void);
-
-    unsafe extern "C" {
-
-        // Task Management
-        pub fn xTaskCreate(
-            pvTaskCode: TaskFunction_t,
-            pcName: *const c_char,
-            usStackDepth: c_ushort,
-            pvParameters: *mut c_void,
-            uxPriority: UBaseType_t,
-            pxCreatedTask: *mut TaskHandle_t,
-        ) -> BaseType_t;
-
-        pub fn vTaskDelete(xTaskToDelete: TaskHandle_t);
-        pub fn vTaskSuspend(xTaskToSuspend: TaskHandle_t);
-        pub fn vTaskResume(xTaskToResume: TaskHandle_t);
-    }
+    include!(concat!(env!("OUT_DIR"), "/freertos_bindings.rs"));
 }
 
 use alloc::boxed::Box;

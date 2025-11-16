@@ -1,49 +1,30 @@
+#[allow(
+    dead_code,
+    non_upper_case_globals,
+    non_camel_case_types,
+    non_snake_case,
+    unused_imports,
+    improper_ctypes
+)]
 mod ffi {
+    include!(concat!(env!("OUT_DIR"), "/posix_bindings.rs"));
     use core::ffi::{c_char, c_int, c_void};
 
-    pub const PRIO_PROCESS: c_int = 0;
-
-    #[allow(non_camel_case_types)]
-    pub type pthread_t = usize;
-
-    #[allow(non_camel_case_types)]
-    pub type pthread_attr_t = [u8; 56]; // Size may vary by platform
-
-    #[allow(non_camel_case_types)]
-    #[repr(C)]
-    #[derive(Debug, Copy, Clone)]
-    pub struct sched_param {
-        pub sched_priority: c_int,
-    }
+    pub const PRIO_PROCESS: i32 = __priority_which_PRIO_PROCESS as i32;
 
     unsafe extern "C" {
 
-        pub fn pthread_attr_init (attr: *mut pthread_attr_t) -> c_int;
+        // pub(crate) fn pthread_create(
+        //     thread: *mut pthread_t,
+        //     attr: *const pthread_attr_t,
+        //     start_routine: extern "C" fn(*mut c_void) -> *mut c_void,
+        //     arg: *mut c_void,
+        // ) -> c_int;
 
-        pub fn  pthread_attr_destroy(attr: *mut pthread_attr_t) -> c_int;
+        pub(crate) fn pthread_setname_np(thread: pthread_t, name: *const c_char) -> c_int;
 
-        pub fn pthread_create(
-            thread: *mut pthread_t,
-            attr: *const pthread_attr_t,
-            start_routine: extern "C" fn(*mut c_void) -> *mut c_void,
-            arg: *mut c_void,
-        ) -> c_int;
+        pub(crate) fn pthread_getname_np(thread: pthread_t, name: *mut c_char, len: usize) -> c_int;
 
-        pub fn pthread_detach(thread: pthread_t) -> c_int;
-
-        pub fn pthread_exit(retval: *mut c_void) -> !;
-
-        pub fn pthread_setname_np(thread: pthread_t, name: *const c_char) -> c_int;
-
-        pub fn pthread_getname_np(thread: pthread_t, name: *mut c_char, len: usize) -> c_int;
-
-        pub fn pthread_attr_setstacksize (attr: *mut pthread_attr_t, stacksize: usize) -> c_int;
-
-        pub fn pthread_join(thread: pthread_t, retval: *mut *mut c_void) -> c_int;
-
-        pub fn pthread_self() -> pthread_t;
-
-        pub fn setpriority(which: c_int, who: c_int, prio: c_int) -> c_int;
 
     }
 
@@ -164,7 +145,7 @@ impl ThreadTrait<Thread> for Thread {
             pthread_create(
                 &mut self.handle,
                 &attr,
-                callback,
+                Some(callback),
                 context_ptr,
             )
         };
@@ -387,7 +368,7 @@ mod tests {
             move |_| {
                 // Read the current thread's nice value using getpriority
                 unsafe extern "C" {
-                    fn getpriority(which: i32, who: i32) -> i32;
+                    fn getpriority(which: i32, who: u32) -> i32;
                 }
                 let nice_value = unsafe { getpriority(0, 0) };
                 *priority_read_clone.lock().unwrap() = Some(nice_value);

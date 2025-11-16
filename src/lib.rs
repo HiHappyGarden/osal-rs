@@ -1,6 +1,6 @@
 
 
-#![no_std]
+#![cfg_attr(not(feature = "posix"), no_std)]
 #![allow(dead_code)]
 extern crate alloc;
 
@@ -17,8 +17,6 @@ use crate::freertos as osal;
 use crate::posix as osal;
 
 pub use osal::event::*;
-#[allow(unused_imports)]
-pub use osal::memory::*;
 pub use osal::mutex::*;
 pub use osal::queue::*;
 pub use osal::semaphore::*;
@@ -30,6 +28,13 @@ pub use osal::time::*;
 pub use osal::timer::*;
 pub use traits::Thread as ThreadTrait;
 pub use types::*;
+
+
+#[cfg(all(not(test), feature = "freertos"))]
+#[panic_handler]
+fn panic(_info: &core::panic::PanicInfo) -> ! {
+    loop {}
+}
 
 #[cfg(test)]
 mod tests {
@@ -44,3 +49,4 @@ mod tests {
         assert_eq!(os_version(), "POSIX");
     }
 }
+

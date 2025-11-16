@@ -132,6 +132,7 @@ mod tests {{
     Ok(())
 }
 
+#[cfg(feature = "freertos")]
 fn main() {
     let _out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
 
@@ -233,5 +234,32 @@ fn main() {
         println!("cargo:rerun-if-changed=include/FreeRTOSConfig.h");
     }
     
+    println!("cargo:rerun-if-changed=build.rs");
+}
+
+#[cfg(feature = "posix")]
+fn main() {
+    let _out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
+    let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
+    bindgen::Builder::default()
+        .header_contents("wrapper.h",
+r#"
+#include <pthread.h>
+#include <time.h>
+#include <sys/time.h>
+#include <sys/resource.h>
+"#)
+        .clang_arg("-I/usr/include")
+        .use_core()
+        .parse_callbacks(Box::new(bindgen::CargoCallbacks::new()))
+        .generate()
+        .expect("Unable to generate bindings")
+        .write_to_file(out_dir.join("posix_bindings.rs"))
+        .expect("Couldn't write bindings!");
+
+    println!("cargo:warning=Generated POSIX bindings at: {}/posix_bindings.rs", out_dir.display());
+    println!("cargo:warning=Building with POSIX backend");
+    println!("cargo:rustc-link-lib=pthread");
+    println!("cargo:warning=Linking pthread library for POSIX threads");
     println!("cargo:rerun-if-changed=build.rs");
 }

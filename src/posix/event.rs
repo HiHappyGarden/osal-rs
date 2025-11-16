@@ -42,6 +42,7 @@ mod ffi {
 use core::ffi::c_int;
 use core::fmt::Debug;
 use crate::Result;
+use crate::traits::Event as EventTrait;
 use crate::posix::event::ffi::{
     pthread_cond_t, pthread_mutex_t, pthread_condattr_t, pthread_mutexattr_t, timespec,
     pthread_cond_signal, pthread_cond_init,  pthread_mutex_init, pthread_condattr_setclock, pthread_cond_destroy, pthread_mutex_destroy, pthread_mutexattr_init, pthread_mutexattr_setprotocol, clock_gettime, pthread_mutex_lock, pthread_cond_timedwait, pthread_mutex_unlock, pthread_cond_wait,
@@ -49,11 +50,6 @@ use crate::posix::event::ffi::{
 };
 use crate::{WAIT_FOREVER, NSECS_PER_SEC, Error, ErrorType, ErrorType::*};
 
-pub struct Event {
-    cond: pthread_cond_t,
-    mutex: pthread_mutex_t,
-    flags: u32
-}
 
 macro_rules! timeout {
     ($self:expr, $value:expr, $mask:expr, $rc:expr, $txt:expr) => {{
@@ -67,9 +63,19 @@ macro_rules! timeout {
     }};
 }
 
-impl crate::traits::Event for Event {
 
-    fn new() -> Self where Self: Sized {
+pub struct Event {
+    cond: pthread_cond_t,
+    mutex: pthread_mutex_t,
+    flags: u32
+}
+
+impl EventTrait for Event {
+
+    fn new() -> Self
+    where
+        Self: Sized
+    {
         let mut ret = Self {
             cond: Default::default(),
             mutex: Default::default(),

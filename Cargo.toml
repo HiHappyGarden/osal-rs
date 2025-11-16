@@ -3,7 +3,7 @@ name = "osal-rs"
 version = "0.2.0"
 edition = "2024"
 authors = ["Antonio Salsi <passy.linux@zresa.it>"]
-description = "Operating System Abstraction Layer in Rust with FreeRTOS kernel integration"
+description = "Operating System Abstraction Layer in Rust with FreeRTOS kernel POSIX"
 license = "GPL-3"
 
 [dependencies]
@@ -15,8 +15,7 @@ bindgen = { version = "0.72", optional = true }
 [features]
 default = ["posix"]
 freertos = []
-posix = ["bindgen"]
-bindgen = ["dep:bindgen"]
+posix = ["dep:bindgen"]
 
 [lib]
 name = "osal_rs"

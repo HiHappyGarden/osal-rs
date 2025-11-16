@@ -13,19 +13,9 @@ mod ffi {
     pub const PRIO_PROCESS: i32 = __priority_which_PRIO_PROCESS as i32;
 
     unsafe extern "C" {
-
-        // pub(crate) fn pthread_create(
-        //     thread: *mut pthread_t,
-        //     attr: *const pthread_attr_t,
-        //     start_routine: extern "C" fn(*mut c_void) -> *mut c_void,
-        //     arg: *mut c_void,
-        // ) -> c_int;
-
         pub(crate) fn pthread_setname_np(thread: pthread_t, name: *const c_char) -> c_int;
 
         pub(crate) fn pthread_getname_np(thread: pthread_t, name: *mut c_char, len: usize) -> c_int;
-
-
     }
 
 }

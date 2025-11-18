@@ -119,7 +119,7 @@ impl EventTrait for Event {
             while (self.flags & mask) == 0 {
                 if time != WAIT_FOREVER {
                     match ErrorType::new(pthread_cond_timedwait (&mut self.cond, &mut self.mutex, &ts)) {
-                        OsEno => timeout!(self, value, mask, OsEno, "Ok"),
+                        OsEno => {},
                         OsEinval => timeout!(self, value, mask, OsEinval, "The value specified by abstime is invalid."),
                         OsEtimedout =>  timeout!(self, value, mask, OsEtimedout, "The time specified by abstime to pthread_cond_timedwait() has passed."),
                         OsEperm => timeout!(self, value, mask, OsEperm, "The mutex was not owned by the current thread at the time of the call."),
@@ -127,7 +127,7 @@ impl EventTrait for Event {
                     }
                 } else {
                     match ErrorType::new(pthread_cond_wait (&mut self.cond, &mut self.mutex)) {
-                        OsEno => timeout!(self, value, mask, OsEno, "Ok"),
+                        OsEno => {},
                         OsEinval => timeout!(self, value, mask, OsEinval, "The value specified by abstime is invalid."),
                         OsEtimedout => timeout!(self, value, mask, OsEperm, "The time specified by abstime to pthread_cond_timedwait() has passed."),
                         _ => timeout!(self, value, mask, OsGenerr, "Unhandled error."),

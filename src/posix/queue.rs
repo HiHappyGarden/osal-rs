@@ -43,6 +43,7 @@ mod ffi {
 
 }
 
+use std::ffi::c_int;
 use std::ptr::copy_nonoverlapping;
 use crate::traits::Queue as QueueTrait;
 use crate::osal::queue::ffi::{clock_gettime, pthread_cond_destroy, pthread_cond_signal, pthread_cond_timedwait, pthread_cond_wait, pthread_mutex_destroy, pthread_mutex_lock, pthread_mutex_unlock};
@@ -97,10 +98,10 @@ impl QueueTrait for Queue {
 
         unsafe {
             pthread_condattr_init (&mut cattr);
-            pthread_condattr_setclock (&mut cattr, CLOCK_MONOTONIC as i32);
+            pthread_condattr_setclock (&mut cattr, CLOCK_MONOTONIC as c_int);
             pthread_cond_init (&mut ret.cond, &cattr);
             pthread_mutexattr_init (&mut mattr);
-            pthread_mutexattr_setprotocol (&mut mattr, PTHREAD_PRIO_INHERIT as i32);
+            pthread_mutexattr_setprotocol (&mut mattr, PTHREAD_PRIO_INHERIT as c_int);
             pthread_mutex_init (&mut ret.mutex, &mattr);
         }
 
@@ -131,7 +132,7 @@ impl QueueTrait for Queue {
                 if time != WAIT_FOREVER
                 {
                     match ErrorType::new(pthread_cond_timedwait (&mut self.cond, &mut self.mutex, &ts)) {
-                        OsEno => timeout!(self, OsEno, "Ok"),
+                        OsEno => {},
                         OsEtimedout => timeout!(self, OsEtimedout, "The time specified by abstime to pthread_cond_timedwait() has passed."),
                         OsEinval => timeout!(self, OsEinval, "The value specified by abstime is invalid."),
                         OsEperm => timeout!(self, OsEperm, "The mutex was not owned by the current thread at the time of the call."),
@@ -139,7 +140,7 @@ impl QueueTrait for Queue {
                     }
                 } else {
                     match ErrorType::new(pthread_cond_wait (&mut self.cond, &mut self.mutex)) {
-                        OsEno => timeout!(self, OsEno, "Ok"),
+                        OsEno => {},
                         OsEtimedout => timeout!(self, OsEtimedout, "The time specified by abstime to pthread_cond_wait() has passed."),
                         OsEinval => timeout!(self, OsEinval, "The value specified by abstime is invalid."),
                         _ => timeout!(self, OsGenerr, "Unhandled error."),
@@ -184,7 +185,7 @@ impl QueueTrait for Queue {
 
         if time != WAIT_FOREVER {
             unsafe {
-                clock_gettime(CLOCK_MONOTONIC as i32, &mut ts);
+                clock_gettime(CLOCK_MONOTONIC as c_int, &mut ts);
             }
             nsec += ts.tv_nsec as u64;
 
@@ -199,7 +200,7 @@ impl QueueTrait for Queue {
 
                 if time != WAIT_FOREVER {
                     match ErrorType::new(pthread_cond_timedwait (&mut self.cond, &mut self.mutex, &ts)) {
-                        OsEno => timeout!(self, OsEno, "Ok"),
+                        OsEno => {},
                         OsEtimedout => timeout!(self, OsEtimedout, "The time specified by abstime to pthread_cond_timedwait() has passed."),
                         OsEinval => timeout!(self, OsEinval, "The value specified by abstime is invalid."),
                         OsEperm => timeout!(self, OsEperm, "The mutex was not owned by the current thread at the time of the call."),
@@ -207,7 +208,7 @@ impl QueueTrait for Queue {
                     }
                 } else {
                     match ErrorType::new(pthread_cond_wait (&mut self.cond, &mut self.mutex)) {
-                        OsEno => timeout!(self, OsEno, "Ok"),
+                        OsEno => {},
                         OsEtimedout => timeout!(self, OsEtimedout, "The time specified by abstime to pthread_cond_wait() has passed."),
                         OsEinval => timeout!(self, OsEinval, "The value specified by abstime is invalid."),
                         _ => timeout!(self, OsGenerr, "Unhandled error."),

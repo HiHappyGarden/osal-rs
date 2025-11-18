@@ -38,11 +38,10 @@ mod ffi {
             unsafe { core::mem::zeroed() }
         }
     }
-
 }
 
 use std::ffi::c_int;
-use crate::osal::semaphore::ffi::{clock_gettime, pthread_cond_init, pthread_cond_signal, pthread_cond_t, pthread_cond_timedwait, pthread_cond_wait, pthread_condattr_init, pthread_condattr_setclock, pthread_condattr_t, pthread_mutex_init, pthread_mutex_lock, pthread_mutex_t, pthread_mutex_unlock, pthread_mutexattr_init, pthread_mutexattr_setprotocol, pthread_mutexattr_t, timespec, CLOCK_MONOTONIC, PTHREAD_PRIO_INHERIT};
+use crate::posix::semaphore::ffi::{clock_gettime, pthread_cond_destroy, pthread_cond_init, pthread_cond_signal, pthread_cond_t, pthread_cond_timedwait, pthread_cond_wait, pthread_condattr_init, pthread_condattr_setclock, pthread_condattr_t, pthread_mutex_destroy, pthread_mutex_init, pthread_mutex_lock, pthread_mutex_t, pthread_mutex_unlock, pthread_mutexattr_init, pthread_mutexattr_setprotocol, pthread_mutexattr_t, timespec, CLOCK_MONOTONIC, PTHREAD_PRIO_INHERIT};
 use crate::traits::Semaphore as SemaphoreTrait;
 use crate::types::NSECS_PER_SEC;
 use crate::{ErrorType, ErrorType::*, Error::Type, WAIT_FOREVER, Result};
@@ -113,14 +112,14 @@ impl SemaphoreTrait for Semaphore {
                         OsEtimedout => timeout!(self, OsEtimedout, "The time specified by abstime to pthread_cond_timedwait() has passed."),
                         OsEinval => timeout!(self, OsEinval, "The value specified by abstime is invalid."),
                         OsEperm => timeout!(self, OsEperm, "The mutex was not owned by the current thread at the time of the call."),
-                        _ => timeout!(self, OsGenerr, "Unhandled error."),
+                        err => timeout!(self, err, "Unhandled error."),
                     }
                 } else {
                     match ErrorType::new(pthread_cond_wait (&mut self.cond, &mut self.mutex)) {
                         OsEno => {},
                         OsEtimedout => timeout!(self, OsEtimedout, "The time specified by abstime to pthread_cond_wait() has passed."),
                         OsEinval => timeout!(self, OsEinval, "The value specified by abstime is invalid."),
-                        _ => timeout!(self, OsGenerr, "Unhandled error."),
+                        err => timeout!(self, err, "Unhandled error."),
                     }
                 }
             }
@@ -149,3 +148,10 @@ impl SemaphoreTrait for Semaphore {
     }
 }
 
+impl Drop for Semaphore {
+    fn drop(&mut self) {
+        unsafe {
+            pthread_cond_destroy (&mut self.cond);
+            pthread_mutex_destroy (&mut self.mutex);
+        }
+    }}

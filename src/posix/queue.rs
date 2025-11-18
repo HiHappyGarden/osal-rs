@@ -204,14 +204,14 @@ impl QueueTrait for Queue {
                         OsEtimedout => timeout!(self, OsEtimedout, "The time specified by abstime to pthread_cond_timedwait() has passed."),
                         OsEinval => timeout!(self, OsEinval, "The value specified by abstime is invalid."),
                         OsEperm => timeout!(self, OsEperm, "The mutex was not owned by the current thread at the time of the call."),
-                        _ => timeout!(self, OsGenerr, "Unhandled error."),
+                        err => timeout!(self, err, "Unhandled error."),
                     }
                 } else {
                     match ErrorType::new(pthread_cond_wait (&mut self.cond, &mut self.mutex)) {
                         OsEno => {},
                         OsEtimedout => timeout!(self, OsEtimedout, "The time specified by abstime to pthread_cond_wait() has passed."),
                         OsEinval => timeout!(self, OsEinval, "The value specified by abstime is invalid."),
-                        _ => timeout!(self, OsGenerr, "Unhandled error."),
+                        err => timeout!(self, err, "Unhandled error."),
                     }
                 }
             }

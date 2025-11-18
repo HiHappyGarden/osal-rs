@@ -123,14 +123,14 @@ impl EventTrait for Event {
                         OsEinval => timeout!(self, value, mask, OsEinval, "The value specified by abstime is invalid."),
                         OsEtimedout =>  timeout!(self, value, mask, OsEtimedout, "The time specified by abstime to pthread_cond_timedwait() has passed."),
                         OsEperm => timeout!(self, value, mask, OsEperm, "The mutex was not owned by the current thread at the time of the call."),
-                        _ => timeout!(self, value, mask, OsGenerr, "Unhandled error."),
+                        err => timeout!(self, value, mask, err, "Unhandled error."),
                     }
                 } else {
                     match ErrorType::new(pthread_cond_wait (&mut self.cond, &mut self.mutex)) {
                         OsEno => {},
                         OsEinval => timeout!(self, value, mask, OsEinval, "The value specified by abstime is invalid."),
                         OsEtimedout => timeout!(self, value, mask, OsEperm, "The time specified by abstime to pthread_cond_timedwait() has passed."),
-                        _ => timeout!(self, value, mask, OsGenerr, "Unhandled error."),
+                        err => timeout!(self, value, mask, err, "Unhandled error."),
                     }
                 }
             }

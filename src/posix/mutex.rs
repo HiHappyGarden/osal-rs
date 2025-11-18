@@ -31,18 +31,7 @@ use crate::posix::mutex::ffi::{
     pthread_mutexattr_init, pthread_mutexattr_setprotocol, pthread_mutexattr_settype, pthread_mutex_lock, pthread_mutex_unlock,
     PTHREAD_PRIO_INHERIT, PTHREAD_MUTEX_RECURSIVE
 };
-use crate::{Result, Error, ErrorType, ErrorType::*};
-macro_rules! timeout {
-    ($self:expr, $value:expr, $mask:expr, $rc:expr, $txt:expr) => {{
-        *$value = $self.flags & $mask;
-        pthread_mutex_unlock (&mut $self.mutex);
-        if $rc == OsEno {
-            return Ok(());
-        } else {
-            return Err(Error::Type($rc, $txt));
-        }
-    }};
-}
+use crate::{Result, ErrorType};
 
 pub struct Mutex {
     mutex: pthread_mutex_t,

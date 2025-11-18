@@ -108,7 +108,7 @@ impl QueueTrait for Queue {
         ret
     }
 
-    fn fetch<T>(&mut self, mut msg: &mut T, time: u64 ) -> Result<()>
+    fn fetch<T>(&mut self, msg: &mut T, time: u64 ) -> Result<()>
     where T: Sized
     {
         let mut ts: timespec = Default::default();
@@ -252,7 +252,7 @@ impl Drop for Queue {
             pthread_mutex_destroy (&mut self.mutex);
         }
 
-        if(!self.msg.is_empty())
+        if !self.msg.is_empty()
         {
             for i in 0..self.buffer_size
             {

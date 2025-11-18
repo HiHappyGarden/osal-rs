@@ -45,7 +45,7 @@ use std::ffi::c_int;
 use crate::osal::semaphore::ffi::{clock_gettime, pthread_cond_init, pthread_cond_signal, pthread_cond_t, pthread_cond_timedwait, pthread_cond_wait, pthread_condattr_init, pthread_condattr_setclock, pthread_condattr_t, pthread_mutex_init, pthread_mutex_lock, pthread_mutex_t, pthread_mutex_unlock, pthread_mutexattr_init, pthread_mutexattr_setprotocol, pthread_mutexattr_t, timespec, CLOCK_MONOTONIC, PTHREAD_PRIO_INHERIT};
 use crate::traits::Semaphore as SemaphoreTrait;
 use crate::types::NSECS_PER_SEC;
-use crate::{ErrorType, ErrorType::*, Error::Type, WAIT_FOREVER, Error, Result};
+use crate::{ErrorType, ErrorType::*, Error::Type, WAIT_FOREVER, Result};
 
 macro_rules! timeout {
     ($self:expr, $rc:expr, $txt:expr) => {{
@@ -98,7 +98,7 @@ impl SemaphoreTrait for Semaphore {
             clock_gettime (CLOCK_MONOTONIC as c_int, &mut ts);
         }
         nsec += ts.tv_nsec as u64;
-        if (nsec > NSECS_PER_SEC)
+        if nsec > NSECS_PER_SEC
         {
             ts.tv_sec += (nsec / NSECS_PER_SEC) as i64;
             nsec %= NSECS_PER_SEC;

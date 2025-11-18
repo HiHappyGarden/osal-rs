@@ -76,24 +76,25 @@ impl EventTrait for Event {
     where
         Self: Sized
     {
-        let mut ret = Self {
-            cond: Default::default(),
-            mutex: Default::default(),
-            flags: 0,
-        };
         let mut mattr: pthread_mutexattr_t = Default::default();
         let mut cattr: pthread_condattr_t = Default::default();
+        let mut cond: pthread_cond_t = Default::default();
+        let mut mutex: pthread_mutex_t = Default::default();
 
         unsafe {
-            pthread_mutex_init(&mut ret.mutex, &mattr);
+            pthread_mutex_init(&mut mutex, &mattr);
             pthread_condattr_setclock (&mut cattr, CLOCK_MONOTONIC as c_int);
-            pthread_cond_init(&mut ret.cond, &mut cattr);
+            pthread_cond_init(&mut cond, &mut cattr);
             pthread_mutexattr_init (&mut mattr);
             pthread_mutexattr_setprotocol (&mut mattr, PTHREAD_PRIO_INHERIT as c_int);
-            pthread_mutex_init (&mut ret.mutex, &mattr);
+            pthread_mutex_init (&mut mutex, &mattr);
         }
 
-        ret
+        Self {
+            cond,
+            mutex,
+            flags: 0,
+        }
     }
 
 

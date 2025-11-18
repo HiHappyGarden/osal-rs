@@ -69,24 +69,24 @@ impl SemaphoreTrait for Semaphore {
 
         let mut mattr: pthread_mutexattr_t = Default::default();
         let mut cattr: pthread_condattr_t = Default::default();
+        let mut cond: pthread_cond_t = Default::default();
+        let mut mutex: pthread_mutex_t = Default::default();
 
-        let mut ret = Self {
-            cond: Default::default(),
-            mutex: Default::default(),
-            count: 0
-        };
 
         unsafe {
             pthread_condattr_init (&mut cattr);
             pthread_condattr_setclock (&mut cattr, CLOCK_MONOTONIC as c_int);
-            pthread_cond_init (&mut ret.cond, &cattr);
+            pthread_cond_init (&mut cond, &cattr);
             pthread_mutexattr_init (&mut mattr);
             pthread_mutexattr_setprotocol (&mut mattr, PTHREAD_PRIO_INHERIT as c_int);
-            pthread_mutex_init (&mut ret.mutex, &mattr);
-            ret.count = count;
+            pthread_mutex_init (&mut mutex, &mattr);
         }
 
-        ret
+        Self {
+            cond,
+            mutex,
+            count
+        }
     }
 
     fn wait(&mut self, time: u64) -> Result<()> {
@@ -154,4 +154,5 @@ impl Drop for Semaphore {
             pthread_cond_destroy (&mut self.cond);
             pthread_mutex_destroy (&mut self.mutex);
         }
-    }}
+    }
+}

@@ -2,8 +2,8 @@
 
 
 
-trait StreamBuffer {
-    fn new(size: usize) -> Self where Self: Sized;
+pub trait StreamBuffer {
+    fn new(size: usize, trigger_size: usize) -> Self where Self: Sized;
 
     fn send(&mut self, data: &[u8], time: u64) -> crate::Result<usize>;
 
@@ -16,4 +16,6 @@ trait StreamBuffer {
     fn available_data(&self) -> usize;
 
     fn available_space(&self) -> usize;
+    
+    fn reset(&mut self);
 }

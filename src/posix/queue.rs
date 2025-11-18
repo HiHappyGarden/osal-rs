@@ -83,10 +83,23 @@ impl QueueTrait for Queue {
 
         let mut mattr: pthread_mutexattr_t = Default::default();
         let mut cattr = Default::default();
+        let mut cond: pthread_cond_t = Default::default();
+        let mut mutex: pthread_mutex_t = Default::default();
 
-        let mut ret = Queue {
-            cond: Default::default(),
-            mutex: Default::default(),
+
+
+        unsafe {
+            pthread_condattr_init (&mut cattr);
+            pthread_condattr_setclock (&mut cattr, CLOCK_MONOTONIC as c_int);
+            pthread_cond_init (&mut cond, &cattr);
+            pthread_mutexattr_init (&mut mattr);
+            pthread_mutexattr_setprotocol (&mut mattr, PTHREAD_PRIO_INHERIT as c_int);
+            pthread_mutex_init (&mut mutex, &mattr);
+        }
+
+        Self {
+            cond,
+            mutex,
             r: 0,
             w: 0,
             count: 0,
@@ -94,18 +107,7 @@ impl QueueTrait for Queue {
             message_size,
             msg: vec![0; size * message_size],
             buffer_size: size * message_size
-        };
-
-        unsafe {
-            pthread_condattr_init (&mut cattr);
-            pthread_condattr_setclock (&mut cattr, CLOCK_MONOTONIC as c_int);
-            pthread_cond_init (&mut ret.cond, &cattr);
-            pthread_mutexattr_init (&mut mattr);
-            pthread_mutexattr_setprotocol (&mut mattr, PTHREAD_PRIO_INHERIT as c_int);
-            pthread_mutex_init (&mut ret.mutex, &mattr);
         }
-
-        ret
     }
 
     fn fetch<T>(&mut self, msg: &mut T, time: u64 ) -> Result<()>

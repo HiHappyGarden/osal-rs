@@ -238,12 +238,172 @@ impl StreamBufferTrait for StreamBuffer {
         self.send(data, time)
     }
 
-    fn receive(&mut self, buffer: &mut [u8], time: u64) -> Result<usize> {
-        todo!()
+    fn receive(&mut self, data: &mut [u8], time: u64) -> Result<usize> {
+        let mut ts: timespec = Default::default();
+        let mut nsec = time * 1_000_000;
+        let mut already_received= 0;
+        let mut size = data.len();
+
+        if data.is_empty() {
+            return Err(Error::Std(-1, "Data is empty"));
+        }
+
+        if time != WAIT_FOREVER
+        {
+            unsafe {
+                clock_gettime(CLOCK_MONOTONIC as i32, &mut ts);
+            }
+            nsec += ts.tv_nsec as u64;
+
+            ts.tv_sec += (nsec / NSECS_PER_SEC) as i64;
+            ts.tv_nsec = (nsec % NSECS_PER_SEC) as i64;
+        }
+        
+        unsafe {
+            pthread_mutex_lock (&mut self.mutex);
+
+            while self.count < self.trigger_size {
+                if time != WAIT_FOREVER
+                {
+                    match ErrorType::new(pthread_cond_timedwait (&mut self.cond, &mut self.mutex, &ts)) {
+                        OsEno => {},
+                        OsEtimedout => timeout!(self, OsEtimedout, 0, "The time specified by abstime to pthread_cond_timedwait() has passed."),
+                        OsEinval => timeout!(self, OsEinval, 0, "The value specified by abstime is invalid."),
+                        OsEperm => timeout!(self, OsEperm, 0, "The mutex was not owned by the current thread at the time of the call."),
+                        err => timeout!(self, err, 0, "Unhandled error."),
+                    }
+                } else {
+                    match ErrorType::new(pthread_cond_wait (&mut self.cond, &mut self.mutex)) {
+                        OsEno => {},
+                        OsEtimedout => timeout!(self, OsEtimedout, 0, "The time specified by abstime to pthread_cond_wait() has passed."),
+                        OsEinval => timeout!(self, OsEinval, 0, "The value specified by abstime is invalid."),
+                        err => timeout!(self, err, 0, "Unhandled error."),
+                    }
+                }
+
+                if self.count == 0
+                {
+                    return Err(Error::Std(-2, "Stream buffer is empty"));
+                }
+
+                if self.r < self.w && self.end == 0 {
+                    //space available
+                    let mut  data_available = self.w - self.r;
+                    if data_available == 0 && self.count > 0
+                    {
+                        data_available = self.count;
+                    }
+
+                    if size <= data_available
+                    {
+                        data[..size].copy_from_slice(&self.buffer[self.r..self.r + size]);
+
+                        self.r += size;
+
+                        self.count -= size;
+
+                        already_received  = size;
+                    }
+                    else
+                    {
+                        data[..data_available].copy_from_slice(&self.buffer[self.r..self.r + data_available]);
+
+                        self.r += data_available;
+
+                        self.count -= data_available;
+
+                        size -= data_available;
+
+                        already_received  = data_available;
+                    }
+                }
+                else if self.r >= self.w && self.end > 0
+                {
+                    //rotation but not all data are read before end
+                    let mut data_available_between_r_and_size = self.size - self.r;
+
+
+                    if data_available_between_r_and_size > 0 && size <= data_available_between_r_and_size
+                    {
+                        data[already_received..already_received + size].copy_from_slice(&self.buffer[self.r..self.r + size]);
+
+                        self.r += size;
+
+                        self.count -= size;
+
+                        already_received = size;
+
+                        #[allow(unused_assignments)]
+                        {
+                            data_available_between_r_and_size = size;
+                        }
+
+                        size = 0;
+                    }
+                    else if data_available_between_r_and_size > 0 && size > data_available_between_r_and_size
+                    {
+                        data[already_received..already_received + data_available_between_r_and_size].copy_from_slice(&self.buffer[self.r..self.r + data_available_between_r_and_size]);
+
+                        self.r += data_available_between_r_and_size;
+
+                        self.count -= data_available_between_r_and_size;
+
+                        already_received = data_available_between_r_and_size;
+
+                        size -= data_available_between_r_and_size;
+
+                        #[allow(unused_assignments)]
+                        {
+                            data_available_between_r_and_size = 0;
+                        }
+                    }
+
+                    if size > 0 && size <= self.w
+                    {
+                        data[already_received..already_received + size].copy_from_slice(&self.buffer[..size]);
+
+                        self.r = size;
+
+                        self.count -= size;
+
+                        already_received += size;
+
+                        size = 0;
+
+                    }
+                    else if size > 0 && size > self.w
+                    {
+                        data[already_received..already_received + self.w].copy_from_slice(&self.buffer[..self.w]);
+
+                        self.r = self.w;
+
+                        self.count -= self.w;
+
+                        already_received = self.w;
+
+                        size -= self.w;
+
+                    }
+                }
+            }
+        }
+
+        if self.count == 0 {
+            self.r = 0;
+            self.w = 0;
+            self.end = 0;
+        }
+
+        unsafe {
+            pthread_mutex_unlock (&mut self.mutex);
+            pthread_cond_signal (&mut self.cond);
+        }
+
+        Ok(already_received)
     }
 
-    fn receive_from_isr(&mut self, buffer: &mut [u8], time: u64) -> Result<usize> {
-        self.receive(buffer, time)
+    fn receive_from_isr(&mut self, data: &mut [u8], time: u64) -> Result<usize> {
+        self.receive(data, time)
     }
 
     fn available_data(&self) -> usize {

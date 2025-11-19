@@ -9,9 +9,9 @@ pub trait StreamBuffer {
 
     fn send_from_isr(&mut self, data: &[u8], time: u64) -> crate::Result<usize>;
 
-    fn receive(&mut self, buffer: &mut [u8], time: u64) -> crate::Result<usize>;
+    fn receive(&mut self, data: &mut [u8], time: u64) -> crate::Result<usize>;
 
-    fn receive_from_isr(&mut self, buffer: &mut [u8], time: u64) -> crate::Result<usize>;
+    fn receive_from_isr(&mut self, data: &mut [u8], time: u64) -> crate::Result<usize>;
 
     fn available_data(&self) -> usize;
 

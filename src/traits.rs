@@ -5,6 +5,7 @@ mod mutex;
 mod queue;
 mod semaphore;
 mod stream_buffer;
+mod timer;
 
 pub use thread::Thread;
 pub use thread_priority::ThreadPriority;

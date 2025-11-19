@@ -14,3 +14,4 @@ pub use mutex::Mutex;
 pub use queue::Queue;
 pub use semaphore::Semaphore;
 pub use stream_buffer::StreamBuffer;
+pub use timer::Timer;

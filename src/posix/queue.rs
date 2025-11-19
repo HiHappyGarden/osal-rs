@@ -111,7 +111,8 @@ impl QueueTrait for Queue {
     }
 
     fn fetch<T>(&mut self, msg: &mut T, time: u64 ) -> Result<()>
-    where T: Sized
+    where
+        T: Sized
     {
         let mut ts: timespec = Default::default();
         let mut nsec = time * 1_000_000;

@@ -4,7 +4,7 @@ pub trait Timer {
 
     fn new<F>(us: u64, handler: F, oneshot: bool) -> Self
     where
-        F: Fn(&mut Self, Option<Box<dyn Any>>) + 'static,
+        F: Fn(&mut Self, Option<Box<dyn Any>>) + Send + Sync + 'static,
         Self: Sized;
 
     fn create(&mut self, param: Option<Box<dyn Any>>) -> Result<()>;

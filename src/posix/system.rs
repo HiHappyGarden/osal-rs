@@ -33,6 +33,7 @@ struct SimpleAllocator {
     remaining: AtomicUsize, // we allocate from the top, counting down
 }
 
+#[cfg(not(test))]
 #[global_allocator]
 static ALLOCATOR: SimpleAllocator = SimpleAllocator {
     arena: UnsafeCell::new([0x55; ARENA_SIZE]),

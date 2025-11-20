@@ -2,7 +2,7 @@
 
 use std::ffi::c_void;
 use std::sync::Arc;
-use osal_rs::{os_version, start_scheduler, stop_scheduler, Thread, ThreadDefaultPriority, ThreadTrait};
+use osal_rs::{os_version, start_scheduler, Thread, ThreadDefaultPriority, ThreadTrait};
 
 fn main() {
     println!("===========================================");

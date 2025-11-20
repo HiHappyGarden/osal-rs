@@ -61,8 +61,9 @@ fn main() {
 
     // Allow some tolerance (±5ms)
     let elapsed_ms = elapsed.as_millis() as u32;
+    let sleep_ticks_u32 = sleep_ticks as u32;
     assert!(
-        elapsed_ms >= (sleep_ticks - 5) && elapsed_ms <= (sleep_ticks + 10),
+        elapsed_ms >= (sleep_ticks_u32.saturating_sub(5)) && elapsed_ms <= (sleep_ticks_u32 + 10),
         "Sleep duration should be approximately {} ms (got {} ms)",
         sleep_ticks,
         elapsed_ms
@@ -87,13 +88,14 @@ fn main() {
 
     let total_expected_ms = iterations * ticks_per_sleep;
     let elapsed_ms = elapsed.as_millis() as u32;
+    let total_expected_ms_u32 = total_expected_ms as u32;
 
     println!("  {} iterations of {} ticks each", iterations, ticks_per_sleep);
     println!("  Total sleep time: {:.2} ms", elapsed.as_secs_f64() * 1000.0);
     println!("  Expected: ~{} ms", total_expected_ms);
 
     assert!(
-        elapsed_ms >= (total_expected_ms - 10) && elapsed_ms <= (total_expected_ms + 20),
+        elapsed_ms >= (total_expected_ms_u32.saturating_sub(10)) && elapsed_ms <= (total_expected_ms_u32 + 20),
         "Total sleep should be approximately {} ms (got {} ms)",
         total_expected_ms,
         elapsed_ms

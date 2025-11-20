@@ -1,7 +1,7 @@
 //! Test example for POSIX pthread support
 
 use std::sync::Arc;
-use osal_rs::{os_version, Error, Thread, ThreadDefaultPriority, ThreadTrait};
+use osal_rs::{os_version, Thread, ThreadDefaultPriority, ThreadTrait};
 
 fn main() {
     println!("===========================================");
@@ -27,7 +27,7 @@ fn main() {
         16 * 1024, // Use default stack size (0) or minimum 16KB
         ThreadDefaultPriority::High,
     );
-;
+
     let thread = thread.unwrap().create(None);
 
     match thread {

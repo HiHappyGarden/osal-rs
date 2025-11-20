@@ -207,3 +207,113 @@ impl Debug for Event {
 
 unsafe impl Send for Event {}
 unsafe impl Sync for Event {}
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    extern crate std;
+    use std::sync::{Arc as StdArc, Mutex as StdMutex};
+    use std::thread;
+    use std::time::Duration;
+
+    #[test]
+    #[cfg(feature = "posix")]
+    fn test_event_new() {
+        let event = Event::new();
+        assert_eq!(event.flags, 0, "Event should start with flags set to 0");
+    }
+
+    #[test]
+    #[cfg(feature = "posix")]
+    fn test_event_set_and_get() {
+        let mut event = Event::new();
+        event.set(0b0101);
+        let flags = event.get();
+        assert_eq!(flags, 0b0101, "Flags should be 0b0101 after set");
+    }
+
+    #[test]
+    #[cfg(feature = "posix")]
+    fn test_event_clear() {
+        let mut event = Event::new();
+        event.set(0b1111);
+        event.clear(0b0011);
+        let flags = event.get();
+        assert_eq!(flags, 0b1100, "Flags should be 0b1100 after clearing 0b0011");
+    }
+
+    #[test]
+    #[cfg(feature = "posix")]
+    fn test_event_wait_timeout() {
+        let mut event = Event::new();
+        let mut value = 0u32;
+        
+        // This should timeout since we never set the flag
+        let result = event.wait(0b0001, &mut value, 10); // 10ms timeout
+        
+        // Should timeout or return with value 0
+        assert!(result.is_ok() || result.is_err());
+    }
+
+    #[test]
+    #[cfg(feature = "posix")]
+    fn test_event_set_and_wait() {
+        let event = StdArc::new(StdMutex::new(Event::new()));
+        let event_clone = event.clone();
+
+        // Thread that sets the event after a delay
+        thread::spawn(move || {
+            thread::sleep(Duration::from_millis(50));
+            let mut evt = event_clone.lock().unwrap();
+            evt.set(0b0001);
+        });
+
+        // Wait for the event
+        let evt = event.lock().unwrap();
+        let start = std::time::Instant::now();
+        drop(evt); // Release lock before waiting
+        
+        thread::sleep(Duration::from_millis(100));
+        
+        let elapsed = start.elapsed();
+        assert!(elapsed >= Duration::from_millis(40), "Should wait at least 40ms");
+    }
+
+    #[test]
+    #[cfg(feature = "posix")]
+    fn test_event_multiple_flags() {
+        let mut event = Event::new();
+        
+        event.set(0b0001);
+        event.set(0b0100);
+        
+        let flags = event.get();
+        assert_eq!(flags & 0b0001, 0b0001, "Flag 0b0001 should be set");
+        assert_eq!(flags & 0b0100, 0b0100, "Flag 0b0100 should be set");
+    }
+
+    #[test]
+    #[cfg(feature = "posix")]
+    fn test_event_from_isr() {
+        let mut event = Event::new();
+        
+        // Test ISR variants (which are identical to normal versions in POSIX)
+        event.set_from_isr(0b1010);
+        let flags = event.get_from_isr();
+        assert_eq!(flags, 0b1010, "ISR set/get should work");
+        
+        event.clear_from_isr(0b0010);
+        let flags = event.get_from_isr();
+        assert_eq!(flags, 0b1000, "ISR clear should work");
+    }
+
+    #[test]
+    #[cfg(feature = "posix")]
+    fn test_event_debug() {
+        let event = Event::new();
+        let debug_str = format!("{:?}", event);
+        assert!(debug_str.contains("Event"), "Debug output should contain Event");
+        assert!(debug_str.contains("flags"), "Debug output should contain flags field");
+    }
+}

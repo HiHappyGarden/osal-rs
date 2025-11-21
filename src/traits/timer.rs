@@ -1,5 +1,7 @@
-use std::any::Any;
+use core::any::Any;
 use crate::Result;
+use alloc::boxed::Box;
+
 pub trait Timer {
 
     fn new<F>(us: u64, handler: F, oneshot: bool) -> Self

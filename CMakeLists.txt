@@ -88,3 +88,9 @@ install(DIRECTORY ${FREERTOS_SOURCE_DIR}/include/
     DESTINATION include/freertos
     FILES_MATCHING PATTERN "*.h"
 )
+
+# Install portable headers
+install(DIRECTORY ${FREERTOS_SOURCE_DIR}/portable/${FREERTOS_PORT}/
+    DESTINATION include/freertos/portable
+    FILES_MATCHING PATTERN "*.h"
+)

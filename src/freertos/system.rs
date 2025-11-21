@@ -1,7 +1,3 @@
-use super::ffi::TickType_t;
-use super::constants::CONFIG_TICK_RATE_HZ;
-use super::system::ffi::{vTaskDelay, vTaskEndScheduler, vTaskStartScheduler, xTaskGetTickCount};
-
 #[allow(
     dead_code,
     non_upper_case_globals,
@@ -11,15 +7,16 @@ use super::system::ffi::{vTaskDelay, vTaskEndScheduler, vTaskStartScheduler, xTa
     improper_ctypes
 )]
 mod ffi {
-    use crate::freertos::ffi::TickType_t;
-    unsafe extern "C" {
-        pub fn vTaskDelayUntil(pxPreviousWakeTime: *mut TickType_t, xTimeIncrement: TickType_t);
-        pub fn xTaskGetTickCount() -> TickType_t;
-        pub fn vTaskStartScheduler();
-        pub fn vTaskEndScheduler();
-        pub fn vTaskDelay( xTicksToDelay :  TickType_t );
-    }
+    include!(concat!(env!("OUT_DIR"), "/freertos_bindings.rs"));
 }
+
+use crate::freertos::{free_rtos_allocator::FreeRTOSAllocator, system::ffi::{TickType_t, vTaskDelay, vTaskEndScheduler, vTaskStartScheduler, xTaskGetTickCount}};
+
+#[global_allocator]
+static GLOBAL: FreeRTOSAllocator = FreeRTOSAllocator;
+
+const CONFIG_TICK_RATE_HZ: TickType = 1000; // Definito in FreeRTOSConfig.h
+
 
 type TickType = TickType_t;
 

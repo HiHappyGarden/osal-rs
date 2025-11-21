@@ -21,3 +21,9 @@ posix = []
 name = "osal_rs"
 path = "src/lib.rs"
 crate-type = ["rlib", "staticlib"]
+
+[profile.dev]
+panic = "abort"
+
+[profile.release]
+panic = "abort"

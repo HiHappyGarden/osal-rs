@@ -1,6 +1,7 @@
+#![no_std]
+#![no_main]
 
 
-#![cfg_attr(not(feature = "posix"), no_std)]
 #![allow(dead_code)]
 extern crate alloc;
 
@@ -35,13 +36,11 @@ pub use osal::timer::*;
 pub use traits::Timer as TimerTrait;
 pub use types::*;
 
-
-
-#[cfg(all(not(test), feature = "freertos"))]
 #[panic_handler]
 fn panic(_info: &core::panic::PanicInfo) -> ! {
     loop {}
 }
+
 
 #[cfg(test)]
 mod tests {

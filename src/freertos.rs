@@ -3,8 +3,6 @@ mod constants;
 
 pub mod event;
 
-pub mod memory;
-
 pub mod mutex;
 
 pub mod queue;

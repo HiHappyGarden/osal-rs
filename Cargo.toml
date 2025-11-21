@@ -10,12 +10,12 @@ license = "GPL-3"
 
 [build-dependencies]
 cmake = "0.1"
-bindgen = { version = "0.72", optional = true }
+bindgen = "0.72"
 
 [features]
-default = ["posix"]
+default = ["freertos"]
 freertos = []
-posix = ["dep:bindgen"]
+posix = []
 
 [lib]
 name = "osal_rs"

@@ -4,6 +4,8 @@ use core::ffi::c_void;
 use crate::types::Result;
 use crate::traits::thread_priority::ThreadPriority;
 
+pub type ThreadFunc = dyn Fn(Option<Arc<dyn Any + Send + Sync>>) -> Result<Arc<dyn Any + Send + Sync>> + Send + Sync + 'static;
+
 pub trait Thread<T> {
 
     fn new<F>(callback: F,
@@ -13,7 +15,8 @@ pub trait Thread<T> {
     ) -> Result<T>
     where
         F: Fn(Option<Arc<dyn Any + Send + Sync>>) -> Result<Arc<dyn Any + Send + Sync>> + Send + Sync + 'static;
-     fn create(&mut self, param: Option<Arc<dyn Any + Send + Sync>>) -> Result<()>;
+     
+    fn create(&mut self, param: Option<Arc<dyn Any + Send + Sync>>) -> Result<()>;
 
 
     fn delete_current();

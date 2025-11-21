@@ -26,8 +26,6 @@ impl Debug for Error {
     }
 }
 
-pub type ThreadFunc = dyn Fn(Option<Arc<dyn Any + Send + Sync>>) -> Result<Arc<dyn Any + Send + Sync>> + Send + Sync + 'static;
-
 #[repr(i32)]
 #[derive(PartialEq, Clone, Copy)]
 pub enum ErrorType {

@@ -1,20 +1,10 @@
-#[allow(
-    dead_code,
-    non_upper_case_globals,
-    non_camel_case_types,
-    non_snake_case,
-    unused_imports,
-    improper_ctypes
-)]
-mod ffi {
-    include!(concat!(env!("OUT_DIR"), "/freertos_bindings.rs"));
-}
 
-use crate::freertos::{free_rtos_allocator::FreeRTOSAllocator, system::ffi::{TickType_t, vTaskDelay, vTaskEndScheduler, vTaskStartScheduler, xTaskGetTickCount}};
+use crate::freertos::{free_rtos_allocator::FreeRTOSAllocator, ffi::{vTaskDelay, xTaskGetTickCount, vTaskStartScheduler, vTaskEndScheduler, TickType_t}};
 
 #[global_allocator]
 static GLOBAL: FreeRTOSAllocator = FreeRTOSAllocator;
 
+//TODO: Leggere il valore reale da FreeRTOSConfig.h
 const CONFIG_TICK_RATE_HZ: TickType = 1000; // Definito in FreeRTOSConfig.h
 
 

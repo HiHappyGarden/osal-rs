@@ -1,16 +1,5 @@
-#[allow(
-    dead_code,
-    non_upper_case_globals,
-    non_camel_case_types,
-    non_snake_case,
-    unused_imports,
-    improper_ctypes
-)]
-mod ffi {
-    include!(concat!(env!("OUT_DIR"), "/freertos_bindings.rs"));
-}
 use core::ffi::c_void;
-use ffi::{pvPortMalloc, vPortFree};
+use crate::freertos::ffi::{pvPortMalloc, vPortFree};
 use core::{alloc::{GlobalAlloc, Layout}};
 
 

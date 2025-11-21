@@ -1,7 +1,8 @@
 #![no_std]
 #![no_main]
 
-
+// Suppress warnings from FreeRTOS FFI bindings being included in multiple modules
+#![allow(clashing_extern_declarations)]
 #![allow(dead_code)]
 extern crate alloc;
 
@@ -18,22 +19,22 @@ use crate::freertos as osal;
 use crate::posix as osal;
 
 pub use osal::event::*;
-pub use traits::Event as EventTrait;
+pub use traits::EventTrait;
 pub use osal::mutex::*;
-pub use traits::Mutex as MutexTrait;
+pub use traits::MutexTrait;
 pub use osal::queue::*;
-pub use traits::Queue as QueueTrait;
+pub use traits::QueueTrait;
 pub use osal::semaphore::*;
-pub use traits::Semaphore as SemaphoreTrait;
+pub use traits::SemaphoreTrait;
 pub use osal::stream_buffer::*;
-pub use traits::StreamBuffer as StreamBufferTrait;
+pub use traits::StreamBufferTrait;
 pub use osal::system::*;
 pub use osal::thread::*;
-pub use traits::Thread as ThreadTrait;
+pub use traits::ThreadTrait;
 #[allow(unused_imports)]
 pub use osal::time::*;
 pub use osal::timer::*;
-pub use traits::Timer as TimerTrait;
+pub use traits::TimerTrait;
 pub use types::*;
 
 #[panic_handler]

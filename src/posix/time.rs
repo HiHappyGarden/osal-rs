@@ -1,19 +1,6 @@
-#[allow(
-    dead_code,
-    non_upper_case_globals,
-    non_camel_case_types,
-    non_snake_case,
-    unused_imports,
-    improper_ctypes
-)]
-mod ffi {
-    include!(concat!(env!("OUT_DIR"), "/posix_bindings.rs"));
-}
 
-use std::ffi::c_int;
-use std::ptr::null_mut;
-use std::sync::atomic::{AtomicU64, Ordering};
-use crate::posix::time::ffi::{timespec, clock_gettime, nanosleep, CLOCK_MONOTONIC};
+use core::{ffi::c_int, ptr::null_mut, sync::atomic::{AtomicU64, Ordering}};
+use crate::posix::ffi::{timespec, clock_gettime, nanosleep, CLOCK_MONOTONIC};
 
 type TickType = u64;
 

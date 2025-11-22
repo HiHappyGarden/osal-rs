@@ -10,7 +10,7 @@ pub(crate) mod ffi {
 
 pub mod event;
 
-pub mod free_rtos_allocator;
+mod free_rtos_allocator;
 
 pub mod mutex;
 

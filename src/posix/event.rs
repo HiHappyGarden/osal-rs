@@ -1,49 +1,8 @@
-#[allow(
-    dead_code,
-    non_upper_case_globals,
-    non_camel_case_types,
-    non_snake_case,
-    unused_imports,
-    improper_ctypes
-)]
-mod ffi {
-    include!(concat!(env!("OUT_DIR"), "/posix_bindings.rs"));
-
-    impl Default for pthread_mutex_t {
-        fn default() -> Self {
-            unsafe { core::mem::zeroed() }
-        }
-    }
-
-    impl Default for pthread_cond_t {
-        fn default() -> Self {
-             unsafe { core::mem::zeroed() }
-        }
-    }
-    impl Default for pthread_mutexattr_t {
-        fn default() -> Self {
-            unsafe { core::mem::zeroed() }
-        }
-    }
-
-    impl Default for pthread_condattr_t {
-        fn default() -> Self {
-            unsafe { core::mem::zeroed() }
-        }
-    }
-
-    impl Default for timespec {
-        fn default() -> Self {
-            unsafe { core::mem::zeroed() }
-        }
-    }
-}
-
 use core::ffi::c_int;
 use core::fmt::Debug;
 use crate::Result;
-use crate::traits::Event as EventTrait;
-use crate::posix::event::ffi::{
+use crate::traits::EventTrait;
+use crate::posix::ffi::{
     pthread_cond_t, pthread_mutex_t, pthread_condattr_t, pthread_mutexattr_t, timespec,
     pthread_cond_signal, pthread_cond_init,  pthread_mutex_init, pthread_condattr_setclock, pthread_cond_destroy, pthread_mutex_destroy, pthread_mutexattr_init, pthread_mutexattr_setprotocol, clock_gettime, pthread_mutex_lock, pthread_cond_timedwait, pthread_mutex_unlock, pthread_cond_wait,
     CLOCK_MONOTONIC, PTHREAD_PRIO_INHERIT

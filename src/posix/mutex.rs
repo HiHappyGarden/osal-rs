@@ -1,34 +1,8 @@
-#[allow(
-    dead_code,
-    non_upper_case_globals,
-    non_camel_case_types,
-    non_snake_case,
-    unused_imports,
-    improper_ctypes
-)]
-mod ffi {
-    include!(concat!(env!("OUT_DIR"), "/posix_bindings.rs"));
-
-    impl Default for pthread_mutex_t {
-        fn default() -> Self {
-            unsafe { core::mem::zeroed() }
-        }
-    }
-
-    impl Default for pthread_mutexattr_t {
-        fn default() -> Self {
-            unsafe { core::mem::zeroed() }
-        }
-    }
-
-}
-
-use std::ffi::c_int;
-use crate::osal::mutex::ffi::pthread_mutex_init;
-use crate::traits::Mutex as MutexTrait;
-use crate::posix::mutex::ffi::{
-    pthread_mutex_t, pthread_mutexattr_t,
-    pthread_mutexattr_init, pthread_mutexattr_setprotocol, pthread_mutexattr_settype, pthread_mutex_lock, pthread_mutex_unlock,
+use core::ffi::c_int;
+use crate::traits::MutexTrait;
+use crate::posix::ffi::{
+    pthread_mutex_t, pthread_mutexattr_t, 
+    pthread_mutex_init, pthread_mutexattr_init, pthread_mutexattr_setprotocol, pthread_mutexattr_settype, pthread_mutex_lock, pthread_mutex_unlock,
     PTHREAD_PRIO_INHERIT, PTHREAD_MUTEX_RECURSIVE
 };
 use crate::{Result, ErrorType, Error};

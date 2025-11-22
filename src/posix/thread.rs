@@ -1,39 +1,17 @@
-#[allow(
-    dead_code,
-    non_upper_case_globals,
-    non_camel_case_types,
-    non_snake_case,
-    unused_imports,
-    improper_ctypes
-)]
-mod ffi {
-    include!(concat!(env!("OUT_DIR"), "/posix_bindings.rs"));
-    use core::ffi::{c_char, c_int, c_void};
-
-    pub const PRIO_PROCESS: i32 = __priority_which_PRIO_PROCESS as i32;
-
-    unsafe extern "C" {
-        pub(crate) fn pthread_setname_np(thread: pthread_t, name: *const c_char) -> c_int;
-
-        pub(crate) fn pthread_getname_np(thread: pthread_t, name: *mut c_char, len: usize) -> c_int;
-    }
-
-}
-
 use alloc::sync::Arc;
 use alloc::boxed::Box;
 use alloc::ffi::CString;
 use alloc::string::String;
 use core::any::Any;
-use core::ffi::{c_char, c_void};
+use core::ffi::{c_char, c_int, c_void};
 use core::ptr::null_mut;
 use core::fmt::Debug;
 use core::mem::zeroed;
 use crate::Error::Type;
 use crate::ErrorType;
-use crate::traits::{ThreadPriority, Thread as ThreadTrait};
-use crate::types::{ThreadFunc, Result, Error::Std};
-use crate::posix::thread::ffi::{pthread_t, pthread_attr_destroy, pthread_attr_init, pthread_attr_setstacksize, pthread_attr_t, pthread_create, pthread_detach, pthread_exit, pthread_getname_np, pthread_join, pthread_setname_np, setpriority, PRIO_PROCESS};
+use crate::traits::{ThreadPriority, ThreadTrait, ThreadFunc};
+use crate::types::{Result, Error::Std};
+use crate::posix::ffi::{pthread_t, pthread_attr_destroy, pthread_attr_init, pthread_attr_setstacksize, pthread_attr_t, pthread_create, pthread_detach, pthread_exit, pthread_getname_np, pthread_join, pthread_setname_np, setpriority, __priority_which_PRIO_PROCESS};
 
 #[derive(Clone)]
 #[repr(i32)]
@@ -73,7 +51,7 @@ extern "C" fn callback(param_ptr: *mut c_void) -> *mut c_void {
     let boxed_context= unsafe { Box::from_raw(param_ptr as *mut Thread) };
 
     unsafe {
-        setpriority(PRIO_PROCESS, 0, boxed_context.priority);
+        setpriority(__priority_which_PRIO_PROCESS as c_int, 0, boxed_context.priority);
     }
 
 

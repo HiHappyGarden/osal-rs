@@ -1,49 +1,12 @@
-
-#[allow(
-    dead_code,
-    non_upper_case_globals,
-    non_camel_case_types,
-    non_snake_case,
-    unused_imports,
-    improper_ctypes
-)]
-mod ffi {
-    include!(concat!(env!("OUT_DIR"), "/posix_bindings.rs"));
-
-    impl Default for pthread_mutex_t {
-        fn default() -> Self {
-            unsafe { core::mem::zeroed() }
-        }
-    }
-
-    impl Default for pthread_cond_t {
-        fn default() -> Self {
-            unsafe { core::mem::zeroed() }
-        }
-    }
-
-    impl Default for pthread_condattr_t {
-        fn default() -> Self {
-            unsafe { core::mem::zeroed() }
-        }
-    }
-
-    impl Default for pthread_mutexattr_t {
-        fn default() -> Self {
-            unsafe { core::mem::zeroed() }
-        }
-    }
-
-    impl Default for timespec {
-        fn default() -> Self {
-            unsafe { core::mem::zeroed() }
-        }
-    }
-}
-
-use std::ffi::c_int;
-use crate::osal::stream_buffer::ffi::{clock_gettime, pthread_cond_destroy, pthread_cond_init, pthread_cond_signal, pthread_cond_t, pthread_cond_timedwait, pthread_cond_wait, pthread_condattr_init, pthread_condattr_setclock, pthread_condattr_t, pthread_mutex_destroy, pthread_mutex_init, pthread_mutex_lock, pthread_mutex_t, pthread_mutex_unlock, pthread_mutexattr_init, pthread_mutexattr_setprotocol, pthread_mutexattr_t, timespec, CLOCK_MONOTONIC, PTHREAD_PRIO_INHERIT};
-use crate::traits::StreamBuffer as StreamBufferTrait;
+use core::ffi::c_int;
+use alloc::vec::Vec;
+use alloc::vec;
+use crate::posix::ffi::{
+    clock_gettime, pthread_cond_destroy, pthread_cond_init, pthread_cond_signal, pthread_cond_timedwait, pthread_cond_wait, pthread_condattr_init, pthread_condattr_setclock, pthread_mutex_destroy, pthread_mutex_init, pthread_mutex_lock, pthread_mutex_unlock, pthread_mutexattr_init, pthread_mutexattr_setprotocol, 
+    pthread_condattr_t, pthread_cond_t, pthread_mutex_t, pthread_mutexattr_t, timespec, 
+    CLOCK_MONOTONIC, PTHREAD_PRIO_INHERIT
+};
+use crate::traits::StreamBufferTrait;
 use crate::{ErrorType, ErrorType::*, Error::Type, WAIT_FOREVER, Result, Error};
 use crate::types::NSECS_PER_SEC;
 

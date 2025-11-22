@@ -13,7 +13,7 @@ cmake = "0.1"
 bindgen = "0.72"
 
 [features]
-default = ["freertos"]
+default = ["posix"]
 freertos = []
 posix = []
 

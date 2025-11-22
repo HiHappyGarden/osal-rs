@@ -1,3 +1,12 @@
+#[cfg(not(test))]
+use crate::posix::posix_allocator::POSIXAllocator;
+
+
+#[cfg(not(test))]
+#[global_allocator]
+static GLOBAL: POSIXAllocator = POSIXAllocator;
+
+
 static mut START_MAIN_LOOP : bool = false;
 
 pub fn os_version() -> &'static str {

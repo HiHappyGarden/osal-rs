@@ -77,6 +77,7 @@ fn main() {
         bindgen::Builder::default()
             .header_contents("wrapper.h",
 r#"
+#include <stdlib.h>
 #include <pthread.h>
 #include <time.h>
 #include <sys/time.h>

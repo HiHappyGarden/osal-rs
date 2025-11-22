@@ -133,6 +133,8 @@ impl ThreadTrait<Thread> for Thread {
                 }
             }
 
+            self.handle = result as pthread_t;
+
             Ok(())
         } else {
             _ = unsafe { Box::from_raw(context_ptr) };

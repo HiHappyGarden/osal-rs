@@ -170,6 +170,7 @@ unsafe impl Sync for Event {}
 
 #[cfg(test)]
 mod tests {
+    use alloc::format;
     use super::*;
     extern crate std;
     use std::sync::{Arc as StdArc, Mutex as StdMutex};

@@ -1,5 +1,5 @@
 #![no_std]
-#![no_main]
+#![cfg_attr(not(test), no_main)]
 
 // Suppress warnings from FreeRTOS FFI bindings being included in multiple modules
 #![allow(clashing_extern_declarations)]
@@ -37,6 +37,7 @@ pub use osal::timer::*;
 pub use traits::TimerTrait;
 pub use types::*;
 
+#[cfg(not(test))]
 #[panic_handler]
 fn panic(_info: &core::panic::PanicInfo) -> ! {
     loop {}

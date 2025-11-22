@@ -1,17 +1,29 @@
 
 use core::any::Any;
 use alloc::boxed::Box;
+
+use alloc::ffi::CString;
 use alloc::sync::Arc;
-use crate::traits::TimerTrait;
-use crate::posix::time::us_sleep;
-use crate::{Thread, ThreadTrait, Result, Error};
-use crate::posix::thread::ThreadDefaultPriority;
+use core::ffi::c_void;
+use core::mem::zeroed;
+use core::ptr::null_mut;
+use core::sync::atomic::{AtomicBool, Ordering};
+use crate::traits::{TimerFunc, TimerTrait};
+
+use crate::{Result, us_sleep};
+use crate::Error::Std;
+use crate::osal::ffi::{pthread_attr_destroy, pthread_attr_init, pthread_attr_setstacksize, pthread_create, pthread_setname_np};
+use crate::posix::ffi::{pthread_attr_t, pthread_detach, pthread_t};
 
 
-
+#[derive(Clone)]
 pub struct Timer {
-    thread: Option<Thread>,
-    // inner: Arc<Mutex<TimerInner>>,
+    handle: pthread_t,
+    callback: Arc<TimerFunc>,
+    param: Option<Arc<dyn Any + Send + Sync>>,
+    exit: Arc<AtomicBool>,
+    us: u64,
+    one_shot: bool,
 }
 
 unsafe impl Send for Timer {}
@@ -19,117 +31,122 @@ unsafe impl Send for Timer {}
 unsafe impl Sync for Timer {}
 
 
-struct TimerInner {
-    handler: Box<dyn Fn(Option<Box<dyn Any>>) + Send + Sync>,
-    args: Option<Box<dyn Any>>,
-    exit: bool,
-    us: u64,
-    oneshot: bool,
-}
 
-unsafe impl Send for TimerInner {}
+extern "C" fn callback(param_ptr: *mut c_void) -> *mut c_void {
+    if param_ptr.is_null() {
+        return null_mut()
+    }
 
-unsafe impl Sync for TimerInner {}
+    // Extract the Timer from the raw pointer, but immediately leak it
+    // to prevent it from being dropped during the loop
+    let boxed_context = unsafe { Box::from_raw(param_ptr as *mut Timer) };
+    let callback_fn = boxed_context.callback.clone();
+    let param = boxed_context.param.clone();
+    let exit_flag = boxed_context.exit.clone();
+    let one_shot = boxed_context.one_shot;
+    let us = boxed_context.us;
+    
+    // Leak the box so we can use the raw pointer in the loop
+    let leaked_ref = Box::leak(boxed_context);
+    
+    loop {
+        if exit_flag.load(Ordering::Relaxed) {
+            break;
+        }
+        
+        callback_fn(leaked_ref, param.clone());
+        
+        if one_shot {
+            break;
+        }
+        
+        // Sleep for the specified period
+        us_sleep(us);
+    }
 
-
-pub fn timer_thread_entry(arg: Option<Arc<dyn Any + Send + Sync + 'static>>) -> Result<Arc<dyn Any + Send + Sync>> {
-    match arg {
-        Some(a) => {
-            // if let Ok(timer_inner) = Arc::downcast::<Mutex<TimerInner>>(a.clone()) {
-            //     loop {
-            //         let (should_exit, oneshot, us) = {
-            //             let mut inner = timer_inner.lock().unwrap();
-            //             if inner.exit {
-            //                 break;
-            //             }
-            //             let args = inner.args.take();
-            //             let handler = &inner.handler;
-            //             handler(args);
-            //             (inner.exit, inner.oneshot, inner.us)
-            //         };
-
-            //         if should_exit || oneshot {
-            //             break;
-            //         }
-
-            //         us_sleep(us);
-            //     }
-            // } else {
-            //     return Err(Error::Std(-2, "Invalid timer downcast"));
-            // }
-        },
-        None => return Err(Error::Std(-1, "Invalid timer argument")),
-    };
-
-    Ok(Arc::new(()) as Arc<dyn Any + Send + Sync>)
+    // Clean up: convert back from leaked reference to Box and drop it
+    unsafe { drop(Box::from_raw(leaked_ref as *mut Timer)) };
+    
+    null_mut()
 }
 
 
 impl TimerTrait for Timer {
-    fn new<F>(us: u64, _handler: F, oneshot: bool) -> Self
+    fn new<F>(us: u64, callback: F, param: Option<Arc<dyn Any + Send + Sync>>, one_shot: bool) -> Self
     where
-        F: Fn(&mut Self, Option<Box<dyn Any>>) + Send + Sync + 'static,
+        F: Fn(&mut dyn TimerTrait, Option<Arc<dyn Any + Send + Sync>>) + Send + Sync + 'static,
         Self: Sized
     {
-        // let inner = TimerInner {
-        //     handler: Box::new(move |args| {
-        //         drop(args);
-        //     }),
-        //     args: None,
-        //     exit: false,
-        //     us,
-        //     oneshot,
-        // };
 
         Self {
-            thread: None,
-            //inner: Arc::new(Mutex::new(inner)),
+            handle: 0,
+            callback: Arc::new(callback),
+            param,
+            exit: Arc::new(AtomicBool::new(false)),
+            us,
+            one_shot,
         }
     }
 
-    fn create(&mut self, param: Option<Box<dyn Any>>) -> crate::Result<()> {
-        // {
-        //     let mut inner = self.inner.lock().unwrap();
-        //     inner.args = param;
-        // }
-
-        // let mut thread = Thread::new(
-        //     timer_thread_entry,
-        //     "timer_thread",
-        //     1_024 * 16,
-        //     ThreadDefaultPriority::Normal
-        // )?;
-
-        // //let inner_clone = Arc::clone(&self.inner) as Arc<Mutex<TimerInner>>;
-        // // let inner_any: Arc<dyn Any + Send + Sync> = inner_clone;
-        // // thread.create(Some(inner_any))?;
-        // // self.thread = Some(thread);
-
+    fn set(&mut self, _us: u64) -> Result<()> {
+        self.us = _us;
         Ok(())
     }
 
-    fn set(&mut self, us: u64) -> crate::Result<()> {
-        // let mut inner = self.inner.lock().unwrap();
-        // inner.us = us;
-        Ok(())
-    }
-
-    fn set_from_isr(&mut self, us: u64) -> crate::Result<()> {
+    fn set_from_isr(&mut self, us: u64) -> Result<()> {
         self.set(us)
     }
 
-    fn start(&mut self) {
-        // let mut inner = self.inner.lock().unwrap();
-        // inner.exit = false;
+    fn start(&mut self)  -> Result<()>{
+        
+        let mut attr: pthread_attr_t = unsafe { zeroed() };
+
+        unsafe {
+            let rc = pthread_attr_init(&mut attr);
+            if rc != 0 {
+                return Err(Std(rc, "Failed to initialize pthread attributes"));
+            }
+
+            let rc = pthread_attr_setstacksize(&mut attr, 16*1_024);
+            if rc != 0 {
+                pthread_attr_destroy(&mut attr);
+                return Err(Std(rc, "Failed to set pthread stack size"));
+            }
+
+            let context_ptr = Box::into_raw(Box::new(self.clone())) as *mut c_void;
+            let result =  pthread_create(
+                    &mut self.handle,
+                    &attr,
+                    Some(callback),
+                    context_ptr,
+                );
+            if result != 0 {
+                _ = Box::from_raw(context_ptr);
+                pthread_attr_destroy(&mut attr);
+                return Err(Std(result, "Failed to create pthread"));
+            }
+
+            pthread_attr_destroy(&mut attr);
+            
+
+            let name_c = CString::new("timer_thread").map_err(|_| Std(-1, "Failed to create timer_thread string"))?;
+
+            pthread_setname_np(self.handle, name_c.as_ptr());
+            
+        }
+
+        Ok(())
     }
 
-    fn start_from_isr(&mut self) {
-        self.start();
+    fn start_from_isr(&mut self) -> Result<()> {
+        self.start()
     }
 
     fn stop(&mut self) {
-        // let mut inner = self.inner.lock().unwrap();
-        // inner.exit = true;
+        self.exit.store(true, Ordering::Relaxed);
+        unsafe {
+            pthread_detach(self.handle);
+        }
     }
 
     fn stop_from_isr(&mut self) {
@@ -137,14 +154,6 @@ impl TimerTrait for Timer {
     }
 }
 
-impl Drop for Timer {
-    fn drop(&mut self) {
-        self.stop();
-        if let Some(thread) = self.thread.as_ref() {
-            let _ = thread.join(core::ptr::null_mut());
-        }
-    }
-}
 
 
 #[cfg(test)]
@@ -158,13 +167,14 @@ mod tests {
     #[test]
     #[cfg(feature = "posix")]
     fn test_timer_new() {
-        let timer = Timer::new(1000, |_timer, _args| {}, false);
-        assert!(timer.thread.is_none(), "Timer thread should not be created yet");
+        let timer = Timer::new(1000, |_timer, _args| {}, None, false);
+        assert_eq!(timer.handle, 0, "Timer handle should be 0 before start");
+        assert!(!timer.exit.load(Ordering::Relaxed), "Timer exit flag should be false");
     }
 
     #[test]
     #[cfg(feature = "posix")]
-    fn test_timer_oneshot() {
+    fn test_timer_one_shot() {
         let counter = StdArc::new(StdMutex::new(0));
         let counter_clone = counter.clone();
         
@@ -174,16 +184,16 @@ mod tests {
                 let mut count = counter_clone.lock().unwrap();
                 *count += 1;
             },
+            None,
             true
         );
         
-        let _ = timer.create(None);
-        timer.start();
+        timer.start().unwrap();
         
         thread::sleep(Duration::from_millis(200));
         
         let count = *counter.lock().unwrap();
-        assert!(count <= 1, "Oneshot timer should fire at most once, got {}", count);
+        assert!(count <= 1, "One shot timer should fire at most once, got {}", count);
     }
 
     #[test]
@@ -199,11 +209,11 @@ mod tests {
                 let mut count = counter_clone.lock().unwrap();
                 *count += 1;
             },
+            None,
             false
         );
         
-        let _ = timer.create(None);
-        timer.start();
+        timer.start().unwrap();
         
         thread::sleep(Duration::from_millis(250));
         timer.stop();
@@ -226,11 +236,11 @@ mod tests {
                 let mut count = counter_clone.lock().unwrap();
                 *count += 1;
             },
+            None,
             false
         );
         
-        let _ = timer.create(None);
-        timer.start();
+        timer.start().unwrap();
         thread::sleep(Duration::from_millis(150));
         timer.stop();
         
@@ -244,7 +254,7 @@ mod tests {
     #[test]
     #[cfg(feature = "posix")]
     fn test_timer_set_period() {
-        let mut timer = Timer::new(1000_000, |_timer, _args| {}, false);
+        let mut timer = Timer::new(1000_000, |_timer, _args| {}, None, false);
         
         let result = timer.set(500_000); // Change to 500ms
         assert!(result.is_ok(), "Set should succeed");
@@ -253,13 +263,12 @@ mod tests {
     #[test]
     #[cfg(feature = "posix")]
     fn test_timer_from_isr() {
-        let mut timer = Timer::new(100_000, |_timer, _args| {}, false);
+        let mut timer = Timer::new(100_000, |_timer, _args| {}, None, false);
         
         let result = timer.set_from_isr(200_000);
         assert!(result.is_ok(), "ISR set should succeed");
         
-        let _ = timer.create(None);
-        timer.start_from_isr();
+        timer.start_from_isr().unwrap();
         thread::sleep(Duration::from_millis(50));
         timer.stop_from_isr();
     }
@@ -267,20 +276,19 @@ mod tests {
     #[test]
     #[cfg(feature = "posix")]
     fn test_timer_with_parameter() {
+        let param = Arc::new(42i32) as Arc<dyn Any + Send + Sync>;
+        
         let mut timer = Timer::new(
             50_000,
             move |_timer, _args| {
-                // In the current implementation, args are dropped
+                // In the current implementation, args are passed to callback
                 // This test verifies the timer can be created with parameters
             },
+            Some(param),
             true
         );
         
-        let param = Box::new(42i32) as Box<dyn Any>;
-        let result = timer.create(Some(param));
-        assert!(result.is_ok(), "Timer creation with parameter should succeed");
-        
-        timer.start();
+        timer.start().unwrap();
         thread::sleep(Duration::from_millis(100));
     }
 
@@ -300,6 +308,7 @@ mod tests {
                 let mut count = counter1_clone.lock().unwrap();
                 *count += 1;
             },
+            None,
             false
         );
         
@@ -309,14 +318,12 @@ mod tests {
                 let mut count = counter2_clone.lock().unwrap();
                 *count += 1;
             },
+            None,
             false
         );
         
-        let _ = timer1.create(None);
-        let _ = timer2.create(None);
-        
-        timer1.start();
-        timer2.start();
+        timer1.start().unwrap();
+        timer2.start().unwrap();
         
         thread::sleep(Duration::from_millis(300));
         

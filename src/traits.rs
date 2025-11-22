@@ -16,3 +16,4 @@ pub use queue::Queue as QueueTrait;
 pub use semaphore::Semaphore as SemaphoreTrait;
 pub use stream_buffer::StreamBuffer as StreamBufferTrait;
 pub use timer::Timer as TimerTrait;
+pub use timer::TimerFunc;

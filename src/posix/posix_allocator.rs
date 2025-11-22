@@ -1,58 +1,41 @@
-use core::alloc::{GlobalAlloc, Layout};
-use core::cell::UnsafeCell;
-use core::ptr::null_mut;
-use core::sync::atomic::{AtomicUsize, Ordering::Relaxed};
 
-const ARENA_SIZE: usize = 128 * 1024;
-const MAX_SUPPORTED_ALIGN: usize = 4096;
-#[repr(C, align(4096))] // 4096 == MAX_SUPPORTED_ALIGN
+use core::{alloc::{GlobalAlloc, Layout}, ffi::c_void};
 
+use crate::posix::ffi::{free, malloc, realloc};
 
-struct SimpleAllocator {
-    arena: UnsafeCell<[u8; ARENA_SIZE]>,
-    remaining: AtomicUsize, // we allocate from the top, counting down
-}
+pub struct POSIXAllocator;
 
-
-#[cfg(not(test))]
-#[global_allocator]
-static ALLOCATOR: SimpleAllocator = SimpleAllocator {
-    arena: UnsafeCell::new([0x55; ARENA_SIZE]),
-    remaining: AtomicUsize::new(ARENA_SIZE),
-};
-
-unsafe impl Sync for SimpleAllocator {}
-
-unsafe impl GlobalAlloc for SimpleAllocator {
+unsafe impl GlobalAlloc for POSIXAllocator {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
-        let size = layout.size();
-        let align = layout.align();
-
-        // `Layout` contract forbids making a `Layout` with align=0, or align not power of 2.
-        // So we can safely use a mask to ensure alignment without worrying about UB.
-        let align_mask_to_round_down = !(align - 1);
-
-        if align > MAX_SUPPORTED_ALIGN {
-            return null_mut();
+        unsafe { 
+            malloc(layout.size() as u64) as *mut u8 
         }
-
-        let mut allocated = 0;
-        if self
-            .remaining
-            .fetch_update(Relaxed, Relaxed, |mut remaining| {
-                if size > remaining {
-                    return None;
-                }
-                remaining -= size;
-                remaining &= align_mask_to_round_down;
-                allocated = remaining;
-                Some(remaining)
-            })
-            .is_err()
-        {
-            return null_mut();
-        };
-        unsafe { self.arena.get().cast::<u8>().add(allocated) }
     }
-    unsafe fn dealloc(&self, _ptr: *mut u8, _layout: Layout) {}
+
+    unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
+        unsafe {
+            free(ptr as *mut c_void);
+        }
+    }
+
+    unsafe fn alloc_zeroed(&self, layout: Layout) -> *mut u8 {
+        let ptr = unsafe { self.alloc(layout) };
+        unsafe {
+            if !ptr.is_null() {
+                core::ptr::write_bytes( ptr as *mut c_void, 0, layout.size());
+            }
+        }
+        ptr
+    }
+
+    unsafe fn realloc(&self, ptr: *mut u8, layout: Layout, new_size: usize) -> *mut u8 {
+        let new_ptr = unsafe { realloc(ptr as *mut c_void, new_size as u64) as *mut u8 };
+
+        unsafe {
+            if !new_ptr.is_null() && !ptr.is_null() {
+                core::ptr::copy_nonoverlapping(ptr, new_ptr, layout.size().min(new_size));
+            }
+        }
+        new_ptr
+    }
 }

@@ -1,11 +1,9 @@
-#[cfg(not(test))]
+#[cfg(all(not(test), not(feature = "std")))]
 use crate::posix::posix_allocator::POSIXAllocator;
 
-
-#[cfg(not(test))]
+#[cfg(all(not(test), not(feature = "std")))]
 #[global_allocator]
 static GLOBAL: POSIXAllocator = POSIXAllocator;
-
 
 static mut START_MAIN_LOOP : bool = false;
 

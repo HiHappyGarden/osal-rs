@@ -35,7 +35,7 @@ impl ThreadPriority for ThreadDefaultPriority {
 
 #[derive(Clone)]
 pub struct Thread {
-    handle: pthread_t,
+    handle: Box<pthread_t>,
     name: String,
     stack: u32,
     callback: Arc<ThreadFunc>,
@@ -78,7 +78,7 @@ impl ThreadTrait<Thread> for Thread {
         }
 
         Ok(Self {
-            handle: 0,
+            handle: Box::new(0),
             callback: Arc::new(callback),
             name: String::from(name),
             stack,
@@ -111,7 +111,7 @@ impl ThreadTrait<Thread> for Thread {
         let context_ptr = Box::into_raw(Box::new(self.clone())) as *mut c_void;
         let result = unsafe {
             pthread_create(
-                &mut self.handle,
+                &mut *self.handle,
                 &attr,
                 Some(callback),
                 context_ptr,
@@ -128,12 +128,10 @@ impl ThreadTrait<Thread> for Thread {
             if !self.name.is_empty() {
                 if let Ok(name_c) = CString::new(self.name.clone()) {
                     unsafe {
-                        pthread_setname_np(self.handle, name_c.as_ptr());
+                        pthread_setname_np(*self.handle, name_c.as_ptr());
                     }
                 }
             }
-
-            self.handle = result as pthread_t;
 
             Ok(())
         } else {
@@ -162,7 +160,7 @@ impl ThreadTrait<Thread> for Thread {
 
     fn join(&self, retval: *mut *mut c_void) -> Result<i32> {
         let result = unsafe {
-            pthread_join(self.handle, retval)
+            pthread_join(*self.handle, retval)
         };
 
         if result == 0 {
@@ -176,7 +174,7 @@ impl ThreadTrait<Thread> for Thread {
 impl Drop for Thread {
     fn drop(&mut self) {
         unsafe {
-            pthread_detach(self.handle);
+            pthread_detach(*self.handle);
         }
     }
 }
@@ -185,7 +183,7 @@ impl Debug for Thread {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         let mut name: [c_char; 16] = [0; 16];
         unsafe {
-            pthread_getname_np(self.handle, name.as_mut_ptr(), name.len());
+            pthread_getname_np(*self.handle, name.as_mut_ptr(), name.len());
         }
 
         // Convert the C string to a Rust string safely without taking ownership

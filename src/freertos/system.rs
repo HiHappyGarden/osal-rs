@@ -1,7 +1,7 @@
 
 use crate::freertos::{free_rtos_allocator::FreeRTOSAllocator, ffi::{vTaskDelay, xTaskGetTickCount, vTaskStartScheduler, vTaskEndScheduler, TickType_t}};
 
-#[cfg(not(test))]
+#[cfg(all(not(test), not(feature = "std")))]
 #[global_allocator]
 static GLOBAL: FreeRTOSAllocator = FreeRTOSAllocator;
 

@@ -16,11 +16,24 @@ bindgen = "0.72"
 default = ["posix"]
 freertos = []
 posix = []
+std = []
 
 [lib]
 name = "osal_rs"
 path = "src/lib.rs"
 crate-type = ["rlib", "staticlib"]
+
+[[example]]
+name = "posix_ticks_test"
+required-features = ["std", "posix"]
+
+[[example]]
+name = "posix_pthread_test"
+required-features = ["std", "posix"]
+
+[[example]]
+name = "basic"
+required-features = ["std", "posix"]
 
 [profile.dev]
 panic = "abort"

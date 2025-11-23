@@ -1,5 +1,4 @@
-#![no_std]
-#![cfg_attr(not(test), no_main)]
+#![cfg_attr(not(feature = "std"), no_std)]
 
 // Suppress warnings from FreeRTOS FFI bindings being included in multiple modules
 #![allow(clashing_extern_declarations)]
@@ -37,7 +36,9 @@ pub use osal::timer::*;
 pub use traits::TimerTrait;
 pub use types::*;
 
-#[cfg(not(test))]
+// Panic handler for no_std library - only when building as final binary
+// Examples with std will provide their own
+#[cfg(all(not(test), not(feature = "std")))]
 #[panic_handler]
 fn panic(_info: &core::panic::PanicInfo) -> ! {
     loop {}

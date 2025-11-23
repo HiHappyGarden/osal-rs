@@ -34,7 +34,7 @@ fn main() {
 
             t.create(None).expect("panic message");
 
-            let mut ret_ptr = std::ptr::null_mut::<c_void>();
+            let mut ret_ptr = null_mut::<c_void>();
 
             t.join(&mut ret_ptr).expect("Failed to join thread");
 

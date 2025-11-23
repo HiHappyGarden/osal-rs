@@ -1,4 +1,5 @@
 use core::ffi::c_int;
+use core::fmt::Debug;
 use crate::posix::ffi::{
     clock_gettime, pthread_cond_destroy, pthread_cond_init, pthread_cond_signal, pthread_cond_timedwait, pthread_cond_wait, pthread_condattr_init, pthread_condattr_setclock, pthread_mutex_destroy, pthread_mutex_init, pthread_mutex_lock, pthread_mutex_unlock, pthread_mutexattr_init, pthread_mutexattr_setprotocol,
     pthread_condattr_t, pthread_cond_t, pthread_mutex_t, pthread_mutexattr_t, timespec, 
@@ -119,6 +120,13 @@ impl Drop for Semaphore {
     }
 }
 
+impl Debug for Semaphore {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("Semaphore")
+            .field("count", &self.count)
+            .finish()
+    }
+}
 
 #[cfg(test)]
 mod tests {

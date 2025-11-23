@@ -1,6 +1,7 @@
 use core::ffi::c_int;
 use alloc::vec::Vec;
 use alloc::vec;
+use core::fmt::Debug;
 use crate::posix::ffi::{
     clock_gettime, pthread_cond_destroy, pthread_cond_init, pthread_cond_signal, pthread_cond_timedwait, pthread_cond_wait, pthread_condattr_init, pthread_condattr_setclock, pthread_mutex_destroy, pthread_mutex_init, pthread_mutex_lock, pthread_mutex_unlock, pthread_mutexattr_init, pthread_mutexattr_setprotocol, 
     pthread_condattr_t, pthread_cond_t, pthread_mutex_t, pthread_mutexattr_t, timespec, 
@@ -392,6 +393,19 @@ impl Drop for StreamBuffer {
             pthread_mutex_destroy (&mut self.mutex);
             self.reset();
         }
+    }
+}
+
+impl Debug for StreamBuffer {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("StreamBuffer")
+            .field("size", &self.size)
+            .field("trigger_size", &self.trigger_size)
+            .field("count", &self.count)
+            .field("r", &self.r)
+            .field("w", &self.w)
+            .field("end", &self.end)
+            .finish()
     }
 }
 

@@ -3,6 +3,7 @@ use core::ffi::c_int;
 use core::ptr::copy_nonoverlapping;
 use alloc::vec::Vec;
 use alloc::vec;
+use core::fmt::Debug;
 use crate::traits::QueueTrait;
 use crate::posix::ffi::{
     pthread_cond_t, pthread_mutexattr_t, pthread_mutex_t, 
@@ -227,6 +228,15 @@ impl Drop for Queue {
     }
 }
 
+impl Debug for Queue {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("Queue")
+            .field("size", &self.size)
+            .field("message_size", &self.message_size)
+            .field("count", &self.count)
+            .finish()
+    }
+}
 
 #[cfg(test)]
 mod tests {

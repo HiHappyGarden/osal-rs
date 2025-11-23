@@ -3,7 +3,7 @@ use alloc::boxed::Box;
 use alloc::ffi::CString;
 use alloc::string::String;
 use core::any::Any;
-use core::ffi::{c_char, c_int, c_void};
+use core::ffi::{c_int, c_void};
 use core::ptr::null_mut;
 use core::fmt::Debug;
 use core::mem::zeroed;
@@ -183,7 +183,7 @@ impl Debug for Thread {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
 
         f.debug_struct("Thread")
-            .field("handle", &self.handle)
+            .field("handle", &*self.handle)
             .field("name", &self.name)
             .finish()
     }

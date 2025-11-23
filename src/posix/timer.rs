@@ -5,6 +5,7 @@ use alloc::boxed::Box;
 use alloc::ffi::CString;
 use alloc::sync::Arc;
 use core::ffi::c_void;
+use core::fmt::Debug;
 use core::mem::zeroed;
 use core::ptr::null_mut;
 use core::sync::atomic::{AtomicBool, Ordering};
@@ -18,7 +19,7 @@ use crate::posix::ffi::{pthread_attr_t, pthread_detach, pthread_t};
 
 #[derive(Clone)]
 pub struct Timer {
-    handle: pthread_t,
+    handle: Box<pthread_t>,
     callback: Arc<TimerFunc>,
     param: Option<Arc<dyn Any + Send + Sync>>,
     exit: Arc<AtomicBool>,
@@ -79,7 +80,7 @@ impl TimerTrait for Timer {
     {
 
         Self {
-            handle: 0,
+            handle: Box::new(0),
             callback: Arc::new(callback),
             param,
             exit: Arc::new(AtomicBool::new(false)),
@@ -115,7 +116,7 @@ impl TimerTrait for Timer {
 
             let context_ptr = Box::into_raw(Box::new(self.clone())) as *mut c_void;
             let result =  pthread_create(
-                    &mut self.handle,
+                    &mut *self.handle,
                     &attr,
                     Some(callback),
                     context_ptr,
@@ -127,11 +128,10 @@ impl TimerTrait for Timer {
             }
 
             pthread_attr_destroy(&mut attr);
-            
 
             let name_c = CString::new("timer_thread").map_err(|_| Std(-1, "Failed to create timer_thread string"))?;
 
-            pthread_setname_np(self.handle, name_c.as_ptr());
+            pthread_setname_np(*self.handle, name_c.as_ptr());
             
         }
 
@@ -145,7 +145,7 @@ impl TimerTrait for Timer {
     fn stop(&mut self) {
         self.exit.store(true, Ordering::Relaxed);
         unsafe {
-            pthread_detach(self.handle);
+            pthread_detach(*self.handle);
         }
     }
 
@@ -154,7 +154,21 @@ impl TimerTrait for Timer {
     }
 }
 
+impl Debug for Timer {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("Timer")
+            .field("handle", &*self.handle)
+            .field("us", &self.us)
+            .field("one_shot", &self.one_shot)
+            .finish()
+    }
+}
 
+impl Drop for Timer {
+    fn drop(&mut self) {
+        self.stop();
+    }
+}
 
 #[cfg(test)]
 mod tests {
@@ -168,7 +182,7 @@ mod tests {
     #[cfg(feature = "posix")]
     fn test_timer_new() {
         let timer = Timer::new(1000, |_timer, _args| {}, None, false);
-        assert_eq!(timer.handle, 0, "Timer handle should be 0 before start");
+        assert_eq!(*timer.handle, 0, "Timer handle should be 0 before start");
         assert!(!timer.exit.load(Ordering::Relaxed), "Timer exit flag should be false");
     }
 

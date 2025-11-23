@@ -12,7 +12,7 @@ unsafe impl GlobalAlloc for POSIXAllocator {
         }
     }
 
-    unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
+    unsafe fn dealloc(&self, ptr: *mut u8, _layout: Layout) {
         unsafe {
             free(ptr as *mut c_void);
         }

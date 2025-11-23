@@ -14,10 +14,6 @@ pub const pdFAIL: BaseType_t = pdFALSE;
 pub const errQUEUE_EMPTY: BaseType_t = 0;
 pub const errQUEUE_FULL: BaseType_t = 0;
 
-/* FreeRTOS error definitions. */
-pub const errCOULD_NOT_ALLOCATE_REQUIRED_MEMORY: i32 = -1;
-pub const errQUEUE_BLOCKED: i32 = -4;
-pub const errQUEUE_YIELD: i32 = -5;
 
 /// Converts a time in milliseconds to a time in ticks.
 #[macro_export]

@@ -11,7 +11,7 @@ use crate::Error::Type;
 use crate::ErrorType;
 use crate::traits::{ThreadPriority, ThreadTrait, ThreadFunc};
 use crate::types::{Result, Error::Std};
-use crate::posix::ffi::{pthread_t, pthread_attr_destroy, pthread_attr_init, pthread_attr_setstacksize, pthread_attr_t, pthread_create, pthread_detach, pthread_exit, pthread_getname_np, pthread_join, pthread_setname_np, setpriority, __priority_which_PRIO_PROCESS};
+use crate::posix::ffi::{pthread_t, pthread_attr_destroy, pthread_attr_init, pthread_attr_setstacksize, pthread_attr_t, pthread_create, pthread_detach, pthread_exit, pthread_join, pthread_setname_np, setpriority, __priority_which_PRIO_PROCESS};
 
 #[derive(Clone)]
 #[repr(i32)]

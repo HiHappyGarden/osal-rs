@@ -1,13 +1,15 @@
 use alloc::boxed::Box;
 use alloc::ffi::CString;
+use alloc::fmt::format;
+use alloc::format;
+use alloc::string::{String, ToString};
 use alloc::sync::Arc;
 use core::any::Any;
 use core::ffi::{c_char, c_ushort, c_void};
 use core::fmt::Debug;
-use core::ptr::{null, null_mut};
-use crate::freertos::ffi::{TaskHandle_t, xTaskCreate};
-use crate::types::{Result};
-use crate::types::Error::Std;
+use core::ptr::{null_mut};
+use crate::freertos::ffi::{StackType_t, TaskHandle_t, UBaseType_t, pdPASS, vTaskDelete, vTaskResume, vTaskSuspend, xTaskCreate};
+use crate::types::{Result, Error::Std};
 use crate::traits::{ThreadTrait, ThreadFunc, ThreadPriority};
 
 #[derive(Clone)]
@@ -34,25 +36,29 @@ impl ThreadPriority for ThreadDefaultPriority {
 
 #[derive(Clone)]
 pub struct Thread {
+    name: String,
+    stack: u32,
+    priority: u32,
     handler: TaskHandle_t,
     callback: Arc<ThreadFunc>,
-    param: Option<Arc<dyn Any + Send + Sync>>
+    param: Option<Arc<dyn Any + Send + Sync>>,
+
 }
 
+
 unsafe extern "C" fn callback(param_ptr: *mut c_void) {
-    // if param_ptr.is_null() {
-    //     return;
-    // }
+    if param_ptr.is_null() {
+        return;
+    }
 
-    // // Recreate the Box\<Thread\> we passed to the RTOS and run the callback.
-    // let boxed_thread: Box<Thread> = unsafe { Box::from_raw(param_ptr as *mut Thread) };
+    let boxed_thread: Box<Thread> = unsafe { Box::from_raw(param_ptr as *mut Thread) };
 
-    // let param_arc: Arc<dyn Any + Send + Sync> = boxed_thread
-    //     .param
-    //     .clone()
-    //     .unwrap_or_else(|| Arc::new(()) as Arc<dyn Any + Send + Sync>);
+    let _param_arc: Arc<dyn Any + Send + Sync> = boxed_thread
+        .param
+        .clone()
+        .unwrap_or_else(|| Arc::new(()) as Arc<dyn Any + Send + Sync>);
 
-    // (boxed_thread.callback)(param_arc);
+    //(boxed_thread.callback)(param_arc);
 }
 
 impl ThreadTrait<Thread> for Thread {
@@ -65,54 +71,86 @@ impl ThreadTrait<Thread> for Thread {
     where
         F: Fn(Option<Arc<dyn Any + Send + Sync>>) -> Result<Arc<dyn Any + Send + Sync>> + Send + Sync + 'static
     {
-
-        // let c_name = CString::new(name).map_err(|e| Std(format!("Failed to convert thread name to CString: {}", e)))?;
-
-        // let thread = Thread {
-        //     handler: null_mut(),
-        //     callback: Arc::new(callback),
-        //     param: None
-        // };
-
-        // let boxed_thread = Box::new(thread);
-
-        // let ret = unsafe {
-        //     xTaskCreate(
-        //         Some(callback as extern "C" fn(*mut c_void)),
-        //         c_name.as_ptr() as *const c_char,
-        //         stack as c_ushort,
-        //         Box::into_raw(boxed_thread) as *mut c_void,
-        //         priority.get_priority() as u32,
-        //         null_mut()
-        //     )
-        // };
-
-        // if ret != 1 {
-        //     return Err(Std(format!("Failed to create thread: xTaskCreate returned {}", ret)));
-        // }
-
-        // Ok(*boxed_thread)
-        todo!()
+        Ok(Thread {
+            name: name.to_string(),
+            stack,
+            priority: priority.get_priority() as u32,
+            handler: null_mut(),
+            callback: Arc::new(callback),
+            param: None
+        })  
     }
     
 
     fn create(&mut self, param: Option<Arc<dyn Any + Send + Sync>>) -> Result<()> {
-        todo!()
+
+        let c_name = CString::new(self.name.clone()).map_err(|_| Std(-1, "Failed to convert thread name to CString"))?;
+
+        let handler: *mut TaskHandle_t =  null_mut();
+
+        let boxed_thread = Box::new(self.clone());
+
+        let ret = unsafe {
+            xTaskCreate(
+                Some(super::thread::callback),
+                c_name.as_ptr(),
+                self.stack as StackType_t,
+                Box::into_raw(boxed_thread) as *mut c_void,
+                self.priority as UBaseType_t,
+                handler as *mut TaskHandle_t
+            )
+        };
+
+        if ret != pdPASS {
+            return Err(Std(-2, "Failed to create thread: xTaskCreate returned {}"));
+        }
+
+        self.handler = unsafe { *handler };
+
+        Ok(())
+
     }
 
     fn delete_current() {
-        todo!()
+        unsafe { vTaskDelete( null_mut() ); } 
     }
 
     fn suspend(&self) {
-        todo!()
+        if !self.handler.is_null() {
+            unsafe { vTaskSuspend( self.handler ); } 
+        }
     }
 
     fn resume(&self) {
-        todo!()
+        if !self.handler.is_null() {
+            unsafe { vTaskResume( self.handler ); } 
+        }
     }
 
-    fn join(&self, retval: *mut *mut c_void) -> Result<i32> {
-        todo!()
+    fn join(&self, _: *mut *mut c_void) -> Result<i32> {
+        if self.handler.is_null() {
+            return Err(Std(-1, "Thread handler is null"));
+        }
+        unsafe { vTaskDelete( self.handler ); } 
+        Ok(0)
+    }
+}
+
+impl Drop for Thread {
+    fn drop(&mut self) {
+        if !self.handler.is_null() {
+            unsafe { vTaskDelete( self.handler ); } 
+        }
+    }
+}
+
+impl Debug for Thread {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("Thread")
+            .field("name", &self.name)
+            .field("stack", &self.stack)
+            .field("priority", &self.priority)
+            .field("handler", &self.handler)
+            .finish()
     }
 }

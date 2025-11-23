@@ -25,6 +25,14 @@ fn main() {
             println!("cargo:warning=Using custom FreeRTOS heap: heap_{}.c", heap);
         }
 
+        let config_include = if let Ok(config_include) = env::var("FREERTOS_CONFIG_INCLUDE") {
+            cmake_config.define("FREERTOS_CONFIG_INCLUDE", &config_include);
+            config_include
+        } else {
+            "include".to_string()
+        };
+        
+
         let dst = cmake_config.build();
 
         println!("cargo:rustc-link-search=native={}", dst.join("lib").display());
@@ -32,10 +40,19 @@ fn main() {
         
         let freertos_include = dst.join("include/freertos");
         let freertos_portable_include = dst.join("include/freertos/portable");
-        let freertos_config_include = PathBuf::from("include");
+        let freertos_config_include = PathBuf::from(config_include);
 
         println!("cargo:warning=FreeRTOS headers available at: {}", freertos_include.display());
         println!("cargo:warning=FreeRTOS kernel built at: {}", dst.display());
+        println!("cargo:warning=FreeRTOS config include built at: {}", freertos_config_include.display());
+
+        // Compile the config wrapper to expose constants that bindgen can't parse
+        cc::Build::new()
+            .file("freertos_posix/freertos_config_wrapper.c")
+            .include(&freertos_include)
+            .include(&freertos_portable_include)
+            .include(&freertos_config_include)
+            .compile("freertos_config_wrapper");
 
         // Generate Rust bindings for FreeRTOS
         bindgen::Builder::default()
@@ -49,6 +66,13 @@ fn main() {
 #include "event_groups.h"
 #include "stream_buffer.h"
 #include "message_buffer.h"
+
+// External constants from wrapper
+extern const unsigned long FREERTOS_CPU_CLOCK_HZ;
+extern const unsigned long FREERTOS_TICK_RATE_HZ;
+extern const unsigned long FREERTOS_MINIMAL_STACK_SIZE;
+extern const unsigned long FREERTOS_TOTAL_HEAP_SIZE;
+extern const unsigned long FREERTOS_TIMER_TASK_STACK_DEPTH;
 "#)
             .use_core()
             .clang_arg(format!("-I{}", freertos_include.display()))
@@ -67,7 +91,8 @@ fn main() {
 
         println!("cargo:rerun-if-changed=CMakeLists.txt");
         println!("cargo:rerun-if-changed=cmake/FreeRTOS.cmake");
-        println!("cargo:rerun-if-changed=include/FreeRTOSConfig.h");
+        println!("cargo:rerun-if-changed={}/FreeRTOSConfig.h", freertos_config_include.display());
+        println!("cargo:rerun-if-changed=freertos_config_wrapper.c");
     }
 
     // Compile POSIX bindings only if the "posix" feature is enabled

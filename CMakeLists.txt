@@ -13,6 +13,14 @@ set(FREERTOS_VERSION "V11.2.0" CACHE STRING "FreeRTOS version to download")
 set(FREERTOS_PORT "" CACHE STRING "FreeRTOS port to use (e.g., GCC/ARM_CM4F, ThirdParty/GCC/Posix)")
 set(FREERTOS_HEAP "4" CACHE STRING "FreeRTOS heap implementation (1-5)")
 
+# Display configuration summary
+message(STATUS "FreeRTOS Configuration:")
+message(STATUS "  Build Type: ${CMAKE_BUILD_TYPE}")
+message(STATUS "  FREERTOS_VERSION: ${FREERTOS_VERSION}")
+message(STATUS "  FREERTOS_PORT: ${FREERTOS_PORT}")
+message(STATUS "  FREERTOS_HEAP: ${FREERTOS_HEAP}")
+
+
 # Include module to download FreeRTOS
 include(cmake/FreeRTOS.cmake)
 

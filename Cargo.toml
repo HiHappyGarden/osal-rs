@@ -11,9 +11,10 @@ license = "GPL-3"
 [build-dependencies]
 cmake = "0.1"
 bindgen = "0.72"
+cc = "1.2.47"
 
 [features]
-default = ["posix"]
+default = ["freertos"]
 freertos = []
 posix = []
 std = []
@@ -35,8 +36,16 @@ required-features = ["std", "posix"]
 name = "basic"
 required-features = ["std", "posix"]
 
+[[test]]
+name = "posix_thread_tests"
+required-features = ["std", "posix"]
+
 [profile.dev]
 panic = "abort"
 
 [profile.release]
 panic = "abort"
+
+[profile.test]
+# Tests need std for unwinding panics
+panic = "unwind"

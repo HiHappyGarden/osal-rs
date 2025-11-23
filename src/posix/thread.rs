@@ -181,20 +181,10 @@ impl Drop for Thread {
 
 impl Debug for Thread {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        let mut name: [c_char; 16] = [0; 16];
-        unsafe {
-            pthread_getname_np(*self.handle, name.as_mut_ptr(), name.len());
-        }
-
-        // Convert the C string to a Rust string safely without taking ownership
-        let name_str = unsafe {
-            let cstr = core::ffi::CStr::from_ptr(name.as_ptr());
-            cstr.to_str().unwrap_or("<invalid>")
-        };
 
         f.debug_struct("Thread")
             .field("handle", &self.handle)
-            .field("name", &name_str)
+            .field("name", &self.name)
             .finish()
     }
 }

@@ -1,28 +1,62 @@
+use crate::freertos::ffi::{QueueHandle_t, queueQUEUE_TYPE_BASE, vQueueDelete, xQueueGenericCreate, xQueueReceive};
+use crate::traits::QueueTrait;
+use crate::types::{Error::Std, Result};
 
-pub struct Queue;
+pub struct Queue {
+    handle: QueueHandle_t,
+}
 
-//
-// use crate::freertos::queue::ffi::QueueHandle_t;
-// use crate::osal::queue::ffi::vQueueDelete;
-//
-// pub struct Queue {
-//     handle: QueueHandle_t,
-// }
-//
-// impl Queue {
-//
-//     fn new(queue_length: u32, item_size: u32) -> Self {
-//         unsafe {
-//             let handle = xQueueCreate(queue_length as UBaseType_t, item_size as UBaseType_t);
-//             Queue { handle }
-//         }
-//     }
-// }
-//
-// impl Drop for Queue {
-//     fn drop(&mut self) {
-//         unsafe {
-//             vQueueDelete(self.handle);
-//         }
-//     }
-// }
+impl QueueTrait for Queue {
+    fn new(size: usize, message_size: usize) -> Self
+    where
+        Self: Sized
+    {
+        Self{
+            handle: unsafe { xQueueGenericCreate(size as u64, message_size as u64, queueQUEUE_TYPE_BASE) }
+        }
+    }
+
+    fn fetch<T>(&mut self, msg: &mut T, time: u64) -> Result<()>
+    where
+        T: Sized
+    {
+        if self.handle.is_null() {
+            return Err(Std(-1, "Invalid queue handle"));
+        }
+        //xQueueReceive(self.handle, pvBuffer, xTicksToWait);
+        todo!()
+    }
+
+    fn fetch_from_isr<T>(&mut self, msg: &mut T, time: u64) -> Result<()>
+    where
+        T: Sized
+    {
+        todo!()
+    }
+
+    fn post<T>(&mut self, msg: T, time: u64) -> Result<()>
+    where
+        T: Sized
+    {
+        todo!()
+    }
+
+    fn post_from_isr<T>(&mut self, msg: T, time: u64) -> Result<()>
+    where
+        T: Sized
+    {
+        todo!()
+    }
+
+    fn size(&self) -> usize {
+        todo!()
+    }
+}
+
+impl Drop for Queue {
+    fn drop(&mut self) {
+        unsafe {
+            vQueueDelete(self.handle);
+        }
+    }
+}

@@ -1,16 +1,14 @@
+use crate::freertos::ffi::{pdPASS, vTaskDelete, vTaskResume, vTaskSuspend, xTaskCreate, StackType_t, TaskHandle_t, UBaseType_t};
+use crate::traits::{ThreadFunc, ThreadPriority, ThreadTrait};
+use crate::types::{Error::Std, Result};
 use alloc::boxed::Box;
 use alloc::ffi::CString;
-use alloc::fmt::format;
-use alloc::format;
 use alloc::string::{String, ToString};
 use alloc::sync::Arc;
 use core::any::Any;
-use core::ffi::{c_char, c_ushort, c_void};
+use core::ffi::c_void;
 use core::fmt::Debug;
-use core::ptr::{null_mut};
-use crate::freertos::ffi::{StackType_t, TaskHandle_t, UBaseType_t, pdPASS, vTaskDelete, vTaskResume, vTaskSuspend, xTaskCreate};
-use crate::types::{Result, Error::Std};
-use crate::traits::{ThreadTrait, ThreadFunc, ThreadPriority};
+use core::ptr::null_mut;
 
 #[derive(Clone)]
 #[repr(i32)]
@@ -105,6 +103,7 @@ impl ThreadTrait<Thread> for Thread {
             return Err(Std(-2, "Failed to create thread: xTaskCreate returned {}"));
         }
 
+        self.param = param;
         self.handler = unsafe { *handler };
 
         Ok(())

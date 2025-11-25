@@ -66,13 +66,14 @@ fn main() {
 #include "event_groups.h"
 #include "stream_buffer.h"
 #include "message_buffer.h"
+#include "portmacro.h"
 
 // External constants from wrapper
-extern const unsigned long FREERTOS_CPU_CLOCK_HZ;
-extern const unsigned long FREERTOS_TICK_RATE_HZ;
-extern const unsigned long FREERTOS_MINIMAL_STACK_SIZE;
-extern const unsigned long FREERTOS_TOTAL_HEAP_SIZE;
-extern const unsigned long FREERTOS_TIMER_TASK_STACK_DEPTH;
+unsigned long get_freertos_cpu_clock_hz(void);
+unsigned long get_freertos_tick_rate_hz(void);
+unsigned long get_freertos_minimal_stack_size(void);
+unsigned long get_freertos_total_heap_size(void);
+unsigned long get_freertos_timer_task_stack_depth(void);
 "#)
             .use_core()
             .clang_arg(format!("-I{}", freertos_include.display()))
@@ -85,7 +86,6 @@ extern const unsigned long FREERTOS_TIMER_TASK_STACK_DEPTH;
             .expect("Couldn't write bindings!");
 
         println!("cargo:warning=Generated FreeRTOS bindings at: {}/freertos_bindings.rs", out_dir.display());
-
         println!("cargo:rustc-env=FREERTOS_INCLUDE_DIR={}", freertos_include.display());
         println!("cargo:rustc-env=FREERTOS_CONFIG_DIR={}", freertos_config_include.display());
 

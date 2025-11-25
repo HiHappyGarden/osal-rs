@@ -1,8 +1,22 @@
 #include "FreeRTOS.h"
 
-// Expose FreeRTOSConfig.h constants that bindgen cannot parse
-const unsigned long FREERTOS_CPU_CLOCK_HZ = configCPU_CLOCK_HZ;
-const unsigned long FREERTOS_TICK_RATE_HZ = configTICK_RATE_HZ;
-const unsigned long FREERTOS_MINIMAL_STACK_SIZE = configMINIMAL_STACK_SIZE;
-const unsigned long FREERTOS_TOTAL_HEAP_SIZE = configTOTAL_HEAP_SIZE;
-const unsigned long FREERTOS_TIMER_TASK_STACK_DEPTH = configTIMER_TASK_STACK_DEPTH;
+// Expose FreeRTOSConfig.h constants that bindgen cannot parse as functions
+unsigned long get_freertos_cpu_clock_hz(void) {
+    return configCPU_CLOCK_HZ;
+}
+
+unsigned long get_freertos_tick_rate_hz(void) {
+    return configTICK_RATE_HZ;
+}
+
+unsigned long get_freertos_minimal_stack_size(void) {
+    return configMINIMAL_STACK_SIZE;
+}
+
+unsigned long get_freertos_total_heap_size(void) {
+    return configTOTAL_HEAP_SIZE;
+}
+
+unsigned long get_freertos_timer_task_stack_depth(void) {
+    return configTIMER_TASK_STACK_DEPTH;
+}

@@ -2,7 +2,7 @@
 use core::{ffi::c_int, ptr::null_mut, sync::atomic::{AtomicU64, Ordering}};
 use crate::posix::ffi::{timespec, clock_gettime, nanosleep, CLOCK_MONOTONIC};
 
-type TickType = u64;
+type TickType_t = u64;
 
 static START_TIME_NS: AtomicU64 = AtomicU64::new(0);
 
@@ -22,6 +22,43 @@ macro_rules! sec_to_us {
     ($sec:expr) => {
         { ($sec as u64) * 1_000_000 }
     };
+}
+
+/// Converts microseconds to POSIX ticks
+#[macro_export]
+macro_rules! tick_from_us {
+    ($us:expr) => {
+        (($us as u64) * POSIX_TICK_RATE_HZ) / 1_000_000
+    };
+}
+
+/// Convert microseconds to ticks
+#[macro_export]
+macro_rules! us_to_ticks {
+    ($us:expr) => {
+        (($us as u64) * POSIX_TICK_RATE_HZ) / 1_000_000
+    };
+}
+
+
+
+/// Convert ticks to microseconds
+#[macro_export]
+macro_rules! ticks_to_us {
+    ($ticks:expr) => {
+        (($ticks as u64) * 1_000_000) / POSIX_TICK_RATE_HZ
+    };
+}
+
+pub fn us_sleep(us: u64) {
+    unsafe {
+        let ts = timespec {
+            tv_sec: (us / 1_000_000) as i64,
+            tv_nsec: ((us % 1_000_000) * 1000) as i64,
+        };
+
+        nanosleep(&ts, null_mut());
+    }
 }
 
 
@@ -45,24 +82,14 @@ fn init_start_time() {
 }
 
 
-pub fn us_sleep(us: u64) {
-    unsafe {
-        let ts = timespec {
-            tv_sec: (us / 1_000_000) as i64,
-            tv_nsec: ((us % 1_000_000) * 1000) as i64,
-        };
 
-        nanosleep(&ts, null_mut());
-    }
-}
-
-pub fn ticks_sleep(ticks_to_delay: TickType) {
+pub fn ticks_sleep(ticks_to_delay: TickType_t) {
     // Convert ticks to microseconds
     let us = ticks_to_us(ticks_to_delay);
     us_sleep(us);
 }
 
-pub fn tick_current() -> TickType {
+pub fn tick_current() -> TickType_t {
     init_start_time();
     let start = START_TIME_NS.load(Ordering::Relaxed);
     let now = get_time_ns();
@@ -71,18 +98,10 @@ pub fn tick_current() -> TickType {
     // Convert nanoseconds to ticks
     // ticks = (elapsed_ns * TICK_RATE_HZ) / 1_000_000_000
     let ticks = (elapsed_ns * POSIX_TICK_RATE_HZ) / 1_000_000_000;
-    ticks as TickType
+    ticks as TickType_t
 }
 
-pub fn us_to_ticks(us: u64) -> TickType {
-    // Convert microseconds to ticks: ticks = (us * TICK_RATE_HZ) / 1_000_000
-    (us * POSIX_TICK_RATE_HZ) / 1_000_000
-}
 
-pub fn ticks_to_us(ticks: TickType) -> u64 {
-    // Convert ticks to microseconds: us = (ticks * 1_000_000) / TICK_RATE_HZ
-    (ticks * 1_000_000) / POSIX_TICK_RATE_HZ
-}
 
 
 #[cfg(test)]

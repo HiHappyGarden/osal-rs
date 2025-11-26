@@ -3,7 +3,7 @@ use core::ptr::null_mut;
 
 use crate::us_to_ticks;
 use crate::{EventTrait, freertos::ffi::EventGroupHandle_t, Result, Error::Std};
-use crate::freertos::ffi::{pdFALSE, vEventGroupDelete, xEventGroupClearBits, xEventGroupClearBitsFromISR, xEventGroupCreate, xEventGroupGetBitsFromISR, xEventGroupSetBits, xEventGroupSetBitsFromISR, xEventGroupWaitBits, get_freertos_tick_rate_hz};
+use crate::freertos::ffi::{pdFALSE, vEventGroupDelete, xEventGroupClearBits, xEventGroupClearBitsFromISR, xEventGroupCreate, xEventGroupGetBitsFromISR, xEventGroupSetBits, xEventGroupSetBitsFromISR, xEventGroupWaitBits};
 
 pub struct Event {
     handle: EventGroupHandle_t

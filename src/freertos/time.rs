@@ -1,4 +1,4 @@
-use crate::freertos::ffi::{TickType_t, get_freertos_tick_rate_hz, vTaskDelay, xTaskGetTickCount};
+use crate::freertos::ffi::{TickType_t, vTaskDelay, xTaskGetTickCount};
 
 
 #[macro_export]
@@ -19,7 +19,7 @@ macro_rules! sec_to_us {
 #[macro_export]
 macro_rules! us_to_ticks {
     ($us:expr) => {
-        ((($us as u64) * ( get_freertos_tick_rate_hz() as u64)) / 1_000_000) as $crate::freertos::ffi::TickType_t
+        ((($us as u64) * ( unsafe { $crate::freertos::ffi::get_freertos_tick_rate_hz() } as u64 )) / 1_000_000) as $crate::freertos::ffi::TickType_t
     };
 }
 
@@ -27,7 +27,7 @@ macro_rules! us_to_ticks {
 #[macro_export]
 macro_rules! tick_from_us {
     ($us:expr) => {
-        ($us / (1000u64 / (unsafe { get_freertos_tick_rate_hz() } as u64)))
+        ($us / (1000u64 / ( $crate::freertos::ffi::get_freertos_tick_rate_hz() as u64)))
     };
 }
 
@@ -35,13 +35,13 @@ macro_rules! tick_from_us {
 #[macro_export]
 macro_rules! ticks_to_us {
     ($ticks:expr) => {
-        (($ticks as u64) * 1_000_000) / (unsafe { get_freertos_tick_rate_hz() } as u64)
+        (($ticks as u64) * 1_000_000) / ( unsafe { $crate::freertos::ffi::get_freertos_tick_rate_hz() } as u64)
     };
 }
 
 pub fn us_sleep(us: u64) {
     unsafe {
-        vTaskDelay( ( us / (get_freertos_tick_rate_hz() as u64) / 1_000 )as TickType_t);
+        vTaskDelay( ( us / ( crate::freertos::ffi::get_freertos_tick_rate_hz() as u64) / 1_000 )as TickType_t);
     }
 }
 

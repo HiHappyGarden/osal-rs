@@ -12,11 +12,11 @@ pub trait Queue {
     where
         T: Sized;
 
-    fn post<T>(&mut self, msg: T, time: u64) -> Result<()>
+    fn post<T>(&mut self, msg: &T, time: u64) -> Result<()>
     where
         T: Sized;
 
-    fn post_from_isr<T>(&mut self, msg: T, time: u64) -> Result<()>
+    fn post_from_isr<T>(&mut self, msg: &T, time: u64) -> Result<()>
     where
         T: Sized;
 

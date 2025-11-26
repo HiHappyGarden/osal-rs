@@ -142,7 +142,7 @@ impl QueueTrait for Queue {
     {
         self.fetch(msg, time)
     }
-    fn post<T>(&mut self, msg: T, time: u64) -> Result<()>
+    fn post<T>(&mut self, msg: &T, time: u64) -> Result<()>
     where
         T: Sized
     {
@@ -199,7 +199,7 @@ impl QueueTrait for Queue {
         Ok(())
     }
 
-    fn post_from_isr<T>(&mut self, msg: T, time: u64) -> Result<()>
+    fn post_from_isr<T>(&mut self, msg: &T, time: u64) -> Result<()>
     where
         T: Sized,
     {

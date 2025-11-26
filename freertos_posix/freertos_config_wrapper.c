@@ -20,3 +20,7 @@ unsigned long get_freertos_total_heap_size(void) {
 unsigned long get_freertos_timer_task_stack_depth(void) {
     return configTIMER_TASK_STACK_DEPTH;
 }
+
+TickType_t port_tick_period_ms() {
+    return (TickType_t) 1000 / configTICK_RATE_HZ;
+}

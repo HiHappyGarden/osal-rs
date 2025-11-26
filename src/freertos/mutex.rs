@@ -3,7 +3,7 @@ use core::ptr::null_mut;
 
 use crate::traits::MutexTrait;
 use crate::{Result, WAIT_FOREVER, us_to_ticks};
-use crate::freertos::ffi::{QueueHandle_t, get_freertos_tick_rate_hz, pdTRUE, queueQUEUE_TYPE_MUTEX, vQueueDelete, xQueueCreateMutex, xQueueGiveFromISR, xQueueGiveMutexRecursive, xQueueReceiveFromISR, xQueueTakeMutexRecursive};
+use crate::freertos::ffi::{QueueHandle_t, queueQUEUE_TYPE_MUTEX, vQueueDelete, xQueueCreateMutex, xQueueGiveFromISR, xQueueGiveMutexRecursive, xQueueReceiveFromISR, xQueueTakeMutexRecursive};
 
 
 
@@ -27,6 +27,7 @@ impl MutexTrait for Mutex {
         if self.handler.is_null() {
             return
         }
+        #[allow(unused_unsafe)]
         unsafe {
             let _ = xQueueTakeMutexRecursive( self.handler, us_to_ticks!(WAIT_FOREVER)); 
         }

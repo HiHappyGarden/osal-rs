@@ -74,6 +74,7 @@ unsigned long get_freertos_tick_rate_hz(void);
 unsigned long get_freertos_minimal_stack_size(void);
 unsigned long get_freertos_total_heap_size(void);
 unsigned long get_freertos_timer_task_stack_depth(void);
+TickType_t port_tick_period_ms();
 "#)
             .use_core()
             .clang_arg(format!("-I{}", freertos_include.display()))

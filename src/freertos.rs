@@ -18,7 +18,9 @@ pub(crate) mod ffi {
     pub const queueQUEUE_TYPE_MUTEX: u8 = 0x01;
     pub const queueQUEUE_TYPE_BASE: u8 = (size_of::<u8>() * 8) as u8;
     pub const portMAX_DELAY: TickType_t = TickType_t::MAX;
-
+    pub const queueSEND_TO_BACK: BaseType_t = 0;
+    pub const queueSEND_TO_FRONT: BaseType_t = 1;
+    pub const queueOVERWRITE: BaseType_t = 2;
     /// Converts a time in milliseconds to a time in ticks.
     #[macro_export]
     macro_rules! pdMS_TO_TICKS {
@@ -38,7 +40,7 @@ pub(crate) mod ffi {
     #[macro_export]
     macro_rules! tmo_to_ticks {
         ($ms:expr) => {
-            (((ms == WAIT_FOREVER) ? portMAX_DELAY : (((ms) / portTICK_PERIOD_MS)) / 1000))
+            ((if $ms == $crate::WAIT_FOREVER {  $crate::freertos::ffi::portMAX_DELAY } else { ((($ms) / $crate::freertos::ffi::port_tick_period_ms())) / 1000} ))
         };
     }
 

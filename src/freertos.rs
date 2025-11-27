@@ -21,6 +21,7 @@ pub(crate) mod ffi {
     pub const queueSEND_TO_BACK: BaseType_t = 0;
     pub const queueSEND_TO_FRONT: BaseType_t = 1;
     pub const queueOVERWRITE: BaseType_t = 2;
+    pub const semGIVE_BLOCK_TIME: TickType_t = 0;
     /// Converts a time in milliseconds to a time in ticks.
     #[macro_export]
     macro_rules! pdMS_TO_TICKS {

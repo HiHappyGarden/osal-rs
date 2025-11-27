@@ -1,9 +1,6 @@
 use core::ffi::c_void;
 use core::fmt::Debug;
 use core::ptr::null_mut;
-
-use alloc::boxed::Box;
-
 use crate::freertos::ffi::{QueueHandle_t, queueQUEUE_TYPE_BASE, queueSEND_TO_BACK, uxQueueSpacesAvailable, vQueueDelete, xQueueGenericCreate, xQueueGenericSend, xQueueGenericSendFromISR, xQueueReceive, xQueueReceiveFromISR};
 use crate::tmo_to_ticks;
 use crate::traits::QueueTrait;

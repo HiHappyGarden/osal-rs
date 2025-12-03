@@ -1,0 +1,23 @@
+[package]
+name = "osal-rs"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+crate-type = ["staticlib", "rlib"]
+
+[features]
+default = ["freertos"]
+freertos = []
+posix = []
+std = []
+
+
+[build-dependencies]
+osal-rs-build = { path = "../osal-rs-build" }
+
+[profile.dev]
+panic = "abort"
+
+[profile.release]
+panic = "abort"

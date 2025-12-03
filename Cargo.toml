@@ -1,0 +1,12 @@
+[workspace]
+resolver = "3"
+members = [
+    "osal-rs",
+    "osal-rs-build",
+    "osal-rs-examples",
+]
+
+[profile.release]
+codegen-units = 1 # better optimizations
+debug = true # symbols are nice and they don't increase the size on Flash
+lto = true # better optimizations

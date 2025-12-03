@@ -39,3 +39,7 @@ impl StreamBufferTrait for StreamBuffer {
         todo!()
     }
 }
+
+
+unsafe impl Send for StreamBuffer {}
+unsafe impl Sync for StreamBuffer {}

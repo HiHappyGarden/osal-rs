@@ -79,3 +79,7 @@ impl Debug for Mutex {
          .finish()
     }
 }
+
+
+unsafe impl Send for Mutex {}
+unsafe impl Sync for Mutex {}

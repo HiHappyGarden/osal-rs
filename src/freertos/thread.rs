@@ -153,3 +153,5 @@ impl Debug for Thread {
             .finish()
     }
 }
+
+unsafe impl Send for Thread {}

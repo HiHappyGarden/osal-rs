@@ -20,3 +20,4 @@ pub trait Event {
 
     fn clear_from_isr(&mut self, value: u32);
 }
+

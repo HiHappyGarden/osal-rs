@@ -109,3 +109,6 @@ impl Debug for Event {
             .finish()
     }
 }
+
+unsafe impl Send for Event {}
+unsafe impl Sync for Event {}

@@ -80,3 +80,6 @@ impl Debug for Semaphore {
             .finish()
     }
 }
+
+unsafe impl Send for Semaphore {}
+unsafe impl Sync for Semaphore {}

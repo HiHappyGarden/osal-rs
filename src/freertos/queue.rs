@@ -104,3 +104,6 @@ impl Debug for Queue {
             .finish()
     }
 }
+
+unsafe impl Send for Queue {}
+unsafe impl Sync for Queue {}

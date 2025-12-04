@@ -1,5 +1,5 @@
 use core::ffi::c_void;
-//use crate::freertos::ffi::{pvPortMalloc, vPortFree};
+use crate::freertos::ffi::{pvPortMalloc, vPortFree};
 use core::{alloc::{GlobalAlloc, Layout}};
 
 
@@ -8,14 +8,14 @@ pub struct FreeRTOSAllocator;
 unsafe impl GlobalAlloc for FreeRTOSAllocator {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
         unsafe {
-  //          pvPortMalloc(layout.size()) as *mut u8
+            pvPortMalloc(layout.size()) as *mut u8
         }
         
     }
 
     unsafe fn dealloc(&self, ptr: *mut u8, _layout: Layout) {
         unsafe {
-    //        vPortFree(ptr as *mut c_void);
+            vPortFree(ptr as *mut c_void);
         }
     }
 

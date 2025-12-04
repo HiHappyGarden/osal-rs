@@ -12,8 +12,10 @@ mod posix;
 pub mod traits;
 
 #[cfg(feature = "freertos")]
+#[allow(unused_imports)]
 use crate::freertos as osal;
 #[cfg(feature = "posix")]
+#[allow(unused_imports)]
 use crate::posix as osal;
 
 // pub use osal::event::*;

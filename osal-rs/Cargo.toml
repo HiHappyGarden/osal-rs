@@ -10,8 +10,8 @@ crate-type = ["staticlib", "rlib"]
 default = ["freertos"]
 freertos = []
 posix = []
-std = []
-
+std = ["disable_panic"]
+disable_panic = []
 
 [build-dependencies]
 osal-rs-build = { path = "../osal-rs-build" }

@@ -27,6 +27,22 @@ impl FreeRtosTypeGenerator {
                  tick_type, ubase_type, base_type);
     }
 
+    /// Query FreeRTOS configuration values and generate Rust constants
+    pub fn generate_config(&self) {
+        let (cpu_clock_hz, tick_rate_hz, max_priorities, minimal_stack_size) = self.query_config_values();
+        
+        self.write_generated_config(cpu_clock_hz, tick_rate_hz, max_priorities, minimal_stack_size);
+        
+        println!("cargo:warning=Generated FreeRTOS config: CPU={}Hz, Tick={}Hz, MaxPrio={}, MinStack={}", 
+                 cpu_clock_hz, tick_rate_hz, max_priorities, minimal_stack_size);
+    }
+
+    /// Generate both types and config
+    pub fn generate_all(&self) {
+        self.generate_types();
+        self.generate_config();
+    }
+
     /// Query the sizes of FreeRTOS types
     fn query_type_sizes(&self) -> (u16, u16, u16, bool) {
         // Create a small C program to query the type sizes
@@ -97,6 +113,90 @@ int main() {
             // Default values for 32-bit ARM Cortex-M (typical for Raspberry Pi Pico)
             (4, 4, 4, true)
         }
+    }
+
+    /// Query FreeRTOS configuration values by parsing FreeRTOSConfig.h
+    fn query_config_values(&self) -> (u64, u64, u64, u64) {
+        // Try to get the workspace root
+        let workspace_root = env::var("CARGO_MANIFEST_DIR")
+            .map(|p| PathBuf::from(p).parent().unwrap().parent().unwrap().to_path_buf())
+            .unwrap_or_else(|_| PathBuf::from("/home/antoniosalsi/projects/hi-happy-garden-rs"));
+        
+        let config_file = workspace_root.join("inc/hhg-config/pico/FreeRTOSConfig.h");
+        
+        // Default values
+        let mut cpu_clock_hz = 150_000_000u64;
+        let mut tick_rate_hz = 1000u64;
+        let mut max_priorities = 32u64;
+        let mut minimal_stack_size = 512u64;
+        
+        // Try to parse the config file
+        if config_file.exists() {
+            if let Ok(contents) = fs::read_to_string(&config_file) {
+                for line in contents.lines() {
+                    let line = line.trim();
+                    
+                    // Parse #define configCPU_CLOCK_HZ value
+                    if line.starts_with("#define") && line.contains("configCPU_CLOCK_HZ") {
+                        if let Some(value) = Self::extract_define_value(line) {
+                            cpu_clock_hz = value;
+                        }
+                    }
+                    // Parse #define configTICK_RATE_HZ value
+                    else if line.starts_with("#define") && line.contains("configTICK_RATE_HZ") {
+                        if let Some(value) = Self::extract_define_value(line) {
+                            tick_rate_hz = value;
+                        }
+                    }
+                    // Parse #define configMAX_PRIORITIES value
+                    else if line.starts_with("#define") && line.contains("configMAX_PRIORITIES") {
+                        if let Some(value) = Self::extract_define_value(line) {
+                            max_priorities = value;
+                        }
+                    }
+                    // Parse #define configMINIMAL_STACK_SIZE value
+                    else if line.starts_with("#define") && line.contains("configMINIMAL_STACK_SIZE") {
+                        if let Some(value) = Self::extract_define_value(line) {
+                            minimal_stack_size = value;
+                        }
+                    }
+                }
+                println!("cargo:warning=Successfully parsed FreeRTOS config from {}", config_file.display());
+            } else {
+                println!("cargo:warning=Failed to read FreeRTOS config file, using defaults");
+            }
+        } else {
+            println!("cargo:warning=FreeRTOS config file not found at {}, using defaults", config_file.display());
+        }
+        
+        (cpu_clock_hz, tick_rate_hz, max_priorities, minimal_stack_size)
+    }
+    
+    /// Extract numeric value from a #define line
+    fn extract_define_value(line: &str) -> Option<u64> {
+        // Split by whitespace and get the value part (after the macro name)
+        let parts: Vec<&str> = line.split_whitespace().collect();
+        if parts.len() >= 3 {
+            let value_str = parts[2];
+            // Remove common suffixes and parentheses
+            let cleaned = value_str
+                .trim_end_matches('U')
+                .trim_end_matches('L')
+                .trim_matches('(')
+                .trim_matches(')');
+            
+            // Try to parse as decimal or hex
+            if let Ok(val) = cleaned.parse::<u64>() {
+                return Some(val);
+            }
+            // Try hex format (0x...)
+            if cleaned.starts_with("0x") || cleaned.starts_with("0X") {
+                if let Ok(val) = u64::from_str_radix(&cleaned[2..], 16) {
+                    return Some(val);
+                }
+            }
+        }
+        None
     }
 
     /// Convert a size to the corresponding Rust type
@@ -191,6 +291,40 @@ pub fn get_config_value(config_type: ffi::OsalRsFfiFreeRtosConfig) -> u64 {{
         
         let types_rs = self.out_dir.join("types_generated.rs");
         fs::write(&types_rs, generated_code).expect("Failed to write generated types");
+    }
+
+    /// Write the generated config constants to a file
+    fn write_generated_config(
+        &self,
+        cpu_clock_hz: u64,
+        tick_rate_hz: u64,
+        max_priorities: u64,
+        minimal_stack_size: u64,
+    ) {
+        let generated_code = format!(r#"
+// Auto-generated by build.rs - DO NOT EDIT MANUALLY
+// This file contains FreeRTOS configuration constants
+
+/// FreeRTOS CPU clock frequency in Hz
+pub const CPU_CLOCK_HZ: u64 = {};
+
+/// FreeRTOS tick rate in Hz
+pub const TICK_RATE_HZ: u64 = {};
+
+/// Maximum number of FreeRTOS priorities
+pub const MAX_PRIORITIES: u64 = {};
+
+/// Minimal stack size for FreeRTOS tasks
+pub const MINIMAL_STACK_SIZE: u64 = {};
+"#,
+            cpu_clock_hz,
+            tick_rate_hz,
+            max_priorities,
+            minimal_stack_size
+        );
+        
+        let config_rs = self.out_dir.join("config_generated.rs");
+        fs::write(&config_rs, generated_code).expect("Failed to write generated config");
     }
 }
 

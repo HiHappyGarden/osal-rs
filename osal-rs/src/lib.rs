@@ -38,7 +38,8 @@ use crate::posix as osal;
 // pub use osal::time::*;
 // pub use osal::timer::*;
 // pub use traits::TimerTrait;
-pub use osal::types::*;
+pub use osal::config as config;
+pub use osal::types as types;
 
 // Panic handler for no_std library - only when building as final binary
 // Examples with std will provide their own

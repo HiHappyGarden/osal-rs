@@ -5,11 +5,12 @@
 #![allow(dead_code)]
 extern crate alloc;
 
+pub mod traits;
+
 #[cfg(feature = "freertos")]
 mod freertos;
 #[cfg(feature = "posix")]
 mod posix;
-pub mod traits;
 
 #[cfg(feature = "freertos")]
 #[allow(unused_imports)]
@@ -17,6 +18,8 @@ use crate::freertos as osal;
 #[cfg(feature = "posix")]
 #[allow(unused_imports)]
 use crate::posix as osal;
+
+
 
 // pub use osal::event::*;
 // pub use traits::EventTrait;
@@ -35,7 +38,7 @@ use crate::posix as osal;
 // pub use osal::time::*;
 // pub use osal::timer::*;
 // pub use traits::TimerTrait;
-// pub use osal::types::*;
+pub use osal::types::*;
 
 // Panic handler for no_std library - only when building as final binary
 // Examples with std will provide their own

@@ -31,8 +31,9 @@ use crate::posix as osal;
 // pub use traits::SemaphoreTrait;
 // pub use osal::stream_buffer::*;
 // pub use traits::StreamBufferTrait;
-// pub use osal::system::*;
-// pub use osal::thread::*;
+pub use osal::system::*;
+pub use traits::system::System as SystemTrait;
+pub use osal::thread::*;
 // pub use traits::ThreadTrait;
 // #[allow(unused_imports)]
 // pub use osal::time::*;

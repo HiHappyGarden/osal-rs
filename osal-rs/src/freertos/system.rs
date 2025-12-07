@@ -3,7 +3,7 @@ use core::ops::Deref;
 
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
-use crate::{SystemTrait};
+use crate::traits::SystemFn;
 use crate::freertos::ffi::{
     BLOCKED, DELETED, READY, RUNNING, SUSPENDED, TaskStatus, eTaskGetState, uxTaskGetNumberOfTasks, uxTaskGetSystemState, vTaskEndScheduler, vTaskStartScheduler, vTaskSuspendAll, xTaskGetCurrentTaskHandle, xTaskGetTickCount, xTaskResumeAll
 };
@@ -26,7 +26,7 @@ impl Deref for SystemState {
 
 pub struct System;
 
-impl SystemTrait for System {
+impl SystemFn for System {
     fn start() {
         unsafe {
             vTaskStartScheduler();

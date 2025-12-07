@@ -3,7 +3,8 @@
 
 use alloc::string::{String, ToString};
 
-use crate::{freertos::ffi::{TaskStatus, ThreadHandle}, types::{StackType, UBaseType}};
+use crate::freertos::ffi::{TaskStatus, ThreadHandle};
+use crate::freertos::types::{StackType, UBaseType};
 
 #[derive(Copy, Clone, Debug, PartialEq)]
 #[repr(u8)]

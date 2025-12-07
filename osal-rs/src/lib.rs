@@ -20,27 +20,14 @@ use crate::freertos as osal;
 use crate::posix as osal;
 
 
+pub mod os {
+    pub use crate::osal::system::*;
+    pub use crate::osal::thread::*;
+    pub use crate::traits::*;
+    pub use crate::osal::config as config;
+    pub use crate::osal::types as types;
+}
 
-// pub use osal::event::*;
-// pub use traits::EventTrait;
-// pub use osal::mutex::*;
-// pub use traits::MutexTrait;
-// pub use osal::queue::*;
-// pub use traits::QueueTrait;
-// pub use osal::semaphore::*;
-// pub use traits::SemaphoreTrait;
-// pub use osal::stream_buffer::*;
-// pub use traits::StreamBufferTrait;
-pub use osal::system::*;
-pub use traits::system::System as SystemTrait;
-pub use osal::thread::*;
-// pub use traits::ThreadTrait;
-// #[allow(unused_imports)]
-// pub use osal::time::*;
-// pub use osal::timer::*;
-// pub use traits::TimerTrait;
-pub use osal::config as config;
-pub use osal::types as types;
 
 // Panic handler for no_std library - only when building as final binary
 // Examples with std will provide their own

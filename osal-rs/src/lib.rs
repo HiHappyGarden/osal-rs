@@ -5,20 +5,23 @@
 #![allow(dead_code)]
 extern crate alloc;
 
-pub mod traits;
-
 #[cfg(feature = "freertos")]
 mod freertos;
+
 #[cfg(feature = "posix")]
 mod posix;
+
+mod traits;
+
+pub mod utils;
 
 #[cfg(feature = "freertos")]
 #[allow(unused_imports)]
 use crate::freertos as osal;
+
 #[cfg(feature = "posix")]
 #[allow(unused_imports)]
 use crate::posix as osal;
-
 
 pub mod os {
     pub use crate::osal::system::*;

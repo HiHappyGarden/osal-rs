@@ -1,13 +1,13 @@
 
+use core::fmt::Debug;
 use core::ops::Deref;
-
-use alloc::string::{String, ToString};
 use alloc::vec::Vec;
-use crate::traits::SystemFn;
+use crate::freertos::ptr_char_to_string;
+use crate::traits::{SystemFn, ThreadFn};
 use crate::freertos::ffi::{
     BLOCKED, DELETED, READY, RUNNING, SUSPENDED, TaskStatus, eTaskGetState, uxTaskGetNumberOfTasks, uxTaskGetSystemState, vTaskEndScheduler, vTaskStartScheduler, vTaskSuspendAll, xTaskGetCurrentTaskHandle, xTaskGetTickCount, xTaskResumeAll
 };
-use crate::freertos::thread::{ ThreadState, ThreadMetadata, Thread};
+use crate::freertos::thread::{ThreadState, ThreadMetadata, Thread};
 use crate::freertos::types::{BaseType, TickType, UBaseType};
 
 #[derive(Debug, Clone)]
@@ -85,15 +85,15 @@ impl SystemFn for System {
         }
 
         let tasks = threads.into_iter()
-        .map(|t| {
+        .map(|task_status| {
             ThreadMetadata {
-                thread: Thread::new(t.xHandle, 
-                unsafe {
-                        let c_str = core::ffi::CStr::from_ptr(t.pcTaskName);
-                        String::from_utf8_lossy(c_str.to_bytes()).to_string()
-                    }),
-                thread_number: t.xTaskNumber,
-                state: match t.eCurrentState {
+                thread: Thread::new_with_handle(task_status.xHandle, 
+                    ptr_char_to_string(task_status.pcTaskName).as_str(),
+                    unsafe {*task_status.pxStackBase},
+                    task_status.uxBasePriority
+                ),
+                thread_number: task_status.xTaskNumber,
+                state: match task_status.eCurrentState {
                     RUNNING => ThreadState::Running,
                     READY => ThreadState::Ready,
                     BLOCKED => ThreadState::Blocked,
@@ -101,10 +101,10 @@ impl SystemFn for System {
                     DELETED => ThreadState::Deleted,
                     _ => ThreadState::Invalid,
                 },
-                current_priority: t.uxCurrentPriority,
-                base_priority: t.uxBasePriority,
-                run_time_counter: t.ulRunTimeCounter,
-                stack_high_water_mark: t.usStackHighWaterMark,
+                current_priority: task_status.uxCurrentPriority,
+                base_priority: task_status.uxBasePriority,
+                run_time_counter: task_status.ulRunTimeCounter,
+                stack_high_water_mark: task_status.usStackHighWaterMark,
             }
         }).collect();
 
@@ -115,3 +115,4 @@ impl SystemFn for System {
         
     }
 }
+

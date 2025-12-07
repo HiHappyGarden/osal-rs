@@ -1,6 +1,6 @@
 
-use crate::{ThreadState, types::{BaseType, TickType}};
-
+use crate::{SystemState, ThreadState};
+use crate::types::{BaseType, TickType};
 
 pub trait System {
     fn start();
@@ -10,4 +10,5 @@ pub trait System {
     fn stop();
     fn get_tick_count() -> TickType;
     fn count_threads() -> usize;
+    fn get_all_thread() -> SystemState;
 }

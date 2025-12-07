@@ -5,12 +5,30 @@ use std::process::Command;
 
 pub struct FreeRtosTypeGenerator {
     out_dir: PathBuf,
+    config_path: Option<PathBuf>,
 }
 
 impl FreeRtosTypeGenerator {
     pub fn new() -> Self {
         let out_dir = PathBuf::from(env::var("OUT_DIR").expect("OUT_DIR not set"));
-        Self { out_dir }
+        Self { 
+            out_dir,
+            config_path: None,
+        }
+    }
+
+    /// Create a new generator with a custom FreeRTOSConfig.h path
+    pub fn with_config_path<P: Into<PathBuf>>(config_path: P) -> Self {
+        let out_dir = PathBuf::from(env::var("OUT_DIR").expect("OUT_DIR not set"));
+        Self {
+            out_dir,
+            config_path: Some(config_path.into()),
+        }
+    }
+
+    /// Set the FreeRTOSConfig.h path
+    pub fn set_config_path<P: Into<PathBuf>>(&mut self, config_path: P) {
+        self.config_path = Some(config_path.into());
     }
 
     /// Query FreeRTOS type sizes and generate Rust type mappings
@@ -124,12 +142,22 @@ int main() {
 
     /// Query FreeRTOS configuration values by parsing FreeRTOSConfig.h
     fn query_config_values(&self) -> (u64, u64, u64, u64) {
-        // Try to get the workspace root
-        let workspace_root = env::var("CARGO_MANIFEST_DIR")
-            .map(|p| PathBuf::from(p).parent().unwrap().parent().unwrap().to_path_buf())
-            .unwrap_or_else(|_| PathBuf::from("/home/antoniosalsi/projects/hi-happy-garden-rs"));
-        
-        let config_file = workspace_root.join("inc/hhg-config/pico/FreeRTOSConfig.h");
+        // Use the provided config path or try to auto-detect it
+        let config_file = if let Some(ref path) = self.config_path {
+            path.clone()
+        } else {
+            // Try to get the workspace root
+            let workspace_root = env::var("CARGO_MANIFEST_DIR")
+                .map(|p| PathBuf::from(p).parent().unwrap().parent().unwrap().to_path_buf())
+                .ok();
+            
+            if let Some(root) = workspace_root {
+                root.join("inc/hhg-config/pico/FreeRTOSConfig.h")
+            } else {
+                // Fallback: try current directory
+                PathBuf::from("FreeRTOSConfig.h")
+            }
+        };
         
         // Default values
         let mut cpu_clock_hz = 150_000_000u64;

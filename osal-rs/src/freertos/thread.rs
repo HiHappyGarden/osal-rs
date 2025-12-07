@@ -1,10 +1,10 @@
-
-
-
+use core::ptr::null_mut;
 use alloc::string::{String, ToString};
-
-use crate::freertos::ffi::{TaskStatus, ThreadHandle};
+use alloc::sync::Arc;
+use crate::freertos::ffi::{ThreadHandle, vTaskDelete};
 use crate::freertos::types::{StackType, UBaseType};
+use crate::traits::{ThreadFn, ThreadParam, ThreadFnPtr};
+use crate::utils::Result;
 
 #[derive(Copy, Clone, Debug, PartialEq)]
 #[repr(u8)]
@@ -17,7 +17,7 @@ pub enum ThreadState {
     Invalid,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone, Debug)]
 pub struct ThreadMetadata {
     pub thread: Thread,
     pub thread_number: UBaseType,
@@ -29,43 +29,86 @@ pub struct ThreadMetadata {
 }
 
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct Thread {
     handle: ThreadHandle,
     name: String,
+    stack_depth: StackType,
+    priority: UBaseType,
+    callback: Option<Arc<ThreadFnPtr>>,
+    param: ThreadParam
 }
 
-impl Thread {
-    pub fn new(handle: ThreadHandle, name: String) -> Self {
+impl ThreadFn for Thread {
+    fn new<F>(name: &str, stack_depth: StackType, priority: UBaseType, f: Option<F>) -> Self 
+    where 
+        F: Fn(ThreadParam) -> Result<ThreadParam>,
+        F: Send + Sync + 'static
+    {
         Self { 
-            handle, 
-            name: name
+            handle: null_mut(), 
+            name: name.to_string(), 
+            stack_depth, 
+            priority, 
+            callback: if let Some(f) = f {
+                Some(Arc::new(f))
+            } else {
+                None
+            }, 
+            param: None 
         }
     }
 
-    pub fn get_metadata(t: &TaskStatus) -> ThreadMetadata {
-        ThreadMetadata {
-            thread: Thread::new(t.xHandle, 
-            unsafe {
-                    let c_str = core::ffi::CStr::from_ptr(t.pcTaskName);
-                    String::from_utf8_lossy(c_str.to_bytes()).to_string()
-                }),
-            thread_number: t.xTaskNumber,
-            state: match t.eCurrentState {
-                // RUNNING => ThreadState::Running,
-                // READY => ThreadState::Ready,
-                // BLOCKED => ThreadState::Blocked,
-                // SUSPENDED => ThreadState::Suspended,
-                // DELETED => ThreadState::Deleted,
-                _ => ThreadState::Invalid,
-            },
-            current_priority: t.uxCurrentPriority,
-            base_priority: t.uxBasePriority,
-            run_time_counter: t.ulRunTimeCounter,
-            stack_high_water_mark: t.usStackHighWaterMark,
+    fn new_with_handle(handle: ThreadHandle, name: &str, stack_depth: StackType, priority: UBaseType) -> Self {
+        Self { 
+            handle, 
+            name: name.to_string(), 
+            stack_depth, 
+            priority, 
+            callback: None,
+            param: None 
         }
     }
-    
+
+    fn spawn(&mut self, param: ThreadParam) -> Result<Self>
+    where 
+        Self: Sized {
+        todo!()
+    }
+
+    fn suspend(&self) {
+        todo!()
+    }
+
+    fn resume(&self) {
+        todo!()
+    }
+
+    fn join(&self, retval: super::types::DoublePtr) -> Result<i32> {
+        todo!()
+    }
+}
+
+
+impl Drop for Thread {
+    fn drop(&mut self) {
+        if !self.handle.is_null() {
+            unsafe { vTaskDelete( self.handle ); } 
+        }
+    }
+}
+
+impl core::fmt::Debug for Thread {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("Thread")
+            .field("handle", &self.handle)
+            .field("name", &self.name)
+            .field("stack_depth", &self.stack_depth)
+            .field("priority", &self.priority)
+            .field("callback", &self.callback.as_ref().map(|_| "Some(...)"))
+            .field("param", &self.param)
+            .finish()
+    }
 }
 
 unsafe impl Send for Thread {}

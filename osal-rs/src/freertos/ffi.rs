@@ -1,4 +1,3 @@
-
 use core::ffi::{c_char, c_uint, c_void};
 use crate::freertos::types::{BaseType, StackType, UBaseType, TickType};
 
@@ -6,7 +5,6 @@ pub type ThreadHandle = *const c_void;
 pub type QueueHandle = *const c_void;
 pub type SemaphoreHandle = *const c_void;
 pub type EventGroupHandle = *const c_void;
-pub type TaskFunction = *const c_void;
 pub type TimerHandle = *const c_void;
 pub type TimerCallback = *const c_void;
 pub type TaskState = c_uint;
@@ -33,8 +31,10 @@ pub struct TaskStatus {
     pub usStackHighWaterMark: StackType
 }
 
-unsafe extern "C" {
+pub type TaskFunction = Option<unsafe extern "C" fn(arg: *mut c_void)>;
 
+unsafe extern "C" {
+    
 
     /// Allocate memory from the  heap
     /// 
@@ -74,5 +74,16 @@ unsafe extern "C" {
         uxArraySize: UBaseType,
         pulTotalRunTime: *mut u32,
     ) -> UBaseType;
+
+    pub fn xTaskCreate(
+        pxTaskCode: TaskFunction,
+        pcName: *const c_char,
+        uxStackDepth: StackType,
+        pvParameters: *mut c_void,
+        uxPriority: UBaseType,
+        pxCreatedTask: *mut ThreadHandle,
+    ) -> BaseType;
+
+    pub fn vTaskDelete(xTaskToDelete: ThreadHandle);
 }
 

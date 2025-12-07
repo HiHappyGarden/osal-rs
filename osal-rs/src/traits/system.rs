@@ -1,6 +1,6 @@
-use crate::freertos::types::{BaseType, TickType};
-use crate::freertos::thread::ThreadState;
-use crate::freertos::system::SystemState;
+use crate::os::types::{BaseType, TickType};
+use crate::os::ThreadState;
+use crate::os::SystemState;
 
 pub trait System {
     fn start();

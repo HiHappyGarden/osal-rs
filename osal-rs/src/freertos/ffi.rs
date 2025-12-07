@@ -1,17 +1,16 @@
 
-use core::ffi::{c_uint, c_void};
-use crate::types::{BaseType, UBaseType};
+use core::ffi::{c_char, c_uint, c_void};
+use crate::types::{BaseType, StackType, UBaseType};
 
 use super::types::TickType;
 
-pub type TaskHandle = *const c_void;
+pub type ThreadHandle = *const c_void;
 pub type QueueHandle = *const c_void;
 pub type SemaphoreHandle = *const c_void;
 pub type EventGroupHandle = *const c_void;
 pub type TaskFunction = *const c_void;
 pub type TimerHandle = *const c_void;
 pub type TimerCallback = *const c_void;
-pub type StackType = *const c_void;
 pub type TaskState = c_uint;
 
 pub const RUNNING: TaskState = 0;
@@ -21,7 +20,20 @@ pub const SUSPENDED: TaskState = 3;
 pub const DELETED: TaskState = 4;
 pub const INVALID: TaskState = 5;
 
-
+#[allow(non_snake_case)]
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct TaskStatus {
+    pub xHandle: ThreadHandle,
+    pub pcTaskName: *const c_char,
+    pub xTaskNumber: UBaseType,
+    pub eCurrentState: TaskState,
+    pub uxCurrentPriority: UBaseType,
+    pub uxBasePriority: UBaseType,
+    pub ulRunTimeCounter: u32,
+    pub pxStackBase: *mut StackType,
+    pub usStackHighWaterMark: StackType
+}
 
 unsafe extern "C" {
 
@@ -53,10 +65,16 @@ unsafe extern "C" {
 
     pub fn xTaskResumeAll() -> BaseType;
 
-    pub fn xTaskGetCurrentTaskHandle() -> TaskHandle;
+    pub fn xTaskGetCurrentTaskHandle() -> ThreadHandle;
 
-    pub fn eTaskGetState(xTask: TaskHandle) -> TaskState;
+    pub fn eTaskGetState(xTask: ThreadHandle) -> TaskState;
 
     pub fn uxTaskGetNumberOfTasks() -> UBaseType;
+
+    pub fn uxTaskGetSystemState(
+        pxTaskStatusArray: *mut TaskStatus,
+        uxArraySize: UBaseType,
+        pulTotalRunTime: *mut u32,
+    ) -> UBaseType;
 }
 

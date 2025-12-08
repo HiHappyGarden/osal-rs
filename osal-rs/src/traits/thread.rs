@@ -2,6 +2,7 @@ use core::any::Any;
 
 use alloc::sync::Arc;
 
+use crate::os::ThreadMetadata;
 use crate::os::types::{DoublePtr, ConstPtr, StackType, UBaseType};
 use crate::utils::Result;
 
@@ -23,9 +24,13 @@ pub trait Thread {
     where 
         Self: Sized;
 
+    fn delete(&self);
+
     fn suspend(&self);
 
     fn resume(&self);
 
     fn join(&self, retval: DoublePtr) -> Result<i32>;
+
+    fn get_metadata(handle: ConstPtr) -> ThreadMetadata;
 }

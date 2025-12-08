@@ -4,7 +4,7 @@ use core::ptr::null_mut;
 use alloc::boxed::Box;
 use alloc::string::{String, ToString};
 use alloc::sync::Arc;
-use crate::freertos::ffi::{INVALID, TaskStatus, ThreadHandle, pdPASS, pdTRUE, vTaskDelete, vTaskGetInfo, vTaskResume, vTaskSuspend, xTaskCreate};
+use crate::freertos::ffi::{INVALID, TaskStatus, ThreadHandle, pdPASS, pdTRUE, vTaskDelete, vTaskGetInfo, vTaskResume, vTaskSuspend, xTaskCreate, xTaskGetCurrentTaskHandle};
 use crate::freertos::{ptr_char_to_string, string_to_ptr_char};
 use crate::freertos::types::{StackType, UBaseType};
 use crate::freertos::types::DoublePtr;
@@ -186,6 +186,19 @@ impl ThreadFn for Thread {
             vTaskGetInfo(handle, &mut status, pdTRUE, INVALID);
         }
         ThreadMetadata::from((handle, status))
+    }
+
+    fn get_current() -> Self {
+        let handle = unsafe { xTaskGetCurrentTaskHandle() };
+        let metadata = Self::get_metadata(handle);
+        Self {
+            handle,
+            name: metadata.name,
+            stack_depth: metadata.stack_depth,
+            priority: metadata.priority,
+            callback: None,
+            param: None,
+        }
     }
 }
 

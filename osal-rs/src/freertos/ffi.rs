@@ -23,6 +23,8 @@ pub const pdPASS: BaseType = 0;
 pub const pdTRUE: BaseType = 1;
 #[allow(non_upper_case_globals)]
 pub const pdFALSE: BaseType = 1;
+#[allow(non_upper_case_globals)]
+pub const tskDEFAULT_INDEX_TO_NOTIFY: UBaseType = 0;
 
 #[allow(non_snake_case)]
 #[repr(C)]
@@ -120,5 +122,95 @@ unsafe extern "C" {
         xGetFreeStackSpace: BaseType,
         eState: TaskState,
     );
+
+    pub fn ulTaskGenericNotifyTake(uxIndexToWaitOn: UBaseType, xClearCountOnExit: BaseType, xTicksToWait: TickType) -> u32;
+
+
+    pub fn xTaskGenericNotifyWait(
+        uxIndexToWaitOn: UBaseType,
+        ulBitsToClearOnEntry: u32,
+        ulBitsToClearOnExit: u32,
+        pulNotificationValue: *mut u32,
+        xTicksToWait: TickType,
+    ) -> BaseType;
+
+    pub fn xTaskGenericNotify(
+        xTaskToNotify: ThreadHandle,
+        uxIndexToNotify: UBaseType,
+        ulValue: u32,
+        eAction: u32,
+        pulPreviousNotificationValue: *mut u32,
+    ) -> BaseType;
+
+
+    pub fn xTaskGenericNotifyFromISR(
+        xTaskToNotify: ThreadHandle,
+        uxIndexToNotify: UBaseType,
+        ulValue: u32,
+        eAction: u32,
+        pulPreviousNotificationValue: *mut u32,
+        pxHigherPriorityTaskWoken: *mut BaseType,
+    ) -> BaseType;
+    
+
+    
 }
 
+#[macro_export]
+macro_rules! ulTaskNotifyTake {
+    ($xClearCountOnExit:expr, $xTicksToWait:expr) => {
+        unsafe {
+            $crate::freertos::ffi::ulTaskGenericNotifyTake(
+                $crate::freertos::ffi::tskDEFAULT_INDEX_TO_NOTIFY,
+                $xClearCountOnExit,
+                $xTicksToWait
+            )
+        }
+    };
+}
+
+#[macro_export]
+macro_rules! xTaskNotifyWait {
+    ($ulBitsToClearOnEntry:expr, $ulBitsToClearOnExit:expr, $pulNotificationValue:expr, $xTicksToWait:expr) => {
+        unsafe {
+            $crate::freertos::ffi::xTaskGenericNotifyWait(
+                $crate::freertos::ffi::tskDEFAULT_INDEX_TO_NOTIFY,
+                $ulBitsToClearOnEntry,
+                $ulBitsToClearOnExit,
+                $pulNotificationValue,
+                $xTicksToWait
+            )
+        }
+    };
+}
+
+#[macro_export]
+macro_rules! xTaskNotify {
+    ($xTaskToNotify:expr, $ulValue:expr, $eAction:expr) => {
+        unsafe {
+            $crate::freertos::ffi::xTaskGenericNotify(
+                $xTaskToNotify,
+                $crate::freertos::ffi::tskDEFAULT_INDEX_TO_NOTIFY,
+                $ulValue,
+                $eAction,
+                core::ptr::null_mut()
+            )
+        }
+    };
+}
+
+#[macro_export]
+macro_rules! xTaskNotifyFromISR {
+    ($xTaskToNotify:expr, $eAction:expr, $pxHigherPriorityTaskWoken:expr) => {
+        unsafe {
+            $crate::freertos::ffi::xTaskGenericNotifyFromISR(
+                $xTaskToNotify,
+                $crate::freertos::ffi::tskDEFAULT_INDEX_TO_NOTIFY,
+                0,
+                $eAction,
+                core::ptr::null_mut(),
+                $pxHigherPriorityTaskWoken
+            )
+        }
+    };
+}

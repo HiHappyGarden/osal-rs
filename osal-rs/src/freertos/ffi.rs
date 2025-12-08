@@ -1,4 +1,5 @@
 use core::ffi::{c_char, c_uint, c_void};
+use core::ptr;
 use crate::freertos::types::{BaseType, StackType, UBaseType, TickType};
 
 pub type ThreadHandle = *const c_void;
@@ -16,6 +17,13 @@ pub const SUSPENDED: TaskState = 3;
 pub const DELETED: TaskState = 4;
 pub const INVALID: TaskState = 5;
 
+#[allow(non_upper_case_globals)]
+pub const pdPASS: BaseType = 0;
+#[allow(non_upper_case_globals)]
+pub const pdTRUE: BaseType = 1;
+#[allow(non_upper_case_globals)]
+pub const pdFALSE: BaseType = 1;
+
 #[allow(non_snake_case)]
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
@@ -29,6 +37,22 @@ pub struct TaskStatus {
     pub ulRunTimeCounter: u32,
     pub pxStackBase: *mut StackType,
     pub usStackHighWaterMark: StackType
+}
+
+impl Default for TaskStatus {
+    fn default() -> Self {
+        TaskStatus {
+            xHandle: ptr::null(),
+            pcTaskName: ptr::null(),
+            xTaskNumber: 0,
+            eCurrentState: INVALID,
+            uxCurrentPriority: 0,
+            uxBasePriority: 0,
+            ulRunTimeCounter: 0,
+            pxStackBase: ptr::null_mut(),
+            usStackHighWaterMark: 0,
+        }
+    }
 }
 
 pub type TaskFunction = Option<unsafe extern "C" fn(arg: *mut c_void)>;
@@ -85,5 +109,16 @@ unsafe extern "C" {
     ) -> BaseType;
 
     pub fn vTaskDelete(xTaskToDelete: ThreadHandle);
+
+    pub fn vTaskSuspend(xTaskToSuspend: ThreadHandle);
+
+    pub fn vTaskResume(xTaskToResume: ThreadHandle);
+
+    pub fn vTaskGetInfo(
+        xTask: ThreadHandle,
+        pxTaskStatus: *mut TaskStatus,
+        xGetFreeStackSpace: BaseType,
+        eState: TaskState,
+    );
 }
 

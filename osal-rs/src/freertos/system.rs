@@ -2,12 +2,11 @@
 use core::fmt::Debug;
 use core::ops::Deref;
 use alloc::vec::Vec;
-use crate::freertos::ptr_char_to_string;
-use crate::traits::{SystemFn, ThreadFn};
+use crate::traits::SystemFn;
 use crate::freertos::ffi::{
     BLOCKED, DELETED, READY, RUNNING, SUSPENDED, TaskStatus, eTaskGetState, uxTaskGetNumberOfTasks, uxTaskGetSystemState, vTaskEndScheduler, vTaskStartScheduler, vTaskSuspendAll, xTaskGetCurrentTaskHandle, xTaskGetTickCount, xTaskResumeAll
 };
-use crate::freertos::thread::{ThreadState, ThreadMetadata, Thread};
+use crate::freertos::thread::{ThreadState, ThreadMetadata};
 use crate::freertos::types::{BaseType, TickType, UBaseType};
 
 #[derive(Debug, Clone)]
@@ -86,26 +85,10 @@ impl SystemFn for System {
 
         let tasks = threads.into_iter()
         .map(|task_status| {
-            ThreadMetadata {
-                thread: Thread::new_with_handle(task_status.xHandle, 
-                    ptr_char_to_string(task_status.pcTaskName).as_str(),
-                    unsafe {*task_status.pxStackBase},
-                    task_status.uxBasePriority
-                ),
-                thread_number: task_status.xTaskNumber,
-                state: match task_status.eCurrentState {
-                    RUNNING => ThreadState::Running,
-                    READY => ThreadState::Ready,
-                    BLOCKED => ThreadState::Blocked,
-                    SUSPENDED => ThreadState::Suspended,
-                    DELETED => ThreadState::Deleted,
-                    _ => ThreadState::Invalid,
-                },
-                current_priority: task_status.uxCurrentPriority,
-                base_priority: task_status.uxBasePriority,
-                run_time_counter: task_status.ulRunTimeCounter,
-                stack_high_water_mark: task_status.usStackHighWaterMark,
-            }
+            ThreadMetadata::from((
+                task_status.xHandle, 
+                task_status
+            ))
         }).collect();
 
         SystemState {

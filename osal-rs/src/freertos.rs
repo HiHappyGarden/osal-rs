@@ -6,6 +6,7 @@ pub mod delay;
 mod ffi;
 pub mod system;
 pub mod thread;
+pub mod tick;
 pub mod types;
 
 use core::ffi::{CStr, c_char};

@@ -134,6 +134,7 @@ unsafe extern "C" {
         xTicksToWait: TickType,
     ) -> BaseType;
 
+
     pub fn xTaskGenericNotify(
         xTaskToNotify: ThreadHandle,
         uxIndexToNotify: UBaseType,
@@ -152,7 +153,6 @@ unsafe extern "C" {
         pxHigherPriorityTaskWoken: *mut BaseType,
     ) -> BaseType;
     
-
     
 }
 
@@ -201,15 +201,30 @@ macro_rules! xTaskNotify {
 
 #[macro_export]
 macro_rules! xTaskNotifyFromISR {
-    ($xTaskToNotify:expr, $eAction:expr, $pxHigherPriorityTaskWoken:expr) => {
+    ($xTaskToNotify:expr, $ulValue:expr, $eAction:expr, $pxHigherPriorityTaskWoken:expr) => {
         unsafe {
             $crate::freertos::ffi::xTaskGenericNotifyFromISR(
                 $xTaskToNotify,
                 $crate::freertos::ffi::tskDEFAULT_INDEX_TO_NOTIFY,
-                0,
+                $ulValue,
                 $eAction,
                 core::ptr::null_mut(),
                 $pxHigherPriorityTaskWoken
+            )
+        }
+    };
+}
+
+#[macro_export]
+macro_rules! xTaskNotifyAndQuery {
+    ($xTaskToNotify:expr, $ulValue:expr, $eAction:expr, $pulPreviousNotificationValue:expr) => {
+        unsafe {
+            $crate::freertos::ffi::xTaskGenericNotify(
+                $xTaskToNotify,
+                $crate::freertos::ffi::tskDEFAULT_INDEX_TO_NOTIFY,
+                $ulValue,
+                $eAction,
+                $pulPreviousNotificationValue
             )
         }
     };

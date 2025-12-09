@@ -9,6 +9,7 @@ pub enum Error {
     StringConversionError,
     TaskNotFound,
     InvalidQueueSize,
+    NullPtr,
     Unhandled(&'static str)
 }
 

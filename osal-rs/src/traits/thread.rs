@@ -1,7 +1,7 @@
 use core::any::Any;
 use alloc::sync::Arc;
-use crate::os::ThreadMetadata;
-use crate::os::types::{DoublePtr, ConstPtr, StackType, UBaseType};
+use crate::os::{ThreadMetadata, ToTick};
+use crate::os::types::{BaseType, ConstPtr, DoublePtr, StackType, UBaseType};
 use crate::utils::Result;
 
 pub type ThreadParam = Option<Arc<dyn Any + Send + Sync>>;
@@ -16,8 +16,8 @@ pub enum ThreadNotification {
     SetValueWithoutOverwrite(u32),
 }
 
-impl Into<(u8, u32)> for ThreadNotification {
-    fn into(self) -> (u8, u32) {
+impl Into<(u32, u32)> for ThreadNotification {
+    fn into(self) -> (u32, u32) {
         match self {
             ThreadNotification::NoAction => (0, 0),
             ThreadNotification::SetBits(bits) => (1, bits),
@@ -35,7 +35,7 @@ pub trait Thread {
         F: Send + Sync + 'static,
         Self: Sized;
 
-    fn new_with_handle(handle: ConstPtr, name: &str, stack_depth: StackType, priority: UBaseType) -> Self 
+    fn new_with_handle(handle: ConstPtr, name: &str, stack_depth: StackType, priority: UBaseType) -> Result<Self>  
     where 
         Self: Sized;
 
@@ -57,12 +57,11 @@ pub trait Thread {
     where 
         Self: Sized;
 
-    fn notify(&self, notification: ThreadNotification);
+    fn notify(&self, notification: ThreadNotification) -> Result<()>;
 
-    fn notify_from_isr(&self, notification: ThreadNotification) -> Result<()>;
+    fn notify_from_isr(&self, notification: ThreadNotification, higher_priority_task_woken: &mut BaseType) -> Result<()>;
 
-    fn wait_notification(&self, clear_on_exit: bool, timeout_ticks: DA DEFINIRE) -> Result<u32>;
-
+    fn wait_notification(&self, bits_to_clear_on_entry: u32, bits_to_clear_on_exit: u32 , timeout_ticks: impl ToTick) -> Result<u32>;
 
 
 }

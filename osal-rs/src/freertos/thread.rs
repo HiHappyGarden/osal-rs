@@ -1,15 +1,17 @@
 use core::any::Any;
 use core::ffi::c_void;
+use core::ops::Deref;
 use core::ptr::null_mut;
 use alloc::boxed::Box;
 use alloc::string::{String, ToString};
 use alloc::sync::Arc;
 use crate::freertos::ffi::{INVALID, TaskStatus, ThreadHandle, pdPASS, pdTRUE, vTaskDelete, vTaskGetInfo, vTaskResume, vTaskSuspend, xTaskCreate, xTaskGetCurrentTaskHandle};
 use crate::freertos::{ptr_char_to_string, string_to_ptr_char};
-use crate::freertos::types::{StackType, UBaseType};
-use crate::freertos::types::DoublePtr;
-use crate::traits::{ThreadFn, ThreadParam, ThreadFnPtr};
+use crate::freertos::types::{StackType, UBaseType, BaseType, DoublePtr};
+use crate::freertos::thread::ThreadState::*;
+use crate::traits::{ThreadFn, ThreadParam, ThreadFnPtr, ThreadNotification, ToTick};
 use crate::utils::{Result, Error};
+use crate::{xTaskNotify, xTaskNotifyFromISR, xTaskNotifyWait};
 
 #[derive(Copy, Clone, Debug, PartialEq)]
 #[repr(u8)]
@@ -39,12 +41,12 @@ pub struct ThreadMetadata {
 impl From<(ThreadHandle,TaskStatus)> for ThreadMetadata {
     fn from(status: (ThreadHandle, TaskStatus)) -> Self {
         let state = match status.1.eCurrentState {
-            0 => ThreadState::Running,
-            1 => ThreadState::Ready,
-            2 => ThreadState::Blocked,
-            3 => ThreadState::Suspended,
-            4 => ThreadState::Deleted,
-            _ => ThreadState::Invalid,
+            0 => Running,
+            1 => Ready,
+            2 => Blocked,
+            3 => Suspended,
+            4 => Deleted,
+            _ => Invalid,
         };
 
         ThreadMetadata {
@@ -112,15 +114,18 @@ impl ThreadFn for Thread {
         }
     }
 
-    fn new_with_handle(handle: ThreadHandle, name: &str, stack_depth: StackType, priority: UBaseType) -> Self {
-        Self { 
+    fn new_with_handle(handle: ThreadHandle, name: &str, stack_depth: StackType, priority: UBaseType) -> Result<Self> {
+        if handle.is_null() {
+            return Err(Error::NullPtr);
+        }
+        Ok(Self { 
             handle, 
             name: name.to_string(), 
             stack_depth, 
             priority, 
             callback: None,
             param: None 
-        }
+        })
     }
 
     fn spawn(&mut self, param: ThreadParam) -> Result<Self> {
@@ -200,6 +205,71 @@ impl ThreadFn for Thread {
             param: None,
         }
     }
+
+    fn notify(&self, notification: ThreadNotification) -> Result<()> {
+        if self.handle.is_null() {
+            return Err(Error::NullPtr);
+        }
+
+        let (action, value) = notification.into();
+
+        let ret = xTaskNotify!(
+            self.handle,
+            value,
+            action
+        );
+        
+        if ret != pdPASS {
+            Err(Error::QueueFull)
+        } else {
+            Ok(())
+        }
+
+    }
+
+    fn notify_from_isr(&self, notification: ThreadNotification, higher_priority_task_woken: &mut BaseType) -> Result<()> {
+        if self.handle.is_null() {
+            return Err(Error::NullPtr);
+        }
+
+        let (action, value) = notification.into();
+
+        let ret = xTaskNotifyFromISR!(
+            self.handle,
+            value,
+            action,
+            higher_priority_task_woken
+        );
+
+        if ret != pdPASS {
+            Err(Error::QueueFull)
+        } else {
+            Ok(())
+        }
+    }
+
+    fn wait_notification(&self, bits_to_clear_on_entry: u32, bits_to_clear_on_exit: u32 , timeout_ticks: impl ToTick) -> Result<u32> {
+        if self.handle.is_null() {
+            return Err(Error::NullPtr);
+        }
+
+        let mut notification_value: u32 = 0;
+
+        let ret = xTaskNotifyWait!(
+            bits_to_clear_on_entry,
+            bits_to_clear_on_exit,
+            &mut notification_value,
+            timeout_ticks.to_tick()
+        );
+        
+
+        if ret == pdTRUE {
+            Ok(notification_value)
+        } else {
+            Err(Error::Timeout)
+        }
+    }
+
 }
 
 
@@ -208,6 +278,14 @@ impl Drop for Thread {
         if !self.handle.is_null() {
             unsafe { vTaskDelete( self.handle ); } 
         }
+    }
+}
+
+impl Deref for Thread {
+    type Target = ThreadHandle;
+
+    fn deref(&self) -> &Self::Target {
+        &self.handle
     }
 }
 

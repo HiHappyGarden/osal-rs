@@ -2,7 +2,8 @@
 
 pub mod allocator;
 pub mod config;
-pub mod delay;
+pub mod duration;
+pub mod event_group;
 mod ffi;
 pub mod system;
 pub mod thread;

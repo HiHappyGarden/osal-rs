@@ -100,7 +100,7 @@ impl SystemFn for System {
 
         fn delay(ticks: impl ToTick){
             unsafe {
-                vTaskDelay(ticks.get_tick());
+                vTaskDelay(ticks.to_tick());
             }
         }
 
@@ -108,7 +108,7 @@ impl SystemFn for System {
             unsafe {
                 xTaskDelayUntil(
                     previous_wake_time,
-                    time_increment.get_tick(),
+                    time_increment.to_tick(),
                 );
             }
         }

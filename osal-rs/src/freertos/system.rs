@@ -2,9 +2,9 @@
 use core::fmt::Debug;
 use core::ops::Deref;
 use alloc::vec::Vec;
-use crate::traits::SystemFn;
+use crate::traits::{SystemFn, ToTick};
 use crate::freertos::ffi::{
-    BLOCKED, DELETED, READY, RUNNING, SUSPENDED, TaskStatus, eTaskGetState, uxTaskGetNumberOfTasks, uxTaskGetSystemState, vTaskEndScheduler, vTaskStartScheduler, vTaskSuspendAll, xTaskGetCurrentTaskHandle, xTaskGetTickCount, xTaskResumeAll
+    BLOCKED, DELETED, READY, RUNNING, SUSPENDED, TaskStatus, eTaskGetState, uxTaskGetNumberOfTasks, uxTaskGetSystemState, vTaskDelay, vTaskEndScheduler, vTaskStartScheduler, vTaskSuspendAll, xTaskDelayUntil, xTaskGetCurrentTaskHandle, xTaskGetTickCount, xTaskResumeAll
 };
 use crate::freertos::thread::{ThreadState, ThreadMetadata};
 use crate::freertos::types::{BaseType, TickType, UBaseType};
@@ -95,7 +95,23 @@ impl SystemFn for System {
             tasks,
             total_run_time
         }
-        
     }
+
+
+        fn delay(ticks: impl ToTick){
+            unsafe {
+                vTaskDelay(ticks.get_tick());
+            }
+        }
+
+        fn delay_until(previous_wake_time: &mut TickType, time_increment: impl ToTick) {
+            unsafe {
+                xTaskDelayUntil(
+                    previous_wake_time,
+                    time_increment.get_tick(),
+                );
+            }
+        }
+
 }
 

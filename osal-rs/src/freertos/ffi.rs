@@ -79,6 +79,12 @@ unsafe extern "C" {
 
     pub fn vTaskDelay(xTicksToDelay: TickType);
 
+    pub fn xTaskDelayUntil(
+        pxPreviousWakeTime: *mut TickType,
+        xTimeIncrement: TickType,
+    ) -> BaseType;
+
+
     pub fn xTaskGetTickCount() -> TickType;
 
     pub fn vTaskStartScheduler();
@@ -226,6 +232,18 @@ macro_rules! xTaskNotifyAndQuery {
                 $eAction,
                 $pulPreviousNotificationValue
             )
+        }
+    };
+}
+
+#[macro_export]
+macro_rules! vTaskDelayUntil {
+    ($pxPreviousWakeTime:expr, $xTimeIncrement:expr) => {
+        unsafe {
+            $crate::freertos::ffi::xTaskDelayUntil(
+                $pxPreviousWakeTime,
+                $xTimeIncrement
+            );
         }
     };
 }

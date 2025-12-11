@@ -5,3 +5,4 @@ include!(concat!(env!("OUT_DIR"), "/types_generated.rs"));
 pub type DoublePtr = *mut *mut c_void;
 pub type Ptr = *mut c_void;
 pub type ConstPtr = *const c_void;
+pub type EventBits = TickType;

@@ -6,12 +6,11 @@ use alloc::boxed::Box;
 use alloc::string::{String, ToString};
 use alloc::sync::Arc;
 use crate::freertos::ffi::{INVALID, TaskStatus, ThreadHandle, pdPASS, pdTRUE, vTaskDelete, vTaskGetInfo, vTaskResume, vTaskSuspend, xTaskCreate, xTaskGetCurrentTaskHandle};
-use crate::freertos::{ptr_char_to_string, string_to_ptr_char};
 use crate::freertos::types::{StackType, UBaseType, BaseType, DoublePtr};
 use crate::freertos::thread::ThreadState::*;
 use crate::traits::{ThreadFn, ThreadParam, ThreadFnPtr, ThreadNotification, ToTick};
 use crate::utils::{Result, Error};
-use crate::{xTaskNotify, xTaskNotifyFromISR, xTaskNotifyWait};
+use crate::{from_c_str, to_cstring, xTaskNotify, xTaskNotifyFromISR, xTaskNotifyWait};
 
 #[derive(Copy, Clone, Debug, PartialEq)]
 #[repr(u8)]
@@ -51,7 +50,7 @@ impl From<(ThreadHandle,TaskStatus)> for ThreadMetadata {
 
         ThreadMetadata {
             thread: status.0,
-            name: ptr_char_to_string(status.1.pcTaskName),
+            name: from_c_str!(status.1.pcTaskName),
             stack_depth: unsafe {*status.1.pxStackBase},
             priority: status.1.uxBasePriority,
             thread_number: status.1.xTaskNumber,
@@ -128,8 +127,9 @@ impl ThreadFn for Thread {
         })
     }
 
-    fn spawn(&mut self, param: ThreadParam) -> Result<Self> {
-        let c_name = string_to_ptr_char(&self.name.clone())?;
+    fn spawn(&mut self, param: ThreadParam) -> Result<Self> {        
+
+        let name = to_cstring!(self.name)?;
 
         let mut handle: ThreadHandle =  null_mut();
 
@@ -138,7 +138,7 @@ impl ThreadFn for Thread {
         let ret = unsafe {
             xTaskCreate(
                 Some(super::thread::callback),
-                c_name,
+                name.as_ptr(),
                 self.stack_depth,
                 Box::into_raw(boxed_thread) as *mut _,
                 self.priority,

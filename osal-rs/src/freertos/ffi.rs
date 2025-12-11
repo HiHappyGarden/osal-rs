@@ -1,6 +1,6 @@
 use core::ffi::{c_char, c_uint, c_void};
 use core::ptr;
-use crate::freertos::types::{BaseType, StackType, UBaseType, TickType};
+use crate::freertos::types::{BaseType, StackType, UBaseType, TickType, EventBits};
 
 pub type ThreadHandle = *const c_void;
 pub type QueueHandle = *const c_void;
@@ -159,7 +159,39 @@ unsafe extern "C" {
         pxHigherPriorityTaskWoken: *mut BaseType,
     ) -> BaseType;
     
-    
+    pub fn xEventGroupWaitBits(
+        xEventGroup: EventGroupHandle,
+        uxBitsToWaitFor: EventBits,
+        xClearOnExit: BaseType,
+        xWaitForAllBits: BaseType,
+        xTicksToWait: TickType,
+    ) -> EventBits;
+
+    pub fn xEventGroupClearBits(
+        xEventGroup: EventGroupHandle,
+        uxBitsToClear: EventBits,
+    ) -> EventBits;
+
+    pub fn xEventGroupClearBitsFromISR(
+        xEventGroup: EventGroupHandle,
+        uxBitsToClear: EventBits,
+    ) -> BaseType;
+
+        pub fn xEventGroupSetBits(
+        xEventGroup: EventGroupHandle,
+        uxBitsToSet: EventBits,
+    ) -> EventBits;
+
+
+    pub fn xEventGroupSetBitsFromISR(
+        xEventGroup: EventGroupHandle,
+        uxBitsToSet: EventBits,
+        pxHigherPriorityTaskWoken: *mut BaseType,
+    ) -> BaseType;
+
+    pub fn xEventGroupGetBitsFromISR(xEventGroup: EventGroupHandle) -> EventBits;
+
+    pub fn xEventGroupCreate() -> EventGroupHandle;
 }
 
 #[macro_export]
@@ -244,6 +276,15 @@ macro_rules! vTaskDelayUntil {
                 $pxPreviousWakeTime,
                 $xTimeIncrement
             );
+        }
+    };
+}
+
+#[macro_export]
+macro_rules! xEventGroupGetBits {
+    ($xEventGroup:expr) => {
+        unsafe {
+            $crate::freertos::ffi::xEventGroupClearBits($xEventGroup, 0)
         }
     };
 }

@@ -73,23 +73,23 @@ impl SystemFn for System {
         let mut total_run_time: u32 = 0;
 
         unsafe {
-
-            let retrieved_threads = uxTaskGetSystemState(
+            let count = uxTaskGetSystemState(
                 threads.as_mut_ptr(),
                 threads_count as UBaseType,
                 &mut total_run_time as *mut u32,
             ) as usize;
-
-            threads.set_len(retrieved_threads);
+            
+            // Set the length only after data has been written by FreeRTOS
+            threads.set_len(count);
         }
 
         let tasks = threads.into_iter()
-        .map(|task_status| {
-            ThreadMetadata::from((
-                task_status.xHandle, 
-                task_status
-            ))
-        }).collect();
+            .map(|task_status| {
+                ThreadMetadata::from((
+                    task_status.xHandle, 
+                    task_status
+                ))
+            }).collect();
 
         SystemState {
             tasks,

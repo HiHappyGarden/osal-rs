@@ -4,9 +4,7 @@ use crate::freertos::types::{BaseType, EventBits};
 use crate::utils::{Result, Error};
 use crate::xEventGroupGetBits;
 
-pub struct EventGroup {
-    handle: EventGroupHandle
-}
+pub struct EventGroup (EventGroupHandle);
 
 unsafe impl Send for EventGroup {}
 unsafe impl Sync for EventGroup {}
@@ -17,19 +15,19 @@ impl EventGroupFn for EventGroup {
         if handle.is_null() {
             Err(Error::OutOfMemory)
         } else {
-            Ok(Self { handle })
+            Ok(Self (handle))
         }
     }
 
     fn set(&mut self, bits: EventBits) -> EventBits {
-        unsafe { xEventGroupSetBits(self.handle, bits) }
+        unsafe { xEventGroupSetBits(self.0, bits) }
     }
 
     fn set_from_isr(&mut self, bits: EventBits) -> Result<()> {
 
         let mut higher_priority_task_woken: BaseType = pdFALSE;
 
-        let ret = unsafe { xEventGroupSetBitsFromISR(self.handle, bits, &mut higher_priority_task_woken) };
+        let ret = unsafe { xEventGroupSetBitsFromISR(self.0, bits, &mut higher_priority_task_woken) };
         if ret != pdFAIL {
             unsafe {
                 osal_rs_port_yield_from_isr(higher_priority_task_woken);   
@@ -42,20 +40,20 @@ impl EventGroupFn for EventGroup {
     }
 
     fn get(&self) -> EventBits {
-        xEventGroupGetBits!(self.handle) 
+        xEventGroupGetBits!(self.0) 
     }
 
     fn get_from_isr(&self) -> EventBits{
-        unsafe { xEventGroupGetBitsFromISR(self.handle) }
+        unsafe { xEventGroupGetBitsFromISR(self.0) }
     }
 
 
     fn clear(&mut self, bits: EventBits) -> EventBits {
-        unsafe { xEventGroupClearBits(self.handle, bits) }
+        unsafe { xEventGroupClearBits(self.0, bits) }
     }
 
     fn clear_from_isr(&mut self, bits: EventBits) -> Result<()> {
-        let ret = unsafe { xEventGroupClearBitsFromISR(self.handle, bits) };
+        let ret = unsafe { xEventGroupClearBitsFromISR(self.0, bits) };
         if ret != pdFAIL {
             Ok(())
         } else {
@@ -66,7 +64,7 @@ impl EventGroupFn for EventGroup {
     fn wait(&mut self, mask: EventBits, timeout_ticks: impl ToTick) -> EventBits {
         unsafe {
             crate::freertos::ffi::xEventGroupWaitBits(
-                self.handle,
+                self.0,
                 mask,
                 pdFALSE, 
                 pdFALSE, 

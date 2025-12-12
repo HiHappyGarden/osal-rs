@@ -1,13 +1,15 @@
-use crate::freertos::ffi::{SemaphoreHandle, osal_rs_port_yield_from_isr, pdFAIL, pdFALSE, pdTRUE};
-use crate::os::ToTick;
-use crate::os::types::{BaseType, OsalRsBool, UBaseType};
+use crate::freertos::ffi::{SemaphoreHandle, osal_rs_port_yield_from_isr, pdFAIL, pdFALSE};
+use crate::traits::ToTick;
+use crate::freertos::types::{BaseType, OsalRsBool, UBaseType};
 use crate::traits::SemaphoreFn;
 use crate::utils::{Error, Result};
 use crate::{vSemaphoreDelete, xSemaphoreCreateCounting, xSemaphoreGive, xSemaphoreGiveFromISR, xSemaphoreTake, xSemaphoreTakeFromISR};
 
-pub struct Semaphore {
-    handle: SemaphoreHandle,
-}
+pub struct Semaphore (SemaphoreHandle);
+
+unsafe impl Send for Semaphore {}
+unsafe impl Sync for Semaphore {}
+
 
 impl SemaphoreFn for Semaphore {
     fn new(max_count: UBaseType, initial_count: UBaseType) -> Result<Self> {
@@ -15,7 +17,7 @@ impl SemaphoreFn for Semaphore {
         if handle.is_null() {
             Err(Error::OutOfMemory)
         } else {
-            Ok(Self { handle })
+            Ok(Self (handle))
         }
     }
 
@@ -24,12 +26,12 @@ impl SemaphoreFn for Semaphore {
         if handle.is_null() {
             Err(Error::OutOfMemory)
         } else {
-            Ok(Self { handle })
+            Ok(Self (handle))
         }
     }
 
     fn wait(&mut self, ticks_to_wait: impl ToTick) -> OsalRsBool {
-        if xSemaphoreTake!(self.handle, ticks_to_wait.to_tick()) != pdFAIL {
+        if xSemaphoreTake!(self.0, ticks_to_wait.to_tick()) != pdFAIL {
             OsalRsBool::True
         } else {
             OsalRsBool::False
@@ -38,7 +40,7 @@ impl SemaphoreFn for Semaphore {
 
     fn wait_from_isr(&mut self) -> OsalRsBool {
         let mut higher_priority_task_woken: BaseType = pdFALSE;
-        if xSemaphoreTakeFromISR!(self.handle, &mut higher_priority_task_woken) != pdFAIL {
+        if xSemaphoreTakeFromISR!(self.0, &mut higher_priority_task_woken) != pdFAIL {
             unsafe {
                 osal_rs_port_yield_from_isr(higher_priority_task_woken);   
             }
@@ -50,7 +52,7 @@ impl SemaphoreFn for Semaphore {
     }
     
     fn signal(&mut self) -> OsalRsBool {
-        if xSemaphoreGive!(self.handle) != pdFAIL {
+        if xSemaphoreGive!(self.0) != pdFAIL {
             OsalRsBool::True
         } else {
             OsalRsBool::False
@@ -59,7 +61,7 @@ impl SemaphoreFn for Semaphore {
     
     fn signal_from_isr(&mut self) -> OsalRsBool {
         let mut higher_priority_task_woken: BaseType = pdFALSE;
-        if xSemaphoreGiveFromISR!(self.handle, &mut higher_priority_task_woken) != pdFAIL {
+        if xSemaphoreGiveFromISR!(self.0, &mut higher_priority_task_woken) != pdFAIL {
             unsafe {
                 osal_rs_port_yield_from_isr(higher_priority_task_woken);   
             }
@@ -70,7 +72,7 @@ impl SemaphoreFn for Semaphore {
     }
     
     fn delete(&mut self) {
-        vSemaphoreDelete!(self.handle);
+        vSemaphoreDelete!(self.0);
     }
 
 

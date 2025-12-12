@@ -1,13 +1,16 @@
 
 use core::fmt::Debug;
 use core::ops::Deref;
+use core::time::Duration;
 use alloc::vec::Vec;
+use crate::tick_period_ms;
 use crate::traits::{SystemFn, ToTick};
 use crate::freertos::ffi::{
-    BLOCKED, DELETED, READY, RUNNING, SUSPENDED, TaskStatus, eTaskGetState, uxTaskGetNumberOfTasks, uxTaskGetSystemState, vTaskDelay, vTaskEndScheduler, vTaskStartScheduler, vTaskSuspendAll, xTaskDelayUntil, xTaskGetCurrentTaskHandle, xTaskGetTickCount, xTaskResumeAll
+    BLOCKED, DELETED, READY, RUNNING, SUSPENDED, TaskStatus, eTaskGetState, osal_rs_port_end_switching_isr, osal_rs_critical_section_enter, osal_rs_critical_section_exit, osal_rs_port_yield_from_isr, uxTaskGetNumberOfTasks, uxTaskGetSystemState, vTaskDelay, vTaskEndScheduler, vTaskStartScheduler, vTaskSuspendAll, xTaskDelayUntil, xTaskGetCurrentTaskHandle, xTaskGetTickCount, xTaskResumeAll
 };
 use crate::freertos::thread::{ThreadState, ThreadMetadata};
-use crate::freertos::types::{BaseType, TickType, UBaseType};
+use crate::freertos::types::{BaseType, TickType, UBaseType, OsalRsBool, OsalRsBool::*};
+use crate::utils::{CpuRegisterSize::*, register_bit_size};
 
 #[derive(Debug, Clone)]
 pub struct SystemState {
@@ -63,6 +66,16 @@ impl SystemFn for System {
         unsafe { xTaskGetTickCount() }
     }
 
+    fn get_current_time_us () -> Duration {
+        let ticks = Self::get_tick_count();
+        Duration::from_millis( 1_000 * ticks as u64 / tick_period_ms!() as u64 )
+    }
+
+    fn get_us_from_tick(duration: &Duration) -> TickType {
+        let millis = duration.as_millis() as TickType;
+        millis / (1_000 * tick_period_ms!() as TickType) 
+    }
+
     fn count_threads() -> usize {
         unsafe { uxTaskGetNumberOfTasks() as usize }
     }
@@ -98,20 +111,68 @@ impl SystemFn for System {
     }
 
 
-        fn delay(ticks: impl ToTick){
-            unsafe {
-                vTaskDelay(ticks.to_tick());
-            }
+    fn delay(ticks: impl ToTick){
+        unsafe {
+            vTaskDelay(ticks.to_tick());
         }
+    }
 
-        fn delay_until(previous_wake_time: &mut TickType, time_increment: impl ToTick) {
-            unsafe {
-                xTaskDelayUntil(
-                    previous_wake_time,
-                    time_increment.to_tick(),
-                );
-            }
+    fn delay_until(previous_wake_time: &mut TickType, time_increment: impl ToTick) {
+        unsafe {
+            xTaskDelayUntil(
+                previous_wake_time,
+                time_increment.to_tick(),
+            );
         }
+    }
+
+    fn critical_section_enter() {
+        unsafe {
+            osal_rs_critical_section_enter();
+        }
+    }
+    
+    fn critical_section_exit() {
+        unsafe {
+            osal_rs_critical_section_exit();
+        }   
+    }
+    
+    fn check_timer(timestamp: &Duration, time: &Duration) -> OsalRsBool {
+        let temp_tick_time = Self::get_current_time_us();
+        
+        let time_passing = if temp_tick_time >= *timestamp {
+            temp_tick_time - *timestamp
+        } else {
+            if register_bit_size() == Bit32 {
+                // Handle tick count overflow for 32-bit TickType
+                let overflow_correction = Duration::from_micros(0xff_ff_ff_ff_u64);
+                overflow_correction - *timestamp + temp_tick_time
+            } else {
+                // Handle tick count overflow for 64-bit TickType
+                let overflow_correction = Duration::from_micros(0xff_ff_ff_ff_ff_ff_ff_ff_u64);
+                overflow_correction - *timestamp + temp_tick_time
+            }
+        };
+
+        if time_passing >= *time {
+            True
+        } else {
+            False
+        }
+    }
+
+    fn yield_from_isr(higher_priority_task_woken: BaseType) {
+        unsafe {
+            osal_rs_port_yield_from_isr(higher_priority_task_woken);
+        }
+    }
+
+    fn end_switching_isr( switch_required: BaseType ) {
+        unsafe {
+            osal_rs_port_end_switching_isr( switch_required );
+        }
+    }
 
 }
 

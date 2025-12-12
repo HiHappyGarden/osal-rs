@@ -6,3 +6,9 @@ pub type DoublePtr = *mut *mut c_void;
 pub type Ptr = *mut c_void;
 pub type ConstPtr = *const c_void;
 pub type EventBits = TickType;
+
+#[repr(u8)]
+pub enum OsalRsBool {
+    False = 1,
+    True = 0
+}

@@ -18,13 +18,28 @@ pub const DELETED: TaskState = 4;
 pub const INVALID: TaskState = 5;
 
 #[allow(non_upper_case_globals)]
-pub const pdPASS: BaseType = 0;
+pub const pdFALSE: BaseType = 0;
 #[allow(non_upper_case_globals)]
 pub const pdTRUE: BaseType = 1;
 #[allow(non_upper_case_globals)]
-pub const pdFALSE: BaseType = 1;
+pub const pdPASS: BaseType = pdTRUE;
+#[allow(non_upper_case_globals)]
+pub const pdFAIL: BaseType = pdFALSE;
 #[allow(non_upper_case_globals)]
 pub const tskDEFAULT_INDEX_TO_NOTIFY: UBaseType = 0;
+#[allow(non_upper_case_globals)]
+pub const semBINARY_SEMAPHORE_QUEUE_LENGTH: u8 = 1;
+#[allow(non_upper_case_globals)]
+pub const semSEMAPHORE_QUEUE_ITEM_LENGTH: u8 = 0;
+#[allow(non_upper_case_globals)]
+pub const semGIVE_BLOCK_TIME: TickType = 0;
+#[allow(non_upper_case_globals)]
+pub const queueSEND_TO_BACK: BaseType = 0;
+#[allow(non_upper_case_globals)]
+pub const queueSEND_TO_FRONT: BaseType = 1;
+#[allow(non_upper_case_globals)]
+pub const queueOVERWRITE: BaseType = 2;
+
 
 #[allow(non_snake_case)]
 #[repr(C)]
@@ -192,6 +207,44 @@ unsafe extern "C" {
     pub fn xEventGroupGetBitsFromISR(xEventGroup: EventGroupHandle) -> EventBits;
 
     pub fn xEventGroupCreate() -> EventGroupHandle;
+
+    pub fn osal_rs_critical_section_enter();
+
+    pub fn osal_rs_critical_section_exit();
+
+    pub fn osal_rs_port_yield_from_isr(pxHigherPriorityTaskWoken: BaseType);
+
+    pub fn osal_rs_port_end_switching_isr( xSwitchRequired: BaseType );
+
+    pub fn xQueueCreateMutex(ucQueueType: u8) -> QueueHandle;
+    
+    pub fn xQueueCreateCountingSemaphore(
+        uxMaxCount: UBaseType,
+        uxInitialCount: UBaseType,
+    ) -> QueueHandle;
+
+    pub fn xQueueSemaphoreTake(xQueue: QueueHandle, xTicksToWait: TickType) -> BaseType;
+
+    pub fn xQueueReceiveFromISR(
+        xQueue: QueueHandle,
+        pvBuffer: *mut c_void,
+        pxHigherPriorityTaskWoken: *mut BaseType,
+    ) -> BaseType;
+
+    pub fn xQueueGenericSend(
+        xQueue: QueueHandle,
+        pvItemToQueue: *const c_void,
+        xTicksToWait: TickType,
+        xCopyPosition: BaseType,
+    ) -> BaseType;
+
+    pub fn xQueueGiveFromISR(
+        xQueue: QueueHandle,
+        pxHigherPriorityTaskWoken: *mut BaseType,
+    ) -> BaseType;
+
+     pub fn vQueueDelete(xQueue: QueueHandle);
+
 }
 
 #[macro_export]
@@ -285,6 +338,78 @@ macro_rules! xEventGroupGetBits {
     ($xEventGroup:expr) => {
         unsafe {
             $crate::freertos::ffi::xEventGroupClearBits($xEventGroup, 0)
+        }
+    };
+}
+
+#[macro_export]
+macro_rules! xSemaphoreCreateCounting {
+    ($uxMaxCount:expr, $uxInitialCount:expr) => {
+        unsafe {
+            $crate::freertos::ffi::xQueueCreateCountingSemaphore(
+                $uxMaxCount,
+                $uxInitialCount
+            )
+        }
+    };
+}
+
+#[macro_export]
+macro_rules! xSemaphoreTake {
+    ($xSemaphore:expr, $xBlockTime:expr) => {
+        unsafe {
+            $crate::freertos::ffi::xQueueSemaphoreTake(
+                $xSemaphore,
+                $xBlockTime
+            )
+        }
+    };
+}
+
+#[macro_export]
+macro_rules! xSemaphoreTakeFromISR {
+    ($xSemaphore:expr, $pxHigherPriorityTaskWoken:expr) => {
+        unsafe {
+            $crate::freertos::ffi::xQueueReceiveFromISR(
+                $xSemaphore,
+                core::ptr::null_mut(),
+                $pxHigherPriorityTaskWoken
+            )
+        }
+    };
+}
+
+#[macro_export]
+macro_rules! xSemaphoreGive {
+    ($xSemaphore:expr) => {
+        unsafe {
+            $crate::freertos::ffi::xQueueGenericSend(
+                $xSemaphore,
+                core::ptr::null(),
+                $crate::freertos::ffi::semGIVE_BLOCK_TIME,
+                $crate::freertos::ffi::queueSEND_TO_BACK
+            )
+        }
+    };
+}
+
+#[macro_export]
+macro_rules! xSemaphoreGiveFromISR {
+    ($xSemaphore:expr, $pxHigherPriorityTaskWoken:expr) => {
+        unsafe {
+            $crate::freertos::ffi::xQueueGiveFromISR(
+                $xSemaphore,
+                $pxHigherPriorityTaskWoken
+            )
+        }
+    };
+}
+
+#[macro_export]
+macro_rules! vSemaphoreDelete {
+    ($xSemaphore:expr) => {
+        unsafe {
+            $crate::freertos::ffi::vQueueDelete($xSemaphore)
         }
     };
 }

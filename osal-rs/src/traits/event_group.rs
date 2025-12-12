@@ -1,16 +1,15 @@
-
-use crate::os::types::{BaseType, EventBits};
 use crate::utils::Result;
+use crate::os::types::EventBits;
 use super::ToTick;
 
 pub trait EventGroup {
-    fn new() -> Self 
+    fn new() -> Result<Self> 
     where 
         Self: Sized;
 
     fn set(&mut self, bits: EventBits) -> EventBits;
 
-    fn set_from_isr(&mut self, bits: EventBits, higher_priority_task_woken: &mut BaseType) -> Result<()>;
+    fn set_from_isr(&mut self, bits: EventBits) -> Result<()>;
 
     fn get(&self) -> EventBits;
 

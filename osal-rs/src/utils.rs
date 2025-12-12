@@ -13,6 +13,12 @@ pub enum Error {
     Unhandled(&'static str)
 }
 
+#[derive(PartialEq, Eq, Clone, Copy, Debug)]
+pub enum CpuRegisterSize {
+    Bit64,
+    Bit32
+}
+
 pub type Result<T, E = Error> = core::result::Result<T, E>;
 
 
@@ -39,4 +45,12 @@ macro_rules! to_c_str {
     ($s:expr) => {
         alloc::ffi::CString::new($s.as_str()).unwrap().as_ptr()
     };
+}
+
+pub const fn register_bit_size() -> CpuRegisterSize {
+    if size_of::<usize>() == 8 {
+        CpuRegisterSize::Bit64
+    } else {
+        CpuRegisterSize::Bit32
+    }
 }

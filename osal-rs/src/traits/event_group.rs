@@ -21,4 +21,5 @@ pub trait EventGroup {
 
     fn wait(&mut self, mask: EventBits, timeout_ticks: impl ToTick) -> EventBits;
 
+    fn delete(&mut self);
 }

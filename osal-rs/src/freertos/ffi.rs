@@ -39,6 +39,18 @@ pub const queueSEND_TO_BACK: BaseType = 0;
 pub const queueSEND_TO_FRONT: BaseType = 1;
 #[allow(non_upper_case_globals)]
 pub const queueOVERWRITE: BaseType = 2;
+#[allow(non_upper_case_globals)]
+pub const queueQUEUE_TYPE_BASE: u8 = 0;
+#[allow(non_upper_case_globals)]
+pub const queueQUEUE_TYPE_MUTEX: u8 = 1;
+#[allow(non_upper_case_globals)]
+pub const queueQUEUE_TYPE_COUNTING_SEMAPHORE: u8 = 2;
+#[allow(non_upper_case_globals)]
+pub const queueQUEUE_TYPE_BINARY_SEMAPHORE: u8 = 3;
+#[allow(non_upper_case_globals)]
+pub const queueQUEUE_TYPE_RECURSIVE_MUTEX: u8 = 4;
+#[allow(non_upper_case_globals)]
+pub const queueQUEUE_TYPE_SET: u8 = 5;
 
 
 #[allow(non_snake_case)]
@@ -206,6 +218,8 @@ unsafe extern "C" {
 
     pub fn xEventGroupGetBitsFromISR(xEventGroup: EventGroupHandle) -> EventBits;
 
+    pub fn vEventGroupDelete(xEventGroup: EventGroupHandle);
+
     pub fn xEventGroupCreate() -> EventGroupHandle;
 
     pub fn osal_rs_critical_section_enter();
@@ -245,6 +259,24 @@ unsafe extern "C" {
 
      pub fn vQueueDelete(xQueue: QueueHandle);
 
+    pub fn xQueueGenericCreate(
+        uxQueueLength: UBaseType,
+        uxItemSize: UBaseType,
+        ucQueueType: u8,
+    ) -> QueueHandle;
+
+    pub fn xQueueReceive(
+        xQueue: QueueHandle,
+        pvBuffer: *mut c_void,
+        xTicksToWait: TickType,
+    ) -> BaseType;
+
+    pub fn xQueueGenericSendFromISR(
+        xQueue: QueueHandle,
+        pvItemToQueue: *const c_void,
+        pxHigherPriorityTaskWoken: *mut BaseType,
+        xCopyPosition: BaseType,
+    ) -> BaseType;
 }
 
 #[macro_export]
@@ -410,6 +442,47 @@ macro_rules! vSemaphoreDelete {
     ($xSemaphore:expr) => {
         unsafe {
             $crate::freertos::ffi::vQueueDelete($xSemaphore)
+        }
+    };
+}
+
+#[macro_export]
+macro_rules! xQueueCreate {
+    ($uxQueueLength:expr, $uxItemSize:expr) => {
+        unsafe {
+            $crate::freertos::ffi::xQueueGenericCreate(
+                $uxQueueLength,
+                $uxItemSize,
+                $crate::freertos::ffi::queueQUEUE_TYPE_BASE
+            )
+        }
+    };
+}
+
+#[macro_export]
+macro_rules! xQueueSendToBackFromISR {
+    ($xQueue:expr, $pvItemToQueue:expr, $pxHigherPriorityTaskWoken:expr) => {
+        unsafe {
+            $crate::freertos::ffi::xQueueGenericSendFromISR(
+                $xQueue,
+                $pvItemToQueue,
+                $pxHigherPriorityTaskWoken,
+                $crate::freertos::ffi::queueSEND_TO_BACK
+            )
+        }
+    };
+}
+
+#[macro_export]
+macro_rules! xQueueSendToBack {
+    ($xQueue:expr, $pvItemToQueue:expr, $xTicksToWait:expr) => {
+        unsafe {
+            $crate::freertos::ffi::xQueueGenericSend(
+                $xQueue,
+                $pvItemToQueue,
+                $xTicksToWait,
+                $crate::freertos::ffi::queueSEND_TO_BACK
+            )
         }
     };
 }

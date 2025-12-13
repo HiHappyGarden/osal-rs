@@ -3,10 +3,8 @@ use core::ops::{Deref, DerefMut};
 use core::marker::PhantomData;
 
 use crate::freertos::ffi::{MutexHandle, osal_rs_port_yield_from_isr, pdFALSE, pdTRUE};
-use crate::freertos::types::OsalRsBool;
-use crate::freertos::types::MAX_DELAY;
 use crate::traits::{MutexGuardFn, RawMutexFn, MutexFn, ToTick};
-use crate::utils::{Result, Error};
+use crate::utils::{Result, Error, OsalRsBool, MAX_DELAY};
 use crate::{vSemaphoreDelete, xSemaphoreCreateRecursiveMutex, xSemaphoreGiveFromISR, xSemaphoreGiveRecursive, xSemaphoreTake, xSemaphoreTakeFromISR};
 
 pub struct Mutex<T: ?Sized> {

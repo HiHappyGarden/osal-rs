@@ -1,4 +1,5 @@
 use core::time::Duration;
+
 use crate::traits::{ToTick, FromTick};
 use crate::freertos::config::TICK_RATE_HZ;
 use crate::freertos::types::TickType;

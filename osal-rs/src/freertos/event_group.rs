@@ -1,4 +1,7 @@
-use crate::freertos::ffi::{EventGroupHandle, osal_rs_port_yield_from_isr, pdFAIL, pdFALSE, xEventGroupClearBits, xEventGroupClearBitsFromISR, xEventGroupCreate, xEventGroupGetBitsFromISR, xEventGroupSetBits, xEventGroupSetBitsFromISR};
+use core::ops::Deref;
+use core::ptr::null_mut;
+
+use crate::freertos::ffi::{EventGroupHandle, osal_rs_port_yield_from_isr, pdFAIL, pdFALSE, vEventGroupDelete, xEventGroupClearBits, xEventGroupClearBitsFromISR, xEventGroupCreate, xEventGroupGetBitsFromISR, xEventGroupSetBits, xEventGroupSetBitsFromISR};
 use crate::traits::{ToTick, EventGroupFn};
 use crate::freertos::types::{BaseType, EventBits};
 use crate::utils::{Result, Error};
@@ -71,5 +74,29 @@ impl EventGroupFn for EventGroup {
                 timeout_ticks.to_tick(),
             )
         }
+    }
+
+    fn delete(&mut self) {
+        unsafe {
+            vEventGroupDelete(self.0);
+            self.0 = null_mut();
+        }
+    }
+}
+
+impl Drop for EventGroup {
+    fn drop(&mut self) {
+        if self.0.is_null() {
+            return;
+        }
+        self.delete();
+    }
+}
+
+impl Deref for EventGroup {
+    type Target = EventGroupHandle;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
     }
 }

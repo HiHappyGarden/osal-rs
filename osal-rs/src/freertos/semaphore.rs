@@ -1,3 +1,5 @@
+use core::ops::Deref;
+use core::ptr::null_mut;
 use crate::freertos::ffi::{SemaphoreHandle, osal_rs_port_yield_from_isr, pdFAIL, pdFALSE};
 use crate::traits::ToTick;
 use crate::freertos::types::{BaseType, OsalRsBool, UBaseType};
@@ -73,7 +75,26 @@ impl SemaphoreFn for Semaphore {
     
     fn delete(&mut self) {
         vSemaphoreDelete!(self.0);
+        self.0 = null_mut();
     }
 
 
+}
+
+
+impl Drop for Semaphore {
+    fn drop(&mut self) {
+        if self.0.is_null() {
+            return;
+        }
+        self.delete();
+    }
+}
+
+impl Deref for Semaphore {
+    type Target = SemaphoreHandle;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
 }

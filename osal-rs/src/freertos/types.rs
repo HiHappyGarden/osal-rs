@@ -1,6 +1,5 @@
-use core::{ffi::c_void, time::Duration};
-
-use crate::os::ToTick;
+use core::ffi::c_void; 
+use core::time::Duration;
 
 include!(concat!(env!("OUT_DIR"), "/types_generated.rs"));    
 

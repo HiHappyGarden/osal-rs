@@ -4,6 +4,7 @@ pub enum Error {
     QueueSendTimeout,
     QueueReceiveTimeout,
     MutexTimeout,
+    MutexLockFailed,
     Timeout,
     QueueFull,
     StringConversionError,

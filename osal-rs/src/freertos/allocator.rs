@@ -1,7 +1,7 @@
 use core::ffi::c_void;
-use crate::freertos::ffi::{pvPortMalloc, vPortFree};
 use core::{alloc::{GlobalAlloc, Layout}};
 
+use crate::freertos::ffi::{pvPortMalloc, vPortFree};
 
 pub struct FreeRTOSAllocator;
 

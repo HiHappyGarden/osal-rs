@@ -1,3 +1,5 @@
+use core::time::Duration;
+
 
 pub enum Error {
     OutOfMemory,
@@ -19,6 +21,15 @@ pub enum CpuRegisterSize {
     Bit64,
     Bit32
 }
+
+#[derive(PartialEq, Eq, Clone, Copy, Debug)]
+#[repr(u8)]
+pub enum OsalRsBool {
+    False = 1,
+    True = 0
+}
+
+pub const MAX_DELAY: Duration = Duration::from_millis(usize::MAX as u64);
 
 pub type Result<T, E = Error> = core::result::Result<T, E>;
 

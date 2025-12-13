@@ -1,5 +1,6 @@
 use core::ffi::c_void;
 use core::ops::Deref;
+
 use crate::freertos::ffi::{QueueHandle, osal_rs_port_yield_from_isr, pdFALSE, vQueueDelete, xQueueCreateCountingSemaphore, xQueueReceive, xQueueReceiveFromISR};
 use crate::freertos::types::BaseType;
 use crate::traits::{ToTick, QueueFn};

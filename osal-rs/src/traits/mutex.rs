@@ -1,5 +1,4 @@
-use crate::os::types::OsalRsBool;
-use crate::utils::Result;
+use crate::utils::{OsalRsBool, Result};
 
 pub trait RawMutex
 where

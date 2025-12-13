@@ -1,10 +1,11 @@
 use core::ops::Deref;
 use core::ptr::null_mut;
+
 use crate::freertos::ffi::{SemaphoreHandle, osal_rs_port_yield_from_isr, pdFAIL, pdFALSE};
 use crate::traits::ToTick;
-use crate::freertos::types::{BaseType, OsalRsBool, UBaseType};
+use crate::freertos::types::{BaseType, UBaseType};
 use crate::traits::SemaphoreFn;
-use crate::utils::{Error, Result};
+use crate::utils::{Error, Result, OsalRsBool};
 use crate::{vSemaphoreDelete, xSemaphoreCreateCounting, xSemaphoreGive, xSemaphoreGiveFromISR, xSemaphoreTake, xSemaphoreTakeFromISR};
 
 pub struct Semaphore (SemaphoreHandle);

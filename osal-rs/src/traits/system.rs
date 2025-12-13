@@ -1,8 +1,9 @@
 use core::time::Duration;
 
-use crate::os::types::{BaseType, OsalRsBool, TickType};
+use crate::os::types::{BaseType, TickType};
 use crate::os::{ThreadState, ToTick};
 use crate::os::SystemState;
+use crate::utils::OsalRsBool;
 
 pub trait System {
     fn start();

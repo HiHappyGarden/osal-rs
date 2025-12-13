@@ -7,19 +7,19 @@ pub trait EventGroup {
     where 
         Self: Sized;
 
-    fn set(&mut self, bits: EventBits) -> EventBits;
+    fn set(&self, bits: EventBits) -> EventBits;
 
-    fn set_from_isr(&mut self, bits: EventBits) -> Result<()>;
+    fn set_from_isr(&self, bits: EventBits) -> Result<()>;
 
     fn get(&self) -> EventBits;
 
     fn get_from_isr(&self) -> EventBits;
 
-    fn clear(&mut self, bits: EventBits) -> EventBits;
+    fn clear(&self, bits: EventBits) -> EventBits;
+    
+    fn clear_from_isr(&self, bits: EventBits) -> Result<()>;
 
-    fn clear_from_isr(&mut self, bits: EventBits) -> Result<()>;
-
-    fn wait(&mut self, mask: EventBits, timeout_ticks: impl ToTick) -> EventBits;
+    fn wait(&self, mask: EventBits, timeout_ticks: impl ToTick) -> EventBits;
 
     fn delete(&mut self);
 }

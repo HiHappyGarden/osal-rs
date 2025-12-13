@@ -22,11 +22,11 @@ impl EventGroupFn for EventGroup {
         }
     }
 
-    fn set(&mut self, bits: EventBits) -> EventBits {
+    fn set(&self, bits: EventBits) -> EventBits {
         unsafe { xEventGroupSetBits(self.0, bits) }
     }
 
-    fn set_from_isr(&mut self, bits: EventBits) -> Result<()> {
+    fn set_from_isr(&self, bits: EventBits) -> Result<()> {
 
         let mut higher_priority_task_woken: BaseType = pdFALSE;
 
@@ -51,11 +51,11 @@ impl EventGroupFn for EventGroup {
     }
 
 
-    fn clear(&mut self, bits: EventBits) -> EventBits {
+    fn clear(&self, bits: EventBits) -> EventBits {
         unsafe { xEventGroupClearBits(self.0, bits) }
     }
 
-    fn clear_from_isr(&mut self, bits: EventBits) -> Result<()> {
+    fn clear_from_isr(&self, bits: EventBits) -> Result<()> {
         let ret = unsafe { xEventGroupClearBitsFromISR(self.0, bits) };
         if ret != pdFAIL {
             Ok(())
@@ -64,7 +64,7 @@ impl EventGroupFn for EventGroup {
         }
     }
 
-    fn wait(&mut self, mask: EventBits, timeout_ticks: impl ToTick) -> EventBits {
+    fn wait(&self, mask: EventBits, timeout_ticks: impl ToTick) -> EventBits {
         unsafe {
             crate::freertos::ffi::xEventGroupWaitBits(
                 self.0,

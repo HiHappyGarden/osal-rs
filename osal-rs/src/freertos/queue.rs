@@ -21,7 +21,7 @@ impl QueueFn for Queue {
         }
     }
 
-    fn fetch(&mut self, buffer: &mut [u8], time: impl ToTick) -> Result<()> {
+    fn fetch(&self, buffer: &mut [u8], time: impl ToTick) -> Result<()> {
         let ret = unsafe {
             xQueueReceive(
                 self.0,
@@ -36,7 +36,7 @@ impl QueueFn for Queue {
         }
     }
 
-    fn fetch_from_isr(&mut self, buffer: &mut [u8]) -> Result<()> {
+    fn fetch_from_isr(&self, buffer: &mut [u8]) -> Result<()> {
 
         let mut task_woken_by_receive: BaseType = pdFALSE;
 
@@ -59,7 +59,7 @@ impl QueueFn for Queue {
         }
     }
 
-    fn post(&mut self, item: &[u8], time: impl ToTick) -> Result<()> {
+    fn post(&self, item: &[u8], time: impl ToTick) -> Result<()> {
         let ret = xQueueSendToBack!(
                             self.0,
                             item.as_ptr() as *const c_void,
@@ -73,7 +73,7 @@ impl QueueFn for Queue {
         }
     }
 
-    fn post_from_isr(&mut self, item: &[u8]) -> Result<()> {
+    fn post_from_isr(&self, item: &[u8]) -> Result<()> {
 
         let mut task_woken_by_receive: BaseType = pdFALSE;
 

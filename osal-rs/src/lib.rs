@@ -24,6 +24,10 @@ use crate::freertos as osal;
 use crate::posix as osal;
 
 pub mod os {
+    pub use crate::osal::event_group::*;
+    pub use crate::osal::mutex::*;
+    pub use crate::osal::queue::*;
+    pub use crate::osal::semaphore::*;
     pub use crate::osal::system::*;
     pub use crate::osal::thread::*;
     pub use crate::traits::*;

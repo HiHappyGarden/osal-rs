@@ -9,13 +9,13 @@ pub trait Queue {
     where 
         Self: Sized;
 
-    fn fetch(&mut self, buffer: &mut [u8], time: impl ToTick) -> Result<()>;
+    fn fetch(&self, buffer: &mut [u8], time: impl ToTick) -> Result<()>;
 
-    fn fetch_from_isr(&mut self, buffer: &mut [u8]) -> Result<()>;
+    fn fetch_from_isr(&self, buffer: &mut [u8]) -> Result<()>;
     
-    fn post(&mut self, item: &[u8], time: impl ToTick) -> Result<()>;
+    fn post(&self, item: &[u8], time: impl ToTick) -> Result<()>;
 
-    fn post_from_isr(&mut self, item: &[u8]) -> Result<()>;
+    fn post_from_isr(&self, item: &[u8]) -> Result<()>;
 
     fn delete(&mut self);
 }

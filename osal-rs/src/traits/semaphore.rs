@@ -13,13 +13,13 @@ pub trait Semaphore {
     where 
         Self: Sized;
 
-    fn wait(&mut self, ticks_to_wait: impl ToTick) -> OsalRsBool;
+    fn wait(&self, ticks_to_wait: impl ToTick) -> OsalRsBool;
 
-    fn wait_from_isr(&mut self) -> OsalRsBool;
+    fn wait_from_isr(&self) -> OsalRsBool;
 
-    fn signal(&mut self) -> OsalRsBool;
+    fn signal(&self) -> OsalRsBool;
     
-    fn signal_from_isr(&mut self) -> OsalRsBool;
+    fn signal_from_isr(&self) -> OsalRsBool;
     
     fn delete(&mut self);
 

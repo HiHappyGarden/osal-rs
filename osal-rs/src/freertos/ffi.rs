@@ -7,6 +7,7 @@ pub type QueueHandle = *const c_void;
 pub type SemaphoreHandle = *const c_void;
 pub type EventGroupHandle = *const c_void;
 pub type TimerHandle = *const c_void;
+pub type MutexHandle = *const c_void;
 pub type TimerCallback = *const c_void;
 pub type TaskState = c_uint;
 
@@ -277,6 +278,10 @@ unsafe extern "C" {
         pxHigherPriorityTaskWoken: *mut BaseType,
         xCopyPosition: BaseType,
     ) -> BaseType;
+
+    pub fn xQueueTakeMutexRecursive(xMutex: QueueHandle, xTicksToWait: TickType) -> BaseType;
+
+    pub fn xQueueGiveMutexRecursive(xMutex: QueueHandle) -> BaseType;
 }
 
 #[macro_export]
@@ -483,6 +488,38 @@ macro_rules! xQueueSendToBack {
                 $xTicksToWait,
                 $crate::freertos::ffi::queueSEND_TO_BACK
             )
+        }
+    };
+}
+
+#[macro_export]
+macro_rules! xSemaphoreCreateRecursiveMutex {
+    () => {
+        unsafe {
+            $crate::freertos::ffi::xQueueCreateMutex(
+                $crate::freertos::ffi::queueQUEUE_TYPE_RECURSIVE_MUTEX
+            )
+        }
+    };
+}
+
+#[macro_export]
+macro_rules! xSemaphoreTakeRecursive {
+    ($xMutex:expr, $xBlockTime:expr) => {
+        unsafe {
+            $crate::freertos::ffi::xQueueTakeMutexRecursive(
+                $xMutex,
+                $xBlockTime
+            )
+        }
+    };
+}
+
+#[macro_export]
+macro_rules! xSemaphoreGiveRecursive {
+    ($xMutex:expr) => {
+        unsafe {
+            $crate::freertos::ffi::xQueueGiveMutexRecursive($xMutex)
         }
     };
 }

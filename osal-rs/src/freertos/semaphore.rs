@@ -32,7 +32,7 @@ impl SemaphoreFn for Semaphore {
         }
     }
 
-    fn wait(&mut self, ticks_to_wait: impl ToTick) -> OsalRsBool {
+    fn wait(&self, ticks_to_wait: impl ToTick) -> OsalRsBool {
         if xSemaphoreTake!(self.0, ticks_to_wait.to_tick()) != pdFAIL {
             OsalRsBool::True
         } else {
@@ -40,7 +40,7 @@ impl SemaphoreFn for Semaphore {
         }
     }
 
-    fn wait_from_isr(&mut self) -> OsalRsBool {
+    fn wait_from_isr(&self) -> OsalRsBool {
         let mut higher_priority_task_woken: BaseType = pdFALSE;
         if xSemaphoreTakeFromISR!(self.0, &mut higher_priority_task_woken) != pdFAIL {
             unsafe {
@@ -53,7 +53,7 @@ impl SemaphoreFn for Semaphore {
         }
     }
     
-    fn signal(&mut self) -> OsalRsBool {
+    fn signal(&self) -> OsalRsBool {
         if xSemaphoreGive!(self.0) != pdFAIL {
             OsalRsBool::True
         } else {
@@ -61,7 +61,7 @@ impl SemaphoreFn for Semaphore {
         }
     }
     
-    fn signal_from_isr(&mut self) -> OsalRsBool {
+    fn signal_from_isr(&self) -> OsalRsBool {
         let mut higher_priority_task_woken: BaseType = pdFALSE;
         if xSemaphoreGiveFromISR!(self.0, &mut higher_priority_task_woken) != pdFAIL {
             unsafe {

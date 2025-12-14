@@ -1,7 +1,8 @@
 use core::ops::Deref;
 use core::ptr::null_mut;
 
-use crate::freertos::ffi::{EventGroupHandle, osal_rs_port_yield_from_isr, pdFAIL, pdFALSE, vEventGroupDelete, xEventGroupClearBits, xEventGroupClearBitsFromISR, xEventGroupCreate, xEventGroupGetBitsFromISR, xEventGroupSetBits, xEventGroupSetBitsFromISR};
+use crate::freertos::ffi::{EventGroupHandle, pdFAIL, pdFALSE, vEventGroupDelete, xEventGroupClearBits, xEventGroupClearBitsFromISR, xEventGroupCreate, xEventGroupGetBitsFromISR, xEventGroupSetBits, xEventGroupSetBitsFromISR};
+use crate::os::{System, SystemFn};
 use crate::traits::{ToTick, EventGroupFn};
 use crate::freertos::types::{BaseType, EventBits};
 use crate::utils::{Result, Error};
@@ -32,9 +33,8 @@ impl EventGroupFn for EventGroup {
 
         let ret = unsafe { xEventGroupSetBitsFromISR(self.0, bits, &mut higher_priority_task_woken) };
         if ret != pdFAIL {
-            unsafe {
-                osal_rs_port_yield_from_isr(higher_priority_task_woken);   
-            }
+
+            System::yield_from_isr(higher_priority_task_woken);
             
             Ok(())
         } else {

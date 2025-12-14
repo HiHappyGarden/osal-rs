@@ -23,4 +23,5 @@ pub trait System {
     fn check_timer(timestamp: &Duration, time: &Duration) -> OsalRsBool;
     fn yield_from_isr(higher_priority_task_woken: BaseType);
     fn end_switching_isr( switch_required: BaseType );
+    fn get_free_heap_size() -> usize;
 }

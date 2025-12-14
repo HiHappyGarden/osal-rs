@@ -283,6 +283,8 @@ unsafe extern "C" {
     pub fn xQueueTakeMutexRecursive(xMutex: QueueHandle, xTicksToWait: TickType) -> BaseType;
 
     pub fn xQueueGiveMutexRecursive(xMutex: QueueHandle) -> BaseType;
+
+    pub fn xPortGetFreeHeapSize() -> usize;
 }
 
 #[macro_export]

@@ -8,7 +8,7 @@ use alloc::vec::Vec;
 use crate::tick_period_ms;
 use crate::traits::{SystemFn, ToTick};
 use crate::freertos::ffi::{
-    BLOCKED, DELETED, READY, RUNNING, SUSPENDED, TaskStatus, eTaskGetState, osal_rs_port_end_switching_isr, osal_rs_critical_section_enter, osal_rs_critical_section_exit, osal_rs_port_yield_from_isr, uxTaskGetNumberOfTasks, uxTaskGetSystemState, vTaskDelay, vTaskEndScheduler, vTaskStartScheduler, vTaskSuspendAll, xTaskDelayUntil, xTaskGetCurrentTaskHandle, xTaskGetTickCount, xTaskResumeAll
+    BLOCKED, DELETED, READY, RUNNING, SUSPENDED, TaskStatus, eTaskGetState, osal_rs_critical_section_enter, osal_rs_critical_section_exit, osal_rs_port_end_switching_isr, osal_rs_port_yield_from_isr, uxTaskGetNumberOfTasks, uxTaskGetSystemState, vTaskDelay, vTaskEndScheduler, vTaskStartScheduler, vTaskSuspendAll, xPortGetFreeHeapSize, xTaskDelayUntil, xTaskGetCurrentTaskHandle, xTaskGetTickCount, xTaskResumeAll
 };
 use crate::freertos::thread::{ThreadState, ThreadMetadata};
 use crate::freertos::types::{BaseType, TickType, UBaseType};
@@ -174,6 +174,12 @@ impl SystemFn for System {
     fn end_switching_isr( switch_required: BaseType ) {
         unsafe {
             osal_rs_port_end_switching_isr( switch_required );
+        }
+    }
+
+    fn get_free_heap_size() -> usize {
+        unsafe {
+            xPortGetFreeHeapSize()
         }
     }
 

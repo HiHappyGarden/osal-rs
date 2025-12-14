@@ -2,7 +2,9 @@ use core::cell::UnsafeCell;
 use core::ops::{Deref, DerefMut};
 use core::marker::PhantomData;
 
-use crate::freertos::ffi::{MutexHandle, osal_rs_port_yield_from_isr, pdFALSE, pdTRUE};
+use crate::freertos::ffi::{MutexHandle, pdFALSE, pdTRUE};
+use crate::freertos::system::System;
+use crate::traits::SystemFn;
 use crate::traits::{MutexGuardFn, RawMutexFn, MutexFn, ToTick};
 use crate::utils::{Result, Error, OsalRsBool, MAX_DELAY};
 use crate::{vSemaphoreDelete, xSemaphoreCreateRecursiveMutex, xSemaphoreGiveFromISR, xSemaphoreGiveRecursive, xSemaphoreTake, xSemaphoreTakeFromISR};
@@ -37,9 +39,9 @@ impl RawMutexFn for RawMutex {
         let mut higher_priority_task_woken = pdFALSE;
         let res = xSemaphoreTakeFromISR!(self.0, &mut higher_priority_task_woken);
         if res == pdTRUE {
-            unsafe {
-                osal_rs_port_yield_from_isr(higher_priority_task_woken);
-            }
+
+            System::yield_from_isr(higher_priority_task_woken);
+
             OsalRsBool::True
         } else {
             OsalRsBool::False
@@ -60,9 +62,9 @@ impl RawMutexFn for RawMutex {
         let mut higher_priority_task_woken = pdFALSE;
         let res = xSemaphoreGiveFromISR!(self.0, &mut higher_priority_task_woken);
         if res == pdTRUE {
-            unsafe {
-                osal_rs_port_yield_from_isr(higher_priority_task_woken);
-            }
+            
+            System::yield_from_isr(higher_priority_task_woken);
+            
             OsalRsBool::True
         } else {
             OsalRsBool::False

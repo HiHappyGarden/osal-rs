@@ -1,9 +1,10 @@
 use core::ffi::c_void;
 use core::ops::Deref;
 
-use crate::freertos::ffi::{QueueHandle, osal_rs_port_yield_from_isr, pdFALSE, vQueueDelete, xQueueCreateCountingSemaphore, xQueueReceive, xQueueReceiveFromISR};
+use crate::freertos::ffi::{QueueHandle, pdFALSE, vQueueDelete, xQueueCreateCountingSemaphore, xQueueReceive, xQueueReceiveFromISR};
 use crate::freertos::types::BaseType;
-use crate::traits::{ToTick, QueueFn};
+use crate::freertos::system::System;
+use crate::traits::{ToTick, QueueFn, SystemFn};
 use crate::utils::{Result, Error};
 use crate::{xQueueSendToBack, xQueueSendToBackFromISR};
 
@@ -54,9 +55,7 @@ impl QueueFn for Queue {
             Err(Error::Timeout)
         } else {
 
-            unsafe {
-                osal_rs_port_yield_from_isr(task_woken_by_receive);
-            }
+            System::yield_from_isr(task_woken_by_receive);
             
             Ok(())
         }
@@ -89,9 +88,7 @@ impl QueueFn for Queue {
         if ret == 0 {
             Err(Error::Timeout)
         } else {
-            unsafe {
-                osal_rs_port_yield_from_isr(task_woken_by_receive);
-            }
+            System::yield_from_isr(task_woken_by_receive);
 
             Ok(())
         }

@@ -1,10 +1,11 @@
 use core::ops::Deref;
 use core::ptr::null_mut;
 
-use crate::freertos::ffi::{SemaphoreHandle, osal_rs_port_yield_from_isr, pdFAIL, pdFALSE};
+use crate::freertos::ffi::{SemaphoreHandle, pdFAIL, pdFALSE};
+use crate::freertos::system::System;
 use crate::traits::ToTick;
 use crate::freertos::types::{BaseType, UBaseType};
-use crate::traits::SemaphoreFn;
+use crate::traits::{SemaphoreFn, SystemFn};
 use crate::utils::{Error, Result, OsalRsBool};
 use crate::{vSemaphoreDelete, xSemaphoreCreateCounting, xSemaphoreGive, xSemaphoreGiveFromISR, xSemaphoreTake, xSemaphoreTakeFromISR};
 
@@ -44,9 +45,9 @@ impl SemaphoreFn for Semaphore {
     fn wait_from_isr(&self) -> OsalRsBool {
         let mut higher_priority_task_woken: BaseType = pdFALSE;
         if xSemaphoreTakeFromISR!(self.0, &mut higher_priority_task_woken) != pdFAIL {
-            unsafe {
-                osal_rs_port_yield_from_isr(higher_priority_task_woken);   
-            }
+
+            System::yield_from_isr(higher_priority_task_woken);
+
             OsalRsBool::True
         } else {
 
@@ -65,9 +66,9 @@ impl SemaphoreFn for Semaphore {
     fn signal_from_isr(&self) -> OsalRsBool {
         let mut higher_priority_task_woken: BaseType = pdFALSE;
         if xSemaphoreGiveFromISR!(self.0, &mut higher_priority_task_woken) != pdFAIL {
-            unsafe {
-                osal_rs_port_yield_from_isr(higher_priority_task_woken);   
-            }
+            
+            System::yield_from_isr(higher_priority_task_woken);
+
             OsalRsBool::True
         } else {
             OsalRsBool::False

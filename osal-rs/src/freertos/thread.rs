@@ -53,7 +53,7 @@ impl From<(ThreadHandle,TaskStatus)> for ThreadMetadata {
         ThreadMetadata {
             thread: status.0,
             name: from_c_str!(status.1.pcTaskName),
-            stack_depth: unsafe {*status.1.pxStackBase},
+            stack_depth: unsafe {if (status.1.pxStackBase).is_null() { 0 } else { *status.1.pxStackBase } },
             priority: status.1.uxBasePriority,
             thread_number: status.1.xTaskNumber,
             state,

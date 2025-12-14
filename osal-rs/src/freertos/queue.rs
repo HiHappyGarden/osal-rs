@@ -11,6 +11,8 @@ use crate::{xQueueSendToBack, xQueueSendToBackFromISR};
 
 pub struct Queue (QueueHandle);
 
+unsafe impl Send for Queue {}
+unsafe impl Sync for Queue {}
 
 impl QueueFn for Queue {
     fn new (size: super::types::UBaseType, message_size: super::types::UBaseType) -> Result<Self> {

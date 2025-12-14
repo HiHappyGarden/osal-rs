@@ -24,6 +24,8 @@ use crate::freertos as osal;
 use crate::posix as osal;
 
 pub mod os {
+    #[allow(unused_imports)]
+    pub use crate::osal::duration::*;
     pub use crate::osal::event_group::*;
     pub use crate::osal::mutex::*;
     pub use crate::osal::queue::*;

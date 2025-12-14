@@ -1,11 +1,13 @@
 use core::any::Any;
+use alloc::boxed::Box;
 use alloc::sync::Arc;
-use crate::os::{ThreadMetadata, ToTick};
-use crate::os::types::{BaseType, ConstPtr, DoublePtr, StackType, UBaseType};
+
+use crate::os::{ThreadMetadata};
+use crate::os::types::{BaseType, ConstPtr, DoublePtr, StackType, TickType, UBaseType};
 use crate::utils::Result;
 
 pub type ThreadParam = Option<Arc<dyn Any + Send + Sync>>;
-pub type ThreadFnPtr = dyn Fn(ThreadParam) -> Result<ThreadParam> + Send + Sync + 'static;
+pub type ThreadFnPtr = dyn Fn(Box<dyn Thread>, ThreadParam) -> Result<ThreadParam> + Send + Sync + 'static;
 
 #[derive(Debug, Copy, Clone)]
 pub enum ThreadNotification {
@@ -18,12 +20,13 @@ pub enum ThreadNotification {
 
 impl Into<(u32, u32)> for ThreadNotification {
     fn into(self) -> (u32, u32) {
+        use ThreadNotification::*;
         match self {
-            ThreadNotification::NoAction => (0, 0),
-            ThreadNotification::SetBits(bits) => (1, bits),
-            ThreadNotification::Increment => (2, 0),
-            ThreadNotification::SetValueWithOverwrite(value) => (3, value),
-            ThreadNotification::SetValueWithoutOverwrite(value) => (4, value),
+            NoAction => (0, 0),
+            SetBits(bits) => (1, bits),
+            Increment => (2, 0),
+            SetValueWithOverwrite(value) => (3, value),
+            SetValueWithoutOverwrite(value) => (4, value),
         }
     }
 }
@@ -31,7 +34,7 @@ impl Into<(u32, u32)> for ThreadNotification {
 pub trait Thread {
     fn new<F>(name: &str, stack_depth: StackType, priority: UBaseType, f: Option<F>) -> Self 
     where 
-        F: Fn(ThreadParam) -> Result<ThreadParam>,
+        F: Fn(Box<dyn Thread>, ThreadParam) -> Result<ThreadParam>,
         F: Send + Sync + 'static,
         Self: Sized;
 
@@ -51,7 +54,7 @@ pub trait Thread {
 
     fn join(&self, retval: DoublePtr) -> Result<i32>;
 
-    fn get_metadata(handle: ConstPtr) -> ThreadMetadata;
+    fn get_metadata(&self) -> ThreadMetadata;
 
     fn get_current() -> Self
     where 
@@ -61,7 +64,7 @@ pub trait Thread {
 
     fn notify_from_isr(&self, notification: ThreadNotification, higher_priority_task_woken: &mut BaseType) -> Result<()>;
 
-    fn wait_notification(&self, bits_to_clear_on_entry: u32, bits_to_clear_on_exit: u32 , timeout_ticks: impl ToTick) -> Result<u32>;
+    fn wait_notification(&self, bits_to_clear_on_entry: u32, bits_to_clear_on_exit: u32 , timeout_ticks: TickType) -> Result<u32>; //no ToTick here to maintain dynamic dispatch
 
 
 }

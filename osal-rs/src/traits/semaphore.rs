@@ -1,6 +1,7 @@
 use crate::os::types::UBaseType;
-use super::ToTick;
 use crate::utils::{OsalRsBool, Result};
+use super::ToTick;
+
 
 
 pub trait Semaphore {

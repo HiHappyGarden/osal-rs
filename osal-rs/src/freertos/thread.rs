@@ -8,9 +8,10 @@ use alloc::string::{String, ToString};
 use alloc::sync::Arc;
 
 use super::ffi::{INVALID, TaskStatus, ThreadHandle, pdPASS, pdTRUE, vTaskDelete, vTaskGetInfo, vTaskResume, vTaskSuspend, xTaskCreate, xTaskGetCurrentTaskHandle};
-use super::types::{StackType, UBaseType, BaseType, DoublePtr};
+use super::types::{StackType, UBaseType, BaseType, DoublePtr, TickType};
 use super::thread::ThreadState::*;
-use crate::traits::{ThreadFn, ThreadParam, ThreadFnPtr, ThreadNotification, ToTick};
+use super::system::System;
+use crate::traits::{ThreadFn, ThreadParam, ThreadFnPtr, ThreadNotification, SystemFn};
 use crate::utils::{Result, Error};
 use crate::{from_c_str, to_cstring, xTaskNotify, xTaskNotifyFromISR, xTaskNotifyWait};
 
@@ -88,8 +89,8 @@ unsafe extern "C" fn callback(param_ptr: *mut c_void) {
         .clone()
         .unwrap_or_else(|| Arc::new(()) as Arc<dyn Any + Send + Sync>);
 
-    if let Some(callback) = &boxed_thread.callback {
-        let _ = callback(Some(param_arc));
+    if let Some(callback) = &boxed_thread.callback.clone() {
+        let _ = callback(boxed_thread, Some(param_arc));
     }
 }
 
@@ -98,7 +99,7 @@ unsafe extern "C" fn callback(param_ptr: *mut c_void) {
 impl ThreadFn for Thread {
     fn new<F>(name: &str, stack_depth: StackType, priority: UBaseType, f: Option<F>) -> Self 
     where 
-        F: Fn(ThreadParam) -> Result<ThreadParam>,
+        F: Fn(Box<dyn ThreadFn>, ThreadParam) -> Result<ThreadParam>,
         F: Send + Sync + 'static
     {
         Self { 
@@ -187,17 +188,17 @@ impl ThreadFn for Thread {
         Ok(0)
     }
 
-    fn get_metadata(handle: ThreadHandle) -> ThreadMetadata {
+    fn get_metadata(&self) -> ThreadMetadata {
         let mut status = TaskStatus::default();
         unsafe {
-            vTaskGetInfo(handle, &mut status, pdTRUE, INVALID);
+            vTaskGetInfo(self.handle, &mut status, pdTRUE, INVALID);
         }
-        ThreadMetadata::from((handle, status))
+        ThreadMetadata::from((self.handle, status))
     }
 
     fn get_current() -> Self {
         let handle = unsafe { xTaskGetCurrentTaskHandle() };
-        let metadata = Self::get_metadata(handle);
+        let metadata = System::get_thread_metadata(handle);
         Self {
             handle,
             name: metadata.name,
@@ -250,7 +251,7 @@ impl ThreadFn for Thread {
         }
     }
 
-    fn wait_notification(&self, bits_to_clear_on_entry: u32, bits_to_clear_on_exit: u32 , timeout_ticks: impl ToTick) -> Result<u32> {
+    fn wait_notification(&self, bits_to_clear_on_entry: u32, bits_to_clear_on_exit: u32 , timeout_ticks: TickType) -> Result<u32> {
         if self.handle.is_null() {
             return Err(Error::NullPtr);
         }
@@ -261,7 +262,7 @@ impl ThreadFn for Thread {
             bits_to_clear_on_entry,
             bits_to_clear_on_exit,
             &mut notification_value,
-            timeout_ticks.to_tick()
+            timeout_ticks
         );
         
 
@@ -305,3 +306,5 @@ impl core::fmt::Debug for Thread {
 }
 
 unsafe impl Send for Thread {}
+
+

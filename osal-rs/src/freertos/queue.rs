@@ -1,10 +1,13 @@
 use core::ffi::c_void;
+use core::marker::PhantomData;
 use core::ops::Deref;
+
+use alloc::vec;
 
 use super::ffi::{QueueHandle, pdFALSE, vQueueDelete, xQueueCreateCountingSemaphore, xQueueReceive, xQueueReceiveFromISR};
 use super::types::{BaseType, UBaseType};
 use super::system::System;
-use crate::traits::{ToTick, QueueFn, SystemFn};
+use crate::traits::{ToTick, QueueFn, SystemFn, QueueStreamedFn, ToBytes, BytesHasLen, FromBytes};
 use crate::utils::{Result, Error};
 use crate::{xQueueSendToBack, xQueueSendToBackFromISR};
 
@@ -118,30 +121,52 @@ impl Deref for Queue {
     }
 }
 
-// pub struct QueueTyped (QueueHandle);
+pub struct QueueStreamed<T: ToBytes + BytesHasLen + FromBytes> (Queue, PhantomData<T>);
 
-// impl QueueTypedFn<QueueTyped> for QueueTyped {
-//     fn typed_new (size: UBaseType, message_size: UBaseType) -> Result<Self>{
-//         todo!()
-//     }
+unsafe impl<T: ToBytes + BytesHasLen + FromBytes> Send for QueueStreamed<T> {}
+unsafe impl<T: ToBytes + BytesHasLen + FromBytes> Sync for QueueStreamed<T> {}
 
-//     fn typed_fetch(&self, buffer: &mut QueueTyped, time: impl ToTick) -> Result<()> {
-//         todo!()
-//     }
+impl<T: ToBytes + BytesHasLen + FromBytes> QueueStreamedFn<T> for QueueStreamed<T> {
 
-//     fn typed_fetch_from_isr(&self, buffer: &mut QueueTyped) -> Result<()> {
-//         todo!()
-//     }
+    #[inline]
+    fn new (size: UBaseType, message_size: UBaseType) -> Result<Self> {
+        Ok(Self (Queue::new(size, message_size)?, PhantomData))
+    }
 
-//     fn typed_post(&self, item: &QueueTyped, time: impl ToTick) -> Result<()> {
-//         todo!()
-//     }
+    fn fetch(&self, buffer: &mut T, time: impl ToTick) -> Result<()> {
+        let mut buf_bytes = vec![0u8; buffer.len()];        
 
-//     fn typed_post_from_isr(&self, item: &QueueTyped) -> Result<()> {
-//         todo!()
-//     }
+        if let Ok(()) = self.0.fetch(&mut buf_bytes, time) {
+            *buffer = T::from_bytes(&buf_bytes)?;
+            Ok(())
+        } else {
+            Err(Error::Timeout)
+        }
+    }
 
-//     fn typed_delete(&mut self) {
-//         todo!()
-//     }
-// }
+    fn fetch_from_isr(&self, buffer: &mut T) -> Result<()> {
+        let mut buf_bytes = vec![0u8; buffer.len()];        
+
+        if let Ok(()) = self.0.fetch_from_isr(&mut buf_bytes) {
+            *buffer = T::from_bytes(&buf_bytes)?;
+            Ok(())
+        } else {
+            Err(Error::Timeout)
+        }
+    }
+
+    #[inline]
+    fn post(&self, item: &T, time: impl ToTick) -> Result<()> {
+        self.0.post(&item.to_bytes(), time)
+    }
+
+    #[inline]
+    fn post_from_isr(&self, item: &T) -> Result<()> {
+        self.0.post_from_isr(&item.to_bytes())
+    }
+
+    #[inline]
+    fn delete(&mut self) {
+        self.0.delete()
+    }
+}

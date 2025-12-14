@@ -21,21 +21,21 @@ pub trait Queue {
     fn delete(&mut self);
 }
 
-pub trait QueueTyped<T> 
+pub trait QueueStreamed<T> 
 where 
     T: ToBytes + Sized {
 
-    fn typed_new (size: UBaseType, message_size: UBaseType) -> Result<Self>
+    fn new (size: UBaseType, message_size: UBaseType) -> Result<Self>
     where 
         Self: Sized;
 
-    fn typed_fetch(&self, buffer: &mut T, time: impl ToTick) -> Result<()>;
+    fn fetch(&self, buffer: &mut T, time: impl ToTick) -> Result<()>;
 
-    fn typed_fetch_from_isr(&self, buffer: &mut T) -> Result<()>;
+    fn fetch_from_isr(&self, buffer: &mut T) -> Result<()>;
     
-    fn typed_post(&self, item: &T, time: impl ToTick) -> Result<()>;
+    fn post(&self, item: &T, time: impl ToTick) -> Result<()>;
 
-    fn typed_post_from_isr(&self, item: &T) -> Result<()>;
+    fn post_from_isr(&self, item: &T) -> Result<()>;
 
-    fn typed_delete(&mut self);
+    fn delete(&mut self);
 }

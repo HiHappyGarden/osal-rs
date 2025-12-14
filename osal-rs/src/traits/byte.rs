@@ -1,7 +1,6 @@
 use crate::utils::Result;
 
 
-
 pub trait ToBytes {
     fn to_bytes(&self) -> &[u8];
 }
@@ -12,3 +11,6 @@ where
     fn from_bytes(bytes: &[u8]) -> Result<Self>;
 }
 
+pub trait LenBytes {
+    fn len(&self) -> usize;
+}

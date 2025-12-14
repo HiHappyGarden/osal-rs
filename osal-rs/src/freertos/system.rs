@@ -38,14 +38,15 @@ impl SystemFn for System {
     }
 
     fn get_state() -> ThreadState {
+        use crate::freertos::thread::ThreadState::*;
         let state = unsafe { eTaskGetState(xTaskGetCurrentTaskHandle()) };
         match state {
-            RUNNING => ThreadState::Running,
-            READY => ThreadState::Ready,
-            BLOCKED => ThreadState::Blocked,
-            SUSPENDED => ThreadState::Suspended,
-            DELETED => ThreadState::Deleted,
-            _ => ThreadState::Invalid, // INVALID or unknown state
+            RUNNING => Running,
+            READY => Ready,
+            BLOCKED => Blocked,
+            SUSPENDED => Suspended,
+            DELETED => Deleted,
+            _ => Invalid, // INVALID or unknown state
         }
     }
 

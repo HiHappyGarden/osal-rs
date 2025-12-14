@@ -1,6 +1,6 @@
 use crate::utils::Result;
 
-trait BytesHasLen {
+pub trait BytesHasLen {
     fn len(&self) -> usize;
 }
 

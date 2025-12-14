@@ -1,11 +1,10 @@
 use core::ops::Deref;
 use core::ptr::null_mut;
 
-use crate::freertos::ffi::{SemaphoreHandle, pdFAIL, pdFALSE};
-use crate::freertos::system::System;
-use crate::traits::ToTick;
-use crate::freertos::types::{BaseType, UBaseType};
-use crate::traits::{SemaphoreFn, SystemFn};
+use super::ffi::{SemaphoreHandle, pdFAIL, pdFALSE};
+use super::system::System;
+use super::types::{BaseType, UBaseType};
+use crate::traits::{SemaphoreFn, SystemFn, ToTick};
 use crate::utils::{Error, Result, OsalRsBool};
 use crate::{vSemaphoreDelete, xSemaphoreCreateCounting, xSemaphoreGive, xSemaphoreGiveFromISR, xSemaphoreTake, xSemaphoreTakeFromISR};
 

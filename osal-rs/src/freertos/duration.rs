@@ -1,8 +1,8 @@
 use core::time::Duration;
 
 use crate::traits::{ToTick, FromTick};
-use crate::freertos::config::TICK_RATE_HZ;
-use crate::freertos::types::TickType;
+use super::config::TICK_RATE_HZ;
+use super::types::TickType;
 
 impl ToTick for Duration {
     fn to_tick(&self) -> TickType {

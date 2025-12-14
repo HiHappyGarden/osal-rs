@@ -5,13 +5,13 @@ use core::time::Duration;
 
 use alloc::vec::Vec;
 
-use crate::tick_period_ms;
-use crate::traits::{SystemFn, ToTick};
-use crate::freertos::ffi::{
+use super::ffi::{
     BLOCKED, DELETED, READY, RUNNING, SUSPENDED, TaskStatus, eTaskGetState, osal_rs_critical_section_enter, osal_rs_critical_section_exit, osal_rs_port_end_switching_isr, osal_rs_port_yield_from_isr, uxTaskGetNumberOfTasks, uxTaskGetSystemState, vTaskDelay, vTaskEndScheduler, vTaskStartScheduler, vTaskSuspendAll, xPortGetFreeHeapSize, xTaskDelayUntil, xTaskGetCurrentTaskHandle, xTaskGetTickCount, xTaskResumeAll
 };
-use crate::freertos::thread::{ThreadState, ThreadMetadata};
-use crate::freertos::types::{BaseType, TickType, UBaseType};
+use super::thread::{ThreadState, ThreadMetadata};
+use super::types::{BaseType, TickType, UBaseType};
+use crate::tick_period_ms;
+use crate::traits::{SystemFn, ToTick};
 use crate::utils::{CpuRegisterSize::*, register_bit_size, OsalRsBool};
 
 #[derive(Debug, Clone)]
@@ -38,7 +38,7 @@ impl SystemFn for System {
     }
 
     fn get_state() -> ThreadState {
-        use crate::freertos::thread::ThreadState::*;
+        use super::thread::ThreadState::*;
         let state = unsafe { eTaskGetState(xTaskGetCurrentTaskHandle()) };
         match state {
             RUNNING => Running,

@@ -1,10 +1,10 @@
 use core::ops::Deref;
 use core::ptr::null_mut;
 
-use crate::freertos::ffi::{EventGroupHandle, pdFAIL, pdFALSE, vEventGroupDelete, xEventGroupClearBits, xEventGroupClearBitsFromISR, xEventGroupCreate, xEventGroupGetBitsFromISR, xEventGroupSetBits, xEventGroupSetBitsFromISR};
-use crate::os::{System, SystemFn};
-use crate::traits::{ToTick, EventGroupFn};
-use crate::freertos::types::{BaseType, EventBits};
+use super::ffi::{EventGroupHandle, pdFAIL, pdFALSE, vEventGroupDelete, xEventGroupClearBits, xEventGroupClearBitsFromISR, xEventGroupCreate, xEventGroupGetBitsFromISR, xEventGroupSetBits, xEventGroupSetBitsFromISR};
+use super::system::System;
+use super::types::{BaseType, EventBits};
+use crate::traits::{ToTick, EventGroupFn, SystemFn};
 use crate::utils::{Result, Error};
 use crate::xEventGroupGetBits;
 

@@ -2,8 +2,8 @@ use core::cell::UnsafeCell;
 use core::ops::{Deref, DerefMut};
 use core::marker::PhantomData;
 
-use crate::freertos::ffi::{MutexHandle, pdFALSE, pdTRUE};
-use crate::freertos::system::System;
+use super::ffi::{MutexHandle, pdFALSE, pdTRUE};
+use super::system::System;
 use crate::traits::SystemFn;
 use crate::traits::{MutexGuardFn, RawMutexFn, MutexFn, ToTick};
 use crate::utils::{Result, Error, OsalRsBool, MAX_DELAY};

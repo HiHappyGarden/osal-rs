@@ -1,7 +1,7 @@
 use core::ffi::{c_char, c_uint, c_void};
 use core::ptr;
 
-use crate::freertos::types::{BaseType, StackType, UBaseType, TickType, EventBits};
+use super::types::{BaseType, StackType, UBaseType, TickType, EventBits};
 
 pub type ThreadHandle = *const c_void;
 pub type QueueHandle = *const c_void;

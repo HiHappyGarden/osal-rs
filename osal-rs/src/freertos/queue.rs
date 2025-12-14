@@ -1,13 +1,12 @@
 use core::ffi::c_void;
 use core::ops::Deref;
 
-use crate::freertos::ffi::{QueueHandle, pdFALSE, vQueueDelete, xQueueCreateCountingSemaphore, xQueueReceive, xQueueReceiveFromISR};
-use crate::freertos::types::BaseType;
-use crate::freertos::system::System;
+use super::ffi::{QueueHandle, pdFALSE, vQueueDelete, xQueueCreateCountingSemaphore, xQueueReceive, xQueueReceiveFromISR};
+use super::types::{BaseType, UBaseType};
+use super::system::System;
 use crate::traits::{ToTick, QueueFn, SystemFn};
 use crate::utils::{Result, Error};
 use crate::{xQueueSendToBack, xQueueSendToBackFromISR};
-
 
 
 pub struct Queue (QueueHandle);
@@ -16,7 +15,7 @@ unsafe impl Send for Queue {}
 unsafe impl Sync for Queue {}
 
 impl QueueFn for Queue {
-    fn new (size: super::types::UBaseType, message_size: super::types::UBaseType) -> Result<Self> {
+    fn new (size: UBaseType, message_size: super::types::UBaseType) -> Result<Self> {
         let handle = unsafe { xQueueCreateCountingSemaphore(size, message_size) };
         if handle.is_null() {
             Err(Error::OutOfMemory)
@@ -118,3 +117,31 @@ impl Deref for Queue {
         &self.0
     }
 }
+
+// pub struct QueueTyped (QueueHandle);
+
+// impl QueueTypedFn<QueueTyped> for QueueTyped {
+//     fn typed_new (size: UBaseType, message_size: UBaseType) -> Result<Self>{
+//         todo!()
+//     }
+
+//     fn typed_fetch(&self, buffer: &mut QueueTyped, time: impl ToTick) -> Result<()> {
+//         todo!()
+//     }
+
+//     fn typed_fetch_from_isr(&self, buffer: &mut QueueTyped) -> Result<()> {
+//         todo!()
+//     }
+
+//     fn typed_post(&self, item: &QueueTyped, time: impl ToTick) -> Result<()> {
+//         todo!()
+//     }
+
+//     fn typed_post_from_isr(&self, item: &QueueTyped) -> Result<()> {
+//         todo!()
+//     }
+
+//     fn typed_delete(&mut self) {
+//         todo!()
+//     }
+// }

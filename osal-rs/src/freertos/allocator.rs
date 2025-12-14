@@ -1,5 +1,5 @@
 use core::ffi::c_void;
-use core::{alloc::{GlobalAlloc, Layout}};
+use core::alloc::{GlobalAlloc, Layout};
 
 use crate::freertos::ffi::{pvPortMalloc, vPortFree};
 

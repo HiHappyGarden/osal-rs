@@ -1,7 +1,7 @@
 use core::time::Duration;
 
-use crate::os::types::{BaseType, ConstPtr, TickType};
-use crate::os::{ThreadMetadata, ThreadState, ToTick};
+use crate::os::types::{BaseType, TickType};
+use crate::os::{ThreadState, ToTick};
 use crate::os::SystemState;
 use crate::utils::OsalRsBool;
 
@@ -24,5 +24,4 @@ pub trait System {
     fn yield_from_isr(higher_priority_task_woken: BaseType);
     fn end_switching_isr( switch_required: BaseType );
     fn get_free_heap_size() -> usize;
-    fn get_thread_metadata(handle: ConstPtr) -> ThreadMetadata;
 }

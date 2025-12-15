@@ -32,6 +32,7 @@ pub mod os {
     pub use crate::osal::semaphore::*;
     pub use crate::osal::system::*;
     pub use crate::osal::thread::*;
+    pub use crate::osal::timer::*;
     pub use crate::traits::*;
     pub use crate::osal::config as config;
     pub use crate::osal::types as types;

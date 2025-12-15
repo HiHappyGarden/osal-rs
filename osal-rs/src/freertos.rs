@@ -8,6 +8,7 @@ pub mod queue;
 pub mod semaphore;
 pub mod system;
 pub mod thread;
+pub mod timer;
 pub mod types;
 
 use allocator::FreeRTOSAllocator as FreeRtosAllocator;

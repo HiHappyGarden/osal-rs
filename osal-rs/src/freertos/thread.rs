@@ -10,8 +10,7 @@ use alloc::sync::Arc;
 use super::ffi::{INVALID, TaskStatus, ThreadHandle, pdPASS, pdTRUE, vTaskDelete, vTaskGetInfo, vTaskResume, vTaskSuspend, xTaskCreate, xTaskGetCurrentTaskHandle};
 use super::types::{StackType, UBaseType, BaseType, DoublePtr, TickType};
 use super::thread::ThreadState::*;
-use super::system::System;
-use crate::traits::{ThreadFn, ThreadParam, ThreadFnPtr, ThreadNotification, SystemFn};
+use crate::traits::{ThreadFn, ThreadParam, ThreadFnPtr, ThreadNotification};
 use crate::utils::{Result, Error};
 use crate::{from_c_str, to_cstring, xTaskNotify, xTaskNotifyFromISR, xTaskNotifyWait};
 
@@ -66,6 +65,22 @@ impl From<(ThreadHandle,TaskStatus)> for ThreadMetadata {
     }
 }
 
+impl Default for ThreadMetadata {
+    fn default() -> Self {
+        ThreadMetadata {
+            thread: null_mut(),
+            name: String::new(),
+            stack_depth: 0,
+            priority: 0,
+            thread_number: 0,
+            state: Invalid,
+            current_priority: 0,
+            base_priority: 0,
+            run_time_counter: 0,
+            stack_high_water_mark: 0,
+        }
+    }
+}
 
 #[derive(Clone)]
 pub struct Thread {
@@ -75,6 +90,23 @@ pub struct Thread {
     priority: UBaseType,
     callback: Option<Arc<ThreadFnPtr>>,
     param: ThreadParam
+}
+
+impl Thread {
+    pub fn get_metadata_from_handle(handle: ThreadHandle) -> ThreadMetadata {
+        let mut status = TaskStatus::default();
+        unsafe {
+            vTaskGetInfo(handle, &mut status, pdTRUE, INVALID);
+        }
+        ThreadMetadata::from((handle, status))
+    }
+
+    pub fn get_metadata(thread: &Thread) -> ThreadMetadata {
+        if thread.handle.is_null() {
+            return ThreadMetadata::default();
+        }
+        Self::get_metadata_from_handle(thread.handle)
+    }
 }
 
 unsafe extern "C" fn callback(param_ptr: *mut c_void) {
@@ -198,7 +230,7 @@ impl ThreadFn for Thread {
 
     fn get_current() -> Self {
         let handle = unsafe { xTaskGetCurrentTaskHandle() };
-        let metadata = System::get_thread_metadata(handle);
+        let metadata = Self::get_metadata_from_handle(handle);
         Self {
             handle,
             name: metadata.name,

@@ -6,8 +6,8 @@ use crate::os::{ThreadMetadata};
 use crate::os::types::{BaseType, ConstPtr, DoublePtr, StackType, TickType, UBaseType};
 use crate::utils::Result;
 
-pub type ThreadParam = Option<Arc<dyn Any + Send + Sync>>;
-pub type ThreadFnPtr = dyn Fn(Box<dyn Thread>, ThreadParam) -> Result<ThreadParam> + Send + Sync + 'static;
+pub type ThreadParam = Arc<dyn Any + Send + Sync>;
+pub type ThreadFnPtr = dyn Fn(Box<dyn Thread>, Option<ThreadParam>) -> Result<ThreadParam> + Send + Sync + 'static;
 
 #[derive(Debug, Copy, Clone)]
 pub enum ThreadNotification {
@@ -34,7 +34,7 @@ impl Into<(u32, u32)> for ThreadNotification {
 pub trait Thread {
     fn new<F>(name: &str, stack_depth: StackType, priority: UBaseType, f: Option<F>) -> Self 
     where 
-        F: Fn(Box<dyn Thread>, ThreadParam) -> Result<ThreadParam>,
+        F: Fn(Box<dyn Thread>, Option<ThreadParam>) -> Result<ThreadParam>,
         F: Send + Sync + 'static,
         Self: Sized;
 
@@ -42,7 +42,7 @@ pub trait Thread {
     where 
         Self: Sized;
 
-    fn spawn(&mut self, param: ThreadParam) -> Result<Self>
+    fn spawn(&mut self, param: Option<ThreadParam>) -> Result<Self>
     where 
         Self: Sized;
 

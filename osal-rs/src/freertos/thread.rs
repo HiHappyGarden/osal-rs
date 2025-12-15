@@ -10,7 +10,7 @@ use alloc::sync::Arc;
 use super::ffi::{INVALID, TaskStatus, ThreadHandle, pdPASS, pdTRUE, vTaskDelete, vTaskGetInfo, vTaskResume, vTaskSuspend, xTaskCreate, xTaskGetCurrentTaskHandle};
 use super::types::{StackType, UBaseType, BaseType, DoublePtr, TickType};
 use super::thread::ThreadState::*;
-use crate::traits::{ThreadFn, ThreadParam, ThreadFnPtr, ThreadNotification};
+use crate::traits::{ThreadFn, ThreadParam, ThreadFnPtr, ThreadNotification, ToTick};
 use crate::utils::{Result, Error};
 use crate::{from_c_str, to_cstring, xTaskNotify, xTaskNotifyFromISR, xTaskNotifyWait};
 
@@ -89,7 +89,7 @@ pub struct Thread {
     stack_depth: StackType,
     priority: UBaseType,
     callback: Option<Arc<ThreadFnPtr>>,
-    param: ThreadParam
+    param: Option<ThreadParam>
 }
 
 impl Thread {
@@ -107,6 +107,12 @@ impl Thread {
         }
         Self::get_metadata_from_handle(thread.handle)
     }
+
+    #[inline]
+    fn wait_notification_with_to_tick(&self, bits_to_clear_on_entry: u32, bits_to_clear_on_exit: u32 , timeout_ticks: impl ToTick) -> Result<u32> {
+        self.wait_notification(bits_to_clear_on_entry, bits_to_clear_on_exit, timeout_ticks.to_tick())
+    }
+
 }
 
 unsafe extern "C" fn callback(param_ptr: *mut c_void) {
@@ -116,13 +122,12 @@ unsafe extern "C" fn callback(param_ptr: *mut c_void) {
 
     let boxed_thread: Box<Thread> = unsafe { Box::from_raw(param_ptr as *mut _) };
 
-    let param_arc: Arc<dyn Any + Send + Sync> = boxed_thread
+    let param_arc: Option<Arc<dyn Any + Send + Sync>> = boxed_thread
         .param
-        .clone()
-        .unwrap_or_else(|| Arc::new(()) as Arc<dyn Any + Send + Sync>);
+        .clone();
 
     if let Some(callback) = &boxed_thread.callback.clone() {
-        let _ = callback(boxed_thread, Some(param_arc));
+        let _ = callback(boxed_thread, param_arc);
     }
 }
 
@@ -131,7 +136,7 @@ unsafe extern "C" fn callback(param_ptr: *mut c_void) {
 impl ThreadFn for Thread {
     fn new<F>(name: &str, stack_depth: StackType, priority: UBaseType, f: Option<F>) -> Self 
     where 
-        F: Fn(Box<dyn ThreadFn>, ThreadParam) -> Result<ThreadParam>,
+        F: Fn(Box<dyn ThreadFn>, Option<ThreadParam>) -> Result<ThreadParam>,
         F: Send + Sync + 'static
     {
         Self { 
@@ -162,7 +167,7 @@ impl ThreadFn for Thread {
         })
     }
 
-    fn spawn(&mut self, param: ThreadParam) -> Result<Self> {        
+    fn spawn(&mut self, param: Option<ThreadParam>) -> Result<Self> {        
 
         let name = to_cstring!(self.name)?;
 

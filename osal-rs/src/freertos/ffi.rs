@@ -285,6 +285,32 @@ unsafe extern "C" {
     pub fn xQueueGiveMutexRecursive(xMutex: QueueHandle) -> BaseType;
 
     pub fn xPortGetFreeHeapSize() -> usize;
+
+    pub fn xTimerCreateTimerTask() -> BaseType;
+
+    pub fn xTimerCreate(
+        pcTimerName: *const c_char,
+        xTimerPeriodInTicks: TickType,
+        xAutoReload: BaseType,
+        pvTimerID: *const c_void,
+        pxCallbackFunction: TimerCallback,
+    ) -> TimerHandle;
+
+    pub fn xTimerStart(xTimer: TimerHandle, xTicksToWait: TickType) -> BaseType;
+
+    pub fn xTimerStop(xTimer: TimerHandle, xTicksToWait: TickType) -> BaseType;
+
+    pub fn xTimerReset(xTimer: TimerHandle, xTicksToWait: TickType) -> BaseType;
+
+    pub fn xTimerChangePeriod(
+        xTimer: TimerHandle,
+        xNewPeriodInTicks: TickType,
+        xTicksToWait: TickType,
+    ) -> BaseType;
+
+    pub fn xTimerDelete(xTimer: TimerHandle, xTicksToWait: TickType) -> BaseType;
+
+    
 }
 
 #[macro_export]

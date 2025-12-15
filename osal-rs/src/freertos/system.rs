@@ -10,7 +10,6 @@ use super::ffi::{
 };
 use super::thread::{ThreadState, ThreadMetadata};
 use super::types::{BaseType, TickType, UBaseType};
-use crate::freertos::ffi::{INVALID, pdTRUE, vTaskGetInfo};
 use crate::tick_period_ms;
 use crate::traits::{SystemFn, ToTick};
 use crate::utils::{CpuRegisterSize::*, register_bit_size, OsalRsBool};
@@ -182,14 +181,6 @@ impl SystemFn for System {
         unsafe {
             xPortGetFreeHeapSize()
         }
-    }
-    
-    fn get_thread_metadata(handle: super::types::ConstPtr) -> ThreadMetadata {
-        let mut status = TaskStatus::default();
-        unsafe {
-            vTaskGetInfo(handle, &mut status, pdTRUE, INVALID);
-        }
-        ThreadMetadata::from((handle, status))
     }
 
 }

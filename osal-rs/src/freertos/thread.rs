@@ -121,19 +121,21 @@ impl Thread {
 
 }
 
-unsafe extern "C" fn callback(param_ptr: *mut c_void) {
+unsafe extern "C" fn callback_c_wrapper(param_ptr: *mut c_void) {
     if param_ptr.is_null() {
         return;
     }
 
-    let boxed_thread: Box<Thread> = unsafe { Box::from_raw(param_ptr as *mut _) };
+    let mut thread_instance: Box<Thread> = unsafe { Box::from_raw(param_ptr as *mut _) };
 
-    let param_arc: Option<Arc<dyn Any + Send + Sync>> = boxed_thread
+    thread_instance.as_mut().handle = unsafe { xTaskGetCurrentTaskHandle() };
+
+    let param_arc: Option<Arc<dyn Any + Send + Sync>> = thread_instance
         .param
         .clone();
 
-    if let Some(callback) = &boxed_thread.callback.clone() {
-        let _ = callback(boxed_thread, param_arc);
+    if let Some(callback) = &thread_instance.callback.clone() {
+        let _ = callback(thread_instance, param_arc);
     }
 }
 
@@ -179,7 +181,7 @@ impl ThreadFn for Thread {
 
         let ret = unsafe {
             xTaskCreate(
-                Some(super::thread::callback),
+                Some(super::thread::callback_c_wrapper),
                 name.as_ptr(),
                 self.stack_depth,
                 Box::into_raw(boxed_thread) as *mut _,

@@ -9,7 +9,7 @@ pub type SemaphoreHandle = *const c_void;
 pub type EventGroupHandle = *const c_void;
 pub type TimerHandle = *const c_void;
 pub type MutexHandle = *const c_void;
-pub type TimerCallback = *const c_void;
+pub type TimerCallback = unsafe extern "C" fn(timer: TimerHandle);
 pub type TaskState = c_uint;
 
 pub const RUNNING: TaskState = 0;
@@ -292,8 +292,8 @@ unsafe extern "C" {
         pcTimerName: *const c_char,
         xTimerPeriodInTicks: TickType,
         xAutoReload: BaseType,
-        pvTimerID: *const c_void,
-        pxCallbackFunction: TimerCallback,
+        pvTimerID: *mut c_void,
+        pxCallbackFunction: Option<TimerCallback>,
     ) -> TimerHandle;
 
     pub fn xTimerStart(xTimer: TimerHandle, xTicksToWait: TickType) -> BaseType;
@@ -310,7 +310,7 @@ unsafe extern "C" {
 
     pub fn xTimerDelete(xTimer: TimerHandle, xTicksToWait: TickType) -> BaseType;
 
-    
+    pub fn pvTimerGetTimerID(xTimer: TimerHandle) -> *mut c_void;
 }
 
 #[macro_export]

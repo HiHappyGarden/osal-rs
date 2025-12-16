@@ -1,5 +1,6 @@
 use core::any::Any;
 use core::ffi::c_void;
+use core::fmt::{Debug, Display, Formatter};
 use core::ops::Deref;
 use core::ptr::null_mut;
 
@@ -38,6 +39,9 @@ pub struct ThreadMetadata {
     pub run_time_counter: UBaseType,
     pub stack_high_water_mark: StackType,
 }
+
+unsafe impl Send for ThreadMetadata {}
+unsafe impl Sync for ThreadMetadata {}
 
 impl From<(ThreadHandle,TaskStatus)> for ThreadMetadata {
     fn from(status: (ThreadHandle, TaskStatus)) -> Self {
@@ -91,6 +95,8 @@ pub struct Thread {
     callback: Option<Arc<ThreadFnPtr>>,
     param: Option<ThreadParam>
 }
+
+unsafe impl Send for Thread {}
 
 impl Thread {
     pub fn get_metadata_from_handle(handle: ThreadHandle) -> ThreadMetadata {
@@ -329,8 +335,8 @@ impl Deref for Thread {
     }
 }
 
-impl core::fmt::Debug for Thread {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+impl Debug for Thread {
+    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("Thread")
             .field("handle", &self.handle)
             .field("name", &self.name)
@@ -342,6 +348,10 @@ impl core::fmt::Debug for Thread {
     }
 }
 
-unsafe impl Send for Thread {}
+impl Display for Thread {
+    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
+        write!(f, "Thread {{ handle: {:?}, name: {}, priority: {}, stack_depth: {} }}", self.handle, self.name, self.priority, self.stack_depth)
+    }
+}
 
 

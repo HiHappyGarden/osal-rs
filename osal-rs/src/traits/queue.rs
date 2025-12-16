@@ -1,6 +1,5 @@
-use super::ToTick;
 use crate::os::ToBytes;
-use crate::os::types::UBaseType;
+use crate::os::types::{UBaseType, TickType};
 use crate::utils::Result;
 
 
@@ -10,12 +9,11 @@ pub trait Queue {
     where 
         Self: Sized;
 
-    fn fetch(&self, buffer: &mut [u8], time: impl ToTick) -> Result<()>;
+    fn fetch(&self, buffer: &mut [u8], time: TickType) -> Result<()>;
 
     fn fetch_from_isr(&self, buffer: &mut [u8]) -> Result<()>;
     
-    fn post(&self, item: &[u8], time: impl ToTick) -> Result<()>;
-
+    fn post(&self, item: &[u8], time: TickType) -> Result<()>;
     fn post_from_isr(&self, item: &[u8]) -> Result<()>;
 
     fn delete(&mut self);
@@ -29,11 +27,11 @@ where
     where 
         Self: Sized;
 
-    fn fetch(&self, buffer: &mut T, time: impl ToTick) -> Result<()>;
+    fn fetch(&self, buffer: &mut T, time: TickType) -> Result<()>;
 
     fn fetch_from_isr(&self, buffer: &mut T) -> Result<()>;
     
-    fn post(&self, item: &T, time: impl ToTick) -> Result<()>;
+    fn post(&self, item: &T, time: TickType) -> Result<()>;
 
     fn post_from_isr(&self, item: &T) -> Result<()>;
 

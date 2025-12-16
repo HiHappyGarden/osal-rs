@@ -11,7 +11,7 @@ pub mod thread;
 pub mod timer;
 pub mod types;
 
-use allocator::FreeRTOSAllocator as FreeRtosAllocator;
+pub use allocator::FreeRTOSAllocator as FreeRtosAllocator;
 
 #[global_allocator]
-static ALLOCATOR: FreeRtosAllocator = FreeRtosAllocator;
+pub static ALLOCATOR: FreeRtosAllocator = FreeRtosAllocator;

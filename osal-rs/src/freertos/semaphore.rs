@@ -1,3 +1,4 @@
+use core::fmt::{Debug, Display};
 use core::ops::Deref;
 use core::ptr::null_mut;
 
@@ -97,5 +98,19 @@ impl Deref for Semaphore {
 
     fn deref(&self) -> &Self::Target {
         &self.0
+    }
+}
+
+impl Debug for Semaphore {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("Semaphore")
+            .field("handle", &self.0)
+            .finish()
+    }
+}
+
+impl Display for Semaphore {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(f, "Semaphore {{ handle: {:?} }}", self.0)
     }
 }

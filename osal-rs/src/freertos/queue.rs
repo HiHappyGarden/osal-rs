@@ -1,11 +1,12 @@
 use core::ffi::c_void;
+use core::fmt::{Debug, Display};
 use core::marker::PhantomData;
 use core::ops::Deref;
 
 use alloc::vec;
 
 use super::ffi::{QueueHandle, pdFALSE, vQueueDelete, xQueueCreateCountingSemaphore, xQueueReceive, xQueueReceiveFromISR};
-use super::types::{BaseType, UBaseType};
+use super::types::{BaseType, UBaseType, TickType};
 use super::system::System;
 use crate::traits::{ToTick, QueueFn, SystemFn, QueueStreamedFn, ToBytes, BytesHasLen, FromBytes};
 use crate::utils::{Result, Error};
@@ -17,6 +18,18 @@ pub struct Queue (QueueHandle);
 unsafe impl Send for Queue {}
 unsafe impl Sync for Queue {}
 
+impl Queue {
+    #[inline]
+    fn fetch_with_to_tick(&self, buffer: &mut [u8], time: impl ToTick) -> Result<()> {
+        self.fetch(buffer, time.to_tick())
+    }
+
+    #[inline]
+    fn post_with_to_tick(&self, item: &[u8], time: impl ToTick) -> Result<()> {
+        self.post(item, time.to_tick())
+    }
+}
+
 impl QueueFn for Queue {
     fn new (size: UBaseType, message_size: super::types::UBaseType) -> Result<Self> {
         let handle = unsafe { xQueueCreateCountingSemaphore(size, message_size) };
@@ -27,12 +40,12 @@ impl QueueFn for Queue {
         }
     }
 
-    fn fetch(&self, buffer: &mut [u8], time: impl ToTick) -> Result<()> {
+    fn fetch(&self, buffer: &mut [u8], time: TickType) -> Result<()> {
         let ret = unsafe {
             xQueueReceive(
                 self.0,
                 buffer.as_mut_ptr() as *mut c_void,
-                time.to_tick(),
+                time,
             )
         };
         if ret == 0 {
@@ -63,11 +76,11 @@ impl QueueFn for Queue {
         }
     }
 
-    fn post(&self, item: &[u8], time: impl ToTick) -> Result<()> {
+    fn post(&self, item: &[u8], time: TickType) -> Result<()> {
         let ret = xQueueSendToBack!(
                             self.0,
                             item.as_ptr() as *const c_void,
-                            time.to_tick()
+                            time
                         );
         
         if ret == 0 {
@@ -121,19 +134,49 @@ impl Deref for Queue {
     }
 }
 
+impl Debug for Queue {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("Queue")
+            .field("handle", &self.0)
+            .finish()
+    }
+}
+
+impl Display for Queue {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(f, "Queue {{ handle: {:?} }}", self.0)
+    }
+}
+
 pub struct QueueStreamed<T: ToBytes + BytesHasLen + FromBytes> (Queue, PhantomData<T>);
 
 unsafe impl<T: ToBytes + BytesHasLen + FromBytes> Send for QueueStreamed<T> {}
 unsafe impl<T: ToBytes + BytesHasLen + FromBytes> Sync for QueueStreamed<T> {}
 
-impl<T: ToBytes + BytesHasLen + FromBytes> QueueStreamedFn<T> for QueueStreamed<T> {
+impl<T> QueueStreamed<T> 
+where 
+    T: ToBytes + BytesHasLen + FromBytes {
+    #[inline]
+    fn fetch_with_to_tick(&self, buffer: &mut T, time: impl ToTick) -> Result<()> {
+        self.fetch(buffer, time.to_tick())
+    }
+
+    #[inline]
+    fn post_with_to_tick(&self, item: &T, time: impl ToTick) -> Result<()> {
+        self.post(item, time.to_tick())
+    }
+}
+
+impl<T> QueueStreamedFn<T> for QueueStreamed<T> 
+where 
+    T: ToBytes + BytesHasLen + FromBytes {
 
     #[inline]
     fn new (size: UBaseType, message_size: UBaseType) -> Result<Self> {
         Ok(Self (Queue::new(size, message_size)?, PhantomData))
     }
 
-    fn fetch(&self, buffer: &mut T, time: impl ToTick) -> Result<()> {
+    fn fetch(&self, buffer: &mut T, time: TickType) -> Result<()> {
         let mut buf_bytes = vec![0u8; buffer.len()];        
 
         if let Ok(()) = self.0.fetch(&mut buf_bytes, time) {
@@ -156,7 +199,7 @@ impl<T: ToBytes + BytesHasLen + FromBytes> QueueStreamedFn<T> for QueueStreamed<
     }
 
     #[inline]
-    fn post(&self, item: &T, time: impl ToTick) -> Result<()> {
+    fn post(&self, item: &T, time: TickType) -> Result<()> {
         self.0.post(&item.to_bytes(), time)
     }
 
@@ -168,5 +211,33 @@ impl<T: ToBytes + BytesHasLen + FromBytes> QueueStreamedFn<T> for QueueStreamed<
     #[inline]
     fn delete(&mut self) {
         self.0.delete()
+    }
+}
+
+impl<T> Deref for QueueStreamed<T> 
+where 
+    T: ToBytes + BytesHasLen + FromBytes {
+    type Target = QueueHandle;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0.0
+    }   
+}
+
+impl<T> Debug for QueueStreamed<T> 
+where 
+    T: ToBytes + BytesHasLen + FromBytes {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("QueueStreamed")
+            .field("handle", &self.0.0)
+            .finish()
+    }
+}
+
+impl<T> Display for QueueStreamed<T> 
+where 
+    T: ToBytes + BytesHasLen + FromBytes {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(f, "QueueStreamed {{ handle: {:?} }}", self.0.0)
     }
 }

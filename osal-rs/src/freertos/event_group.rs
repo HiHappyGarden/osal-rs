@@ -1,9 +1,10 @@
+use core::fmt::{Debug, Display, Formatter};
 use core::ops::Deref;
 use core::ptr::null_mut;
 
 use super::ffi::{EventGroupHandle, pdFAIL, pdFALSE, vEventGroupDelete, xEventGroupClearBits, xEventGroupClearBitsFromISR, xEventGroupCreate, xEventGroupGetBitsFromISR, xEventGroupSetBits, xEventGroupSetBitsFromISR};
 use super::system::System;
-use super::types::{BaseType, EventBits};
+use super::types::{BaseType, EventBits, TickType};
 use crate::traits::{ToTick, EventGroupFn, SystemFn};
 use crate::utils::{Result, Error};
 use crate::xEventGroupGetBits;
@@ -12,6 +13,12 @@ pub struct EventGroup (EventGroupHandle);
 
 unsafe impl Send for EventGroup {}
 unsafe impl Sync for EventGroup {}
+
+impl EventGroup {
+    fn wait_with_to_tick(&self, mask: EventBits, timeout_ticks: impl ToTick) -> EventBits {
+        self.wait(mask, timeout_ticks.to_tick())
+    }
+}
 
 impl EventGroupFn for EventGroup {
     fn new() -> Result<Self> {
@@ -64,14 +71,14 @@ impl EventGroupFn for EventGroup {
         }
     }
 
-    fn wait(&self, mask: EventBits, timeout_ticks: impl ToTick) -> EventBits {
+    fn wait(&self, mask: EventBits, timeout_ticks: TickType) -> EventBits {
         unsafe {
             crate::freertos::ffi::xEventGroupWaitBits(
                 self.0,
                 mask,
                 pdFALSE, 
                 pdFALSE, 
-                timeout_ticks.to_tick(),
+                timeout_ticks,
             )
         }
     }
@@ -98,5 +105,17 @@ impl Deref for EventGroup {
 
     fn deref(&self) -> &Self::Target {
         &self.0
+    }
+}
+
+impl Debug for EventGroup {
+    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
+        write!(f, "EventGroup {{ handle: {:?} }}", self.0)
+    }
+}
+
+impl Display for EventGroup {
+    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
+        write!(f, "EventGroup {{ handle: {:?} }}", self.0)
     }
 }

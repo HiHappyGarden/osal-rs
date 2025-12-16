@@ -30,6 +30,18 @@ impl Deref for SystemState {
 
 pub struct System;
 
+impl System {
+    #[inline]
+    fn delay_with_to_tick(ticks: impl ToTick){
+        Self::delay(ticks.to_tick());
+    }
+
+    #[inline]
+    fn delay_until_with_to_tick(previous_wake_time: &mut TickType, time_increment: impl ToTick) { 
+        Self::delay_until(previous_wake_time, time_increment.to_tick());
+    }
+}
+
 impl SystemFn for System {
     fn start() {
         unsafe {
@@ -114,17 +126,17 @@ impl SystemFn for System {
     }
 
 
-    fn delay(ticks: impl ToTick){
+    fn delay(ticks: TickType){
         unsafe {
-            vTaskDelay(ticks.to_tick());
+            vTaskDelay(ticks);
         }
     }
 
-    fn delay_until(previous_wake_time: &mut TickType, time_increment: impl ToTick) {
+    fn delay_until(previous_wake_time: &mut TickType, time_increment: TickType) {
         unsafe {
             xTaskDelayUntil(
                 previous_wake_time,
-                time_increment.to_tick(),
+                time_increment,
             );
         }
     }

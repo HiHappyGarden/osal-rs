@@ -1,7 +1,7 @@
 use core::time::Duration;
 
 use crate::os::types::{BaseType, TickType};
-use crate::os::{ThreadState, ToTick};
+use crate::os::{ThreadState};
 use crate::os::SystemState;
 use crate::utils::OsalRsBool;
 
@@ -16,8 +16,8 @@ pub trait System {
     fn get_us_from_tick(duration: &Duration) -> TickType;
     fn count_threads() -> usize;
     fn get_all_thread() -> SystemState;
-    fn delay(ticks: impl ToTick);
-    fn delay_until(previous_wake_time: &mut TickType, time_increment: impl ToTick);
+    fn delay(ticks: TickType);
+    fn delay_until(previous_wake_time: &mut TickType, time_increment: TickType);
     fn critical_section_enter();
     fn critical_section_exit();
     fn check_timer(timestamp: &Duration, time: &Duration) -> OsalRsBool;

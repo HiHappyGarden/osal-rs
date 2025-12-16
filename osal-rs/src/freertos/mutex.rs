@@ -1,4 +1,5 @@
 use core::cell::UnsafeCell;
+use core::fmt::{Debug, Display, Formatter};
 use core::ops::{Deref, DerefMut};
 use core::marker::PhantomData;
 
@@ -9,12 +10,11 @@ use crate::traits::{MutexGuardFn, RawMutexFn, MutexFn, ToTick};
 use crate::utils::{Result, Error, OsalRsBool, MAX_DELAY};
 use crate::{vSemaphoreDelete, xSemaphoreCreateRecursiveMutex, xSemaphoreGiveFromISR, xSemaphoreGiveRecursive, xSemaphoreTake, xSemaphoreTakeFromISR};
 
-pub struct Mutex<T: ?Sized> {
-    inner: RawMutex,
-    data: UnsafeCell<T>,
-}
 
 struct RawMutex(MutexHandle);
+
+unsafe impl Send for RawMutex {}
+unsafe impl Sync for RawMutex {}
 
 impl RawMutexFn for RawMutex {
     fn new() -> Result<Self> {
@@ -86,8 +86,37 @@ impl Drop for RawMutex {
     }
 }
 
-unsafe impl Send for RawMutex {}
-unsafe impl Sync for RawMutex {}
+impl Deref for RawMutex {
+    type Target = MutexHandle;
+
+    fn deref(&self) -> &MutexHandle {
+        &self.0
+    }
+}
+
+
+impl Debug for RawMutex {
+    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("RawMutex")
+            .field("handle", &self.0)
+            .finish()
+    }
+}
+
+impl Display for RawMutex {
+    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
+        write!(f, "RawMutex {{ handle: {:?} }}", self.0)
+    }
+}
+
+pub struct Mutex<T: ?Sized> {
+    inner: RawMutex,
+    data: UnsafeCell<T>
+}
+
+
+unsafe impl<T: ?Sized + Send> Send for Mutex<T> {}
+unsafe impl<T: ?Sized + Send> Sync for Mutex<T> {}
 
 impl<T: ?Sized> MutexFn<T> for Mutex<T> {
     type Guard<'a> = MutexGuard<'a, T> where Self: 'a, T: 'a;
@@ -150,8 +179,23 @@ impl<T: ?Sized> Mutex<T> {
     }
 }
 
-unsafe impl<T: ?Sized + Send> Send for Mutex<T> {}
-unsafe impl<T: ?Sized + Send> Sync for Mutex<T> {}
+impl<T> Debug for Mutex<T> 
+where 
+    T: ?Sized {
+    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("Mutex")
+            .field("inner", &self.inner)
+            .finish()
+    }
+}
+
+impl<T> Display for Mutex<T> 
+where 
+    T: ?Sized {
+    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
+        write!(f, "Mutex {{ inner: {} }}", self.inner)
+    }   
+}
 
 /// RAII guard returned by `Mutex::lock`
 pub struct MutexGuard<'a, T: ?Sized + 'a> {

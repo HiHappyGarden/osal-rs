@@ -34,7 +34,7 @@ pub mod os {
     use crate::osal::allocator::Allocator;
 
 
-    #[cfg(feature = "freertos")]
+    #[cfg(not(feature = "disable_panic"))]
     #[global_allocator]
     pub static ALLOCATOR: Allocator = Allocator;
 

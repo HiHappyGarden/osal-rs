@@ -24,6 +24,14 @@ use crate::freertos as osal;
 use crate::posix as osal;
 
 pub mod os {
+
+    #[cfg(not(feature = "disable_panic"))]
+    pub use crate::osal::ALLOCATOR;
+
+    #[cfg(not(feature = "disable_panic"))]
+    pub use crate::osal::FreeRtosAllocator as allocator;
+
+
     #[allow(unused_imports)]
     pub use crate::osal::duration::*;
     pub use crate::osal::event_group::*;

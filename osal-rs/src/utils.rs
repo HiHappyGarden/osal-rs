@@ -55,7 +55,7 @@ macro_rules! to_cstring {
 #[macro_export]
 macro_rules! to_c_str {
     ($s:expr) => {
-        alloc::ffi::CString::new($s).unwrap().as_ptr()
+        alloc::ffi::CString::new($s.as_ref() as &str).unwrap().as_ptr()
     };
 }
 

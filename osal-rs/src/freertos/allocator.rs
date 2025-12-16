@@ -3,9 +3,9 @@ use core::alloc::{GlobalAlloc, Layout};
 
 use crate::freertos::ffi::{pvPortMalloc, vPortFree};
 
-pub struct FreeRTOSAllocator;
+pub struct Allocator;
 
-unsafe impl GlobalAlloc for FreeRTOSAllocator {
+unsafe impl GlobalAlloc for Allocator {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
         unsafe {
             pvPortMalloc(layout.size()) as *mut u8

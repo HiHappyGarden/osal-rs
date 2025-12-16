@@ -19,6 +19,11 @@ pub mod utils;
 #[allow(unused_imports)]
 use crate::freertos as osal;
 
+#[cfg(feature = "freertos")]
+
+
+
+
 #[cfg(feature = "posix")]
 #[allow(unused_imports)]
 use crate::posix as osal;
@@ -26,11 +31,12 @@ use crate::posix as osal;
 pub mod os {
 
     #[cfg(not(feature = "disable_panic"))]
-    pub use crate::osal::ALLOCATOR;
+    use crate::osal::allocator::Allocator;
 
-    #[cfg(not(feature = "disable_panic"))]
-    pub use crate::osal::FreeRtosAllocator as allocator;
 
+    #[cfg(feature = "freertos")]
+    #[global_allocator]
+    pub static ALLOCATOR: Allocator = Allocator;
 
     #[allow(unused_imports)]
     pub use crate::osal::duration::*;

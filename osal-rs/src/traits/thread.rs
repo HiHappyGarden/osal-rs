@@ -32,7 +32,7 @@ impl Into<(u32, u32)> for ThreadNotification {
 }
 
 pub trait Thread {
-    fn new<F>(name: &str, stack_depth: StackType, priority: UBaseType, f: Option<F>) -> Self 
+    fn new<F>(name: &str, stack_depth: StackType, priority: UBaseType, callback: F) -> Self 
     where 
         F: Fn(Box<dyn Thread>, Option<ThreadParam>) -> Result<ThreadParam>,
         F: Send + Sync + 'static,

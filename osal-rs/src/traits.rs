@@ -16,4 +16,4 @@ pub use crate::traits::semaphore::Semaphore as SemaphoreFn;
 pub use crate::traits::system::System as SystemFn;
 pub use crate::traits::thread::{Thread as ThreadFn, ThreadParam, ThreadFnPtr, ThreadNotification};
 pub use crate::traits::tick::*;
-pub use crate::traits::timer::Timer as TimerFn;
+pub use crate::traits::timer::{Timer as TimerFn, TimerParam, TimerFnPtr};

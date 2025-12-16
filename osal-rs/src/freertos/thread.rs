@@ -116,7 +116,7 @@ impl Thread {
 
     #[inline]
     fn wait_notification_with_to_tick(&self, bits_to_clear_on_entry: u32, bits_to_clear_on_exit: u32 , timeout_ticks: impl ToTick) -> Result<u32> {
-        self.wait_notification(bits_to_clear_on_entry, bits_to_clear_on_exit, timeout_ticks.to_tick())
+        self.wait_notification(bits_to_clear_on_entry, bits_to_clear_on_exit, timeout_ticks.to_ticks())
     }
 
 }
@@ -140,7 +140,7 @@ unsafe extern "C" fn callback(param_ptr: *mut c_void) {
 
 
 impl ThreadFn for Thread {
-    fn new<F>(name: &str, stack_depth: StackType, priority: UBaseType, f: Option<F>) -> Self 
+    fn new<F>(name: &str, stack_depth: StackType, priority: UBaseType, callback: F) -> Self 
     where 
         F: Fn(Box<dyn ThreadFn>, Option<ThreadParam>) -> Result<ThreadParam>,
         F: Send + Sync + 'static
@@ -150,11 +150,7 @@ impl ThreadFn for Thread {
             name: name.to_string(), 
             stack_depth, 
             priority, 
-            callback: if let Some(f) = f {
-                Some(Arc::new(f))
-            } else {
-                None
-            }, 
+            callback: Some(Arc::new(callback)),
             param: None 
         }
     }

@@ -11,7 +11,7 @@ pub type TimerParam = Arc<dyn Any + Send + Sync>;
 pub type TimerFnPtr = dyn Fn(Box<dyn Timer>, Option<TimerParam>) -> Result<TimerParam> + Send + Sync + 'static;
 
 pub trait Timer {
-    fn new<F>(name: &str, timer_period_in_ticks: impl ToTick, auto_reload: bool, arg: TimerParam, callback: F) -> Result<Self>
+    fn new<F>(name: &str, timer_period_in_ticks: impl ToTick, auto_reload: bool, param: Option<TimerParam>, callback: F) -> Result<Self>
     where
         Self: Sized,
         F: Fn(Box<dyn Timer>, Option<TimerParam>) -> Result<TimerParam> + Send + Sync + 'static;

@@ -35,7 +35,7 @@ impl SemaphoreFn for Semaphore {
     }
 
     fn wait(&self, ticks_to_wait: impl ToTick) -> OsalRsBool {
-        if xSemaphoreTake!(self.0, ticks_to_wait.to_tick()) != pdFAIL {
+        if xSemaphoreTake!(self.0, ticks_to_wait.to_ticks()) != pdFAIL {
             OsalRsBool::True
         } else {
             OsalRsBool::False

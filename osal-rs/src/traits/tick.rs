@@ -2,10 +2,10 @@ use crate::os::types::TickType;
 
 
 pub trait ToTick : Sized + Copy {
-    fn to_tick(&self) -> TickType;
+    fn to_ticks(&self) -> TickType;
 } 
 
 
 pub trait FromTick {
-    fn tick(&mut self, tick: TickType);
+    fn ticks(&mut self, tick: TickType);
 }

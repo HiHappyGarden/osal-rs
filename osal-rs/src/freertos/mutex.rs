@@ -27,7 +27,7 @@ impl RawMutexFn for RawMutex {
     }
     
     fn lock(&self) -> OsalRsBool {
-        let res = xSemaphoreTake!(self.0, MAX_DELAY.to_tick());
+        let res = xSemaphoreTake!(self.0, MAX_DELAY.to_ticks());
         if res == pdTRUE {
             OsalRsBool::True
         } else {

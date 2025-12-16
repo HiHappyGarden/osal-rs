@@ -21,12 +21,12 @@ unsafe impl Sync for Queue {}
 impl Queue {
     #[inline]
     fn fetch_with_to_tick(&self, buffer: &mut [u8], time: impl ToTick) -> Result<()> {
-        self.fetch(buffer, time.to_tick())
+        self.fetch(buffer, time.to_ticks())
     }
 
     #[inline]
     fn post_with_to_tick(&self, item: &[u8], time: impl ToTick) -> Result<()> {
-        self.post(item, time.to_tick())
+        self.post(item, time.to_ticks())
     }
 }
 
@@ -158,12 +158,12 @@ where
     T: ToBytes + BytesHasLen + FromBytes {
     #[inline]
     fn fetch_with_to_tick(&self, buffer: &mut T, time: impl ToTick) -> Result<()> {
-        self.fetch(buffer, time.to_tick())
+        self.fetch(buffer, time.to_ticks())
     }
 
     #[inline]
     fn post_with_to_tick(&self, item: &T, time: impl ToTick) -> Result<()> {
-        self.post(item, time.to_tick())
+        self.post(item, time.to_ticks())
     }
 }
 

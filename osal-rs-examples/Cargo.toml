@@ -3,5 +3,18 @@ name = "osal-rs-examples"
 version = "0.1.0"
 edition = "2024"
 
+[lib]
+crate-type = ["staticlib", "rlib"]
+
+[features]
+default = ["freertos"]
+freertos = ["osal-rs/freertos"]
+
 [dependencies]
 osal-rs = { path = "../osal-rs" }
+
+[profile.dev]
+panic = "abort"
+
+[profile.release]
+panic = "abort"

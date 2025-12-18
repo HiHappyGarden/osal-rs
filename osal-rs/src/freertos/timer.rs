@@ -11,7 +11,7 @@ use crate::freertos::ffi::pdPASS;
 use crate::to_c_str;
 use crate::traits::{ToTick, TimerParam, TimerFn, TimerFnPtr};
 use crate::utils::{OsalRsBool, Result, Error};
-use super::ffi::{TimerHandle, pvTimerGetTimerID, xTimerCreate, xTimerStart, xTimerChangePeriod, xTimerDelete, xTimerReset, xTimerStop};
+use super::ffi::{TimerHandle, pvTimerGetTimerID, xTimerCreate, osal_rs_timer_start, osal_rs_timer_change_period, osal_rs_timer_delete, osal_rs_timer_reset, osal_rs_timer_stop};
 use super::types::{TickType};
 
 #[derive(Clone)]
@@ -114,7 +114,7 @@ impl TimerFn for Timer {
 
     fn start(&self, ticks_to_wait: TickType) -> OsalRsBool {
         if unsafe {
-            xTimerStart(self.handle, ticks_to_wait)
+            osal_rs_timer_start(self.handle, ticks_to_wait)
         } != pdPASS {
             OsalRsBool::False
         } else {
@@ -124,7 +124,7 @@ impl TimerFn for Timer {
 
     fn stop(&self, ticks_to_wait: TickType)  -> OsalRsBool {
         if unsafe {
-            xTimerStop(self.handle, ticks_to_wait)
+            osal_rs_timer_stop(self.handle, ticks_to_wait)
         } != pdPASS {
             OsalRsBool::False
         } else {
@@ -134,7 +134,7 @@ impl TimerFn for Timer {
 
     fn reset(&self, ticks_to_wait: TickType) -> OsalRsBool {
         if unsafe {
-            xTimerReset(self.handle, ticks_to_wait)
+            osal_rs_timer_reset(self.handle, ticks_to_wait)
         } != pdPASS {
             OsalRsBool::False
         } else {
@@ -144,7 +144,7 @@ impl TimerFn for Timer {
 
     fn change_period(&self, new_period_in_ticks: TickType, new_period_ticks: TickType) -> OsalRsBool {
         if unsafe {
-            xTimerChangePeriod(self.handle, new_period_in_ticks, new_period_ticks)
+            osal_rs_timer_change_period(self.handle, new_period_in_ticks, new_period_ticks)
         } != pdPASS {
             OsalRsBool::False
         } else {
@@ -154,7 +154,7 @@ impl TimerFn for Timer {
 
     fn delete(&mut self, ticks_to_wait: TickType) -> OsalRsBool {
         if unsafe {
-            xTimerDelete(self.handle, ticks_to_wait)
+            osal_rs_timer_delete(self.handle, ticks_to_wait)
         } != pdPASS {
             self.handle = null_mut();
             OsalRsBool::False

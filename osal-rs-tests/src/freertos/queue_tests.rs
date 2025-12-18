@@ -1,6 +1,5 @@
 extern crate alloc;
 
-use alloc::vec;
 use osal_rs::os::*;
 use osal_rs::utils::Result;
 use core::time::Duration;

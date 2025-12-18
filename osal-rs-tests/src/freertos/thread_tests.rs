@@ -1,6 +1,5 @@
 extern crate alloc;
 
-use alloc::boxed::Box;
 use alloc::sync::Arc;
 use core::any::Any;
 use core::time::Duration;

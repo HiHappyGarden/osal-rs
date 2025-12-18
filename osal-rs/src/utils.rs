@@ -1,4 +1,4 @@
-use core::time::Duration;
+use core::{fmt::Debug, time::Duration};
 
 
 pub enum Error {
@@ -14,6 +14,28 @@ pub enum Error {
     InvalidQueueSize,
     NullPtr,
     Unhandled(&'static str)
+}
+
+impl Debug for Error {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+
+        use Error::*;
+
+        match self {
+            OutOfMemory => write!(f, "OutOfMemory"),
+            QueueSendTimeout => write!(f, "QueueSendTimeout"),
+            QueueReceiveTimeout => write!(f, "QueueReceiveTimeout"),
+            MutexTimeout => write!(f, "MutexTimeout"),
+            MutexLockFailed => write!(f, "MutexLockFailed"),
+            Timeout => write!(f, "Timeout"),
+            QueueFull => write!(f, "QueueFull"),
+            StringConversionError => write!(f, "StringConversionError"),
+            TaskNotFound => write!(f, "TaskNotFound"),
+            InvalidQueueSize => write!(f, "InvalidQueueSize"),
+            NullPtr => write!(f, "NullPtr"),
+            Unhandled(msg) => write!(f, "Unhandled error: {}", msg),
+        }
+    }
 }
 
 #[derive(PartialEq, Eq, Clone, Copy, Debug)]

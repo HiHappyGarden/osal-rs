@@ -296,19 +296,19 @@ unsafe extern "C" {
         pxCallbackFunction: Option<TimerCallback>,
     ) -> TimerHandle;
 
-    pub fn xTimerStart(xTimer: TimerHandle, xTicksToWait: TickType) -> BaseType;
+    pub fn osal_rs_timer_start(xTimer: TimerHandle, xTicksToWait: TickType) -> BaseType;
 
-    pub fn xTimerStop(xTimer: TimerHandle, xTicksToWait: TickType) -> BaseType;
+    pub fn osal_rs_timer_stop(xTimer: TimerHandle, xTicksToWait: TickType) -> BaseType;
 
-    pub fn xTimerReset(xTimer: TimerHandle, xTicksToWait: TickType) -> BaseType;
+    pub fn osal_rs_timer_reset(xTimer: TimerHandle, xTicksToWait: TickType) -> BaseType;
 
-    pub fn xTimerChangePeriod(
+    pub fn osal_rs_timer_change_period(
         xTimer: TimerHandle,
         xNewPeriodInTicks: TickType,
         xTicksToWait: TickType,
     ) -> BaseType;
 
-    pub fn xTimerDelete(xTimer: TimerHandle, xTicksToWait: TickType) -> BaseType;
+    pub fn osal_rs_timer_delete(xTimer: TimerHandle, xTicksToWait: TickType) -> BaseType;
 
     pub fn pvTimerGetTimerID(xTimer: TimerHandle) -> *mut c_void;
 }

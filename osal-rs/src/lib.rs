@@ -45,6 +45,9 @@ pub mod os {
     pub use crate::traits::*;
     pub use crate::osal::config as config;
     pub use crate::osal::types as types;
+
+    #[cfg(not(feature = "disable_panic"))]
+    pub use crate::osal::printf;
 }
 
 

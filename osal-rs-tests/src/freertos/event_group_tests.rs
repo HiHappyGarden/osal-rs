@@ -58,7 +58,7 @@ pub fn test_event_group_clear_all() -> Result<()> {
     
     event_group.set(BIT_0 | BIT_1 | BIT_2 | BIT_3);
     
-    event_group.clear(0xFFFFFFFF);
+    event_group.clear(BIT_0 | BIT_1 | BIT_2 | BIT_3);
     
     let bits = event_group.get();
     assert_eq!(bits, 0);

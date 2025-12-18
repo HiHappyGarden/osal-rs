@@ -311,6 +311,8 @@ unsafe extern "C" {
     pub fn osal_rs_timer_delete(xTimer: TimerHandle, xTicksToWait: TickType) -> BaseType;
 
     pub fn pvTimerGetTimerID(xTimer: TimerHandle) -> *mut c_void;
+
+    pub fn printf(fmt: *const u8, ...) -> i32; 
 }
 
 #[macro_export]
@@ -549,6 +551,45 @@ macro_rules! xSemaphoreGiveRecursive {
     ($xMutex:expr) => {
         unsafe {
             $crate::freertos::ffi::xQueueGiveMutexRecursive($xMutex)
+        }
+    };
+}
+
+#[macro_export]
+macro_rules! println {
+    () => {
+        unsafe {
+            $crate::os::printf(b"\r\n\0".as_ptr());
+        }
+    };
+    ($fmt:expr) => {
+        unsafe {
+            let msg = alloc::ffi::CString::new(concat!($fmt, "\r\n")).unwrap();
+            $crate::os::printf(msg.as_ptr());
+        }
+    };
+    ($fmt:expr, $($arg:tt)*) => {
+        unsafe {
+            let s = format!(concat!($fmt, "\r\n"), $($arg)*);
+            let msg = alloc::ffi::CString::new(s).unwrap();
+            $crate::os::printf(msg.as_ptr());
+        }
+    };
+}
+
+#[macro_export]
+macro_rules! print {
+    ($fmt:expr) => {
+        unsafe {
+            let msg = alloc::ffi::CString::new($fmt).unwrap();
+            $crate::os::printf(msg.as_ptr());
+        }
+    };
+    ($fmt:expr, $($arg:tt)*) => {
+        unsafe {
+            let s = format!($fmt, $($arg)*);
+            let msg = alloc::ffi::CString::new(s).unwrap();
+            $crate::os::printf(msg.as_ptr());
         }
     };
 }

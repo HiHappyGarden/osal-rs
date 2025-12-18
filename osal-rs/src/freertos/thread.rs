@@ -116,6 +116,9 @@ impl Thread {
 
     #[inline]
     fn wait_notification_with_to_tick(&self, bits_to_clear_on_entry: u32, bits_to_clear_on_exit: u32 , timeout_ticks: impl ToTick) -> Result<u32> {
+        if self.handle.is_null() {
+            return Err(Error::NullPtr);
+        }
         self.wait_notification(bits_to_clear_on_entry, bits_to_clear_on_exit, timeout_ticks.to_ticks())
     }
 
@@ -172,7 +175,6 @@ impl ThreadFn for Thread {
     }
 
     fn spawn(&mut self, param: Option<ThreadParam>) -> Result<Self> {        
-
         let name = to_cstring!(self.name)?;
 
         let mut handle: ThreadHandle =  null_mut();
@@ -317,13 +319,13 @@ impl ThreadFn for Thread {
 }
 
 
-impl Drop for Thread {
-    fn drop(&mut self) {
-        if !self.handle.is_null() {
-            unsafe { vTaskDelete( self.handle ); } 
-        }
-    }
-}
+// impl Drop for Thread {
+//     fn drop(&mut self) {
+//         if !self.handle.is_null() {
+//             unsafe { vTaskDelete( self.handle ); } 
+//         }
+//     }
+// }
 
 impl Deref for Thread {
     type Target = ThreadHandle;

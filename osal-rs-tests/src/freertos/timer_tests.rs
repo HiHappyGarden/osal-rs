@@ -1,6 +1,5 @@
 extern crate alloc;
 
-use alloc::boxed::Box;
 use alloc::sync::Arc;
 use core::any::Any;
 use core::sync::atomic::{AtomicU32, Ordering};
@@ -41,7 +40,7 @@ pub fn test_timer_one_shot() -> Result<()> {
     assert_eq!(result, OsalRsBool::True);
     
     // Wait for timer to fire
-    Thread::get_current().wait_notification(0, 0xFFFFFFFF, Duration::from_millis(200).to_ticks());
+    let _ = Thread::get_current().wait_notification(0, 0xFFFFFFFF, Duration::from_millis(200).to_ticks());
     
     assert!(COUNTER.load(Ordering::SeqCst) >= 1);
     Ok(())
@@ -64,7 +63,7 @@ pub fn test_timer_auto_reload() -> Result<()> {
     let result = timer.start(Duration::from_millis(10).to_ticks());
     assert_eq!(result, OsalRsBool::True);
     
-    Thread::get_current().wait_notification(0, 0xFFFFFFFF, Duration::from_millis(300).to_ticks());
+    let _ = Thread::get_current().wait_notification(0, 0xFFFFFFFF, Duration::from_millis(300).to_ticks());
     
     assert!(COUNTER.load(Ordering::SeqCst) >= 2);
     
@@ -157,7 +156,7 @@ pub fn test_timer_with_param() -> Result<()> {
 
     timer.start(Duration::from_millis(10).to_ticks());
     
-    Thread::get_current().wait_notification(0, 0xFFFFFFFF, Duration::from_millis(200).to_ticks());
+    let _ = Thread::get_current().wait_notification(0, 0xFFFFFFFF, Duration::from_millis(200).to_ticks());
     
     assert_eq!(RECEIVED_VALUE.load(Ordering::SeqCst), 42);
     Ok(())

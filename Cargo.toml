@@ -3,7 +3,7 @@ resolver = "3"
 members = [
     "osal-rs",
     "osal-rs-build",
-    "osal-rs-examples",
+    "osal-rs-tests",
 ]
 
 [profile.dev]

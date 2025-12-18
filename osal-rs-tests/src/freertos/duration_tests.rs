@@ -1,7 +1,6 @@
 extern crate alloc;
 
 use core::time::Duration;
-use osal_rs::os::*;
 use osal_rs::os::{ToTick, FromTick};
 use osal_rs::os::types::TickType;
 use osal_rs::utils::Result;
@@ -55,7 +54,7 @@ pub fn test_duration_one_second() -> Result<()> {
 pub fn test_duration_microseconds() -> Result<()> {
     let duration = Duration::from_micros(1000); // 1 millisecond
     let ticks = duration.to_ticks();
-    assert!(ticks >= 0);
+    assert!(ticks > 0);
     Ok(())
 }
 

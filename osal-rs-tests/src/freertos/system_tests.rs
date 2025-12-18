@@ -1,19 +1,18 @@
 extern crate alloc;
 
-use alloc::boxed::Box;
 use core::time::Duration;
 use osal_rs::os::*;
 use osal_rs::utils::{Result, OsalRsBool};
 
 pub fn test_system_get_tick_count() -> Result<()> {
     let tick_count = System::get_tick_count();
-    assert!(tick_count >= 0);
+    assert!(tick_count > 0);
     Ok(())
 }
 
 pub fn test_system_get_current_time() -> Result<()> {
     let time = System::get_current_time_us();
-    assert!(time.as_micros() >= 0);
+    assert!(time.as_micros() > 0);
     Ok(())
 }
 
@@ -26,7 +25,7 @@ pub fn test_system_count_threads() -> Result<()> {
 pub fn test_system_get_all_threads() -> Result<()> {
     let state = System::get_all_thread();
     assert!(state.tasks.len() > 0);
-    assert!(state.total_run_time >= 0);
+    assert!(state.total_run_time > 0);
     Ok(())
 }
 
@@ -96,7 +95,7 @@ pub fn test_system_get_state() -> Result<()> {
 pub fn test_system_time_conversion() -> Result<()> {
     let duration = Duration::from_millis(100);
     let ticks = System::get_us_from_tick(&duration);
-    assert!(ticks >= 0);
+    assert!(ticks > 0);
     Ok(())
 }
 
@@ -106,7 +105,7 @@ pub fn test_system_thread_metadata() -> Result<()> {
     for thread_meta in state.tasks.iter() {
         assert!(!thread_meta.thread.is_null());
         assert!(!thread_meta.name.is_empty());
-        assert!(thread_meta.priority >= 0);
+        assert!(thread_meta.priority > 0);
     }
     Ok(())
 }

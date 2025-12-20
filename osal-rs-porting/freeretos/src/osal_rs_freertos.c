@@ -1,5 +1,7 @@
 #include "osal_rs_freertos.h"
 
+#include <stdarg.h>
+#include <stdio.h>
 
 void osal_rs_critical_section_enter(void)
 {
@@ -46,4 +48,13 @@ BaseType_t osal_rs_timer_change_period(TimerHandle_t xTimer, TickType_t xNewPeri
 BaseType_t osal_rs_timer_delete(TimerHandle_t xTimer, TickType_t xTicksToWait)
 {
     return xTimerGenericCommand(xTimer, tmrCOMMAND_DELETE, 0U, NULL, xTicksToWait);
+}
+
+int printf_on_uart(const char *format, ...)
+{
+    va_list args;
+    va_start(args, format);
+    int ret = vprintf(format, args);
+    va_end(args);
+    return ret;
 }

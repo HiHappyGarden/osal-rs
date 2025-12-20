@@ -6,8 +6,12 @@ use core::sync::atomic::{AtomicU32, Ordering};
 use osal_rs::os::*;
 use osal_rs::utils::{Result, OsalRsBool};
 use core::time::Duration;
+use osal_rs::{log_debug, log_info};
+
+const TAG: &str = "TimerTests";
 
 pub fn test_timer_creation() -> Result<()> {
+    log_info!(TAG, "Starting test_timer_creation");
     let timer = Timer::new(
         "test_timer",
         Duration::from_millis(100).to_ticks(),
@@ -19,10 +23,12 @@ pub fn test_timer_creation() -> Result<()> {
     );
 
     assert!(timer.is_ok());
+    log_info!(TAG, "test_timer_creation PASSED");
     Ok(())
 }
 
 pub fn test_timer_one_shot() -> Result<()> {
+    log_info!(TAG, "Starting test_timer_one_shot");
     static COUNTER: AtomicU32 = AtomicU32::new(0);
     
     let timer = Timer::new(
@@ -37,16 +43,21 @@ pub fn test_timer_one_shot() -> Result<()> {
     )?;
 
     let result = timer.start(Duration::from_millis(10).to_ticks());
+    log_debug!(TAG, "Timer started, waiting for fire...");
     assert_eq!(result, OsalRsBool::True);
     
     // Wait for timer to fire
     let _ = Thread::get_current().wait_notification(0, 0xFFFFFFFF, Duration::from_millis(200).to_ticks());
     
-    assert!(COUNTER.load(Ordering::SeqCst) >= 1);
+    let count = COUNTER.load(Ordering::SeqCst);
+    log_debug!(TAG, "Timer fired {} times", count);
+    assert!(count >= 1);
+    log_info!(TAG, "test_timer_one_shot PASSED");
     Ok(())
 }
 
 pub fn test_timer_auto_reload() -> Result<()> {
+    log_info!(TAG, "Starting test_timer_auto_reload");
     static COUNTER: AtomicU32 = AtomicU32::new(0);
     
     let timer = Timer::new(
@@ -65,13 +76,17 @@ pub fn test_timer_auto_reload() -> Result<()> {
     
     let _ = Thread::get_current().wait_notification(0, 0xFFFFFFFF, Duration::from_millis(300).to_ticks());
     
-    assert!(COUNTER.load(Ordering::SeqCst) >= 2);
+    let count = COUNTER.load(Ordering::SeqCst);
+    log_debug!(TAG, "Auto-reload timer fired {} times", count);
+    assert!(count >= 2);
     
     timer.stop(Duration::from_millis(10).to_ticks());
+    log_info!(TAG, "test_timer_auto_reload PASSED");
     Ok(())
 }
 
 pub fn test_timer_start_stop() -> Result<()> {
+    log_info!(TAG, "Starting test_timer_start_stop");
     let timer = Timer::new(
         "startstop_timer",
         Duration::from_millis(100).to_ticks(),
@@ -83,14 +98,18 @@ pub fn test_timer_start_stop() -> Result<()> {
     )?;
 
     let start_result = timer.start(Duration::from_millis(10).to_ticks());
+    log_debug!(TAG, "Timer started");
     assert_eq!(start_result, OsalRsBool::True);
     
     let stop_result = timer.stop(Duration::from_millis(10).to_ticks());
+    log_debug!(TAG, "Timer stopped");
     assert_eq!(stop_result, OsalRsBool::True);
+    log_info!(TAG, "test_timer_start_stop PASSED");
     Ok(())
 }
 
 pub fn test_timer_reset() -> Result<()> {
+    log_info!(TAG, "Starting test_timer_reset");
     let timer = Timer::new(
         "reset_timer",
         Duration::from_millis(100).to_ticks(),
@@ -104,13 +123,16 @@ pub fn test_timer_reset() -> Result<()> {
     timer.start(Duration::from_millis(10).to_ticks());
     
     let reset_result = timer.reset(Duration::from_millis(10).to_ticks());
+    log_debug!(TAG, "Timer reset");
     assert_eq!(reset_result, OsalRsBool::True);
     
     timer.stop(Duration::from_millis(10).to_ticks());
+    log_info!(TAG, "test_timer_reset PASSED");
     Ok(())
 }
 
 pub fn test_timer_change_period() -> Result<()> {
+    log_info!(TAG, "Starting test_timer_change_period");
     let timer = Timer::new(
         "period_timer",
         Duration::from_millis(100).to_ticks(),
@@ -123,6 +145,7 @@ pub fn test_timer_change_period() -> Result<()> {
 
     timer.start(Duration::from_millis(10).to_ticks());
     
+    log_debug!(TAG, "Changing period from 100ms to 200ms");
     let change_result = timer.change_period(
         Duration::from_millis(200).to_ticks(),
         Duration::from_millis(10).to_ticks()
@@ -130,10 +153,12 @@ pub fn test_timer_change_period() -> Result<()> {
     assert_eq!(change_result, OsalRsBool::True);
     
     timer.stop(Duration::from_millis(10).to_ticks());
+    log_info!(TAG, "test_timer_change_period PASSED");
     Ok(())
 }
 
 pub fn test_timer_with_param() -> Result<()> {
+    log_info!(TAG, "Starting test_timer_with_param");
     let test_value: u32 = 42;
     let param: Arc<dyn Any + Send + Sync> = Arc::new(test_value);
     
@@ -158,11 +183,15 @@ pub fn test_timer_with_param() -> Result<()> {
     
     let _ = Thread::get_current().wait_notification(0, 0xFFFFFFFF, Duration::from_millis(200).to_ticks());
     
-    assert_eq!(RECEIVED_VALUE.load(Ordering::SeqCst), 42);
+    let received = RECEIVED_VALUE.load(Ordering::SeqCst);
+    log_debug!(TAG, "Received parameter value: {}", received);
+    assert_eq!(received, 42);
+    log_info!(TAG, "test_timer_with_param PASSED");
     Ok(())
 }
 
 pub fn test_timer_delete() -> Result<()> {
+    log_info!(TAG, "Starting test_timer_delete");
     let mut timer = Timer::new(
         "delete_timer",
         Duration::from_millis(100).to_ticks(),
@@ -175,10 +204,12 @@ pub fn test_timer_delete() -> Result<()> {
 
     let delete_result = timer.delete(Duration::from_millis(10).to_ticks());
     assert_eq!(delete_result, OsalRsBool::True);
+    log_info!(TAG, "test_timer_delete PASSED");
     Ok(())
 }
 
 pub fn run_all_tests() -> Result<()> {
+    log_info!(TAG, "========== Running Timer Tests ==========");
     test_timer_creation()?;
     test_timer_one_shot()?;
     test_timer_auto_reload()?;
@@ -187,5 +218,6 @@ pub fn run_all_tests() -> Result<()> {
     test_timer_change_period()?;
     test_timer_with_param()?;
     test_timer_delete()?;
+    log_info!(TAG, "========== All Timer Tests PASSED ==========");
     Ok(())
 }

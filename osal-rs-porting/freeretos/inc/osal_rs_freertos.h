@@ -22,4 +22,6 @@ BaseType_t osal_rs_timer_reset(TimerHandle_t xTimer, TickType_t xTicksToWait);
 BaseType_t osal_rs_timer_change_period(TimerHandle_t xTimer, TickType_t xNewPeriod, TickType_t xTicksToWait);
 BaseType_t osal_rs_timer_delete(TimerHandle_t xTimer, TickType_t xTicksToWait);
 
+int printf_on_uart(const char *format, ...);
+
 #endif /* OSAL_RS_FREERTOS_H */

@@ -13,7 +13,7 @@ use super::types::{StackType, UBaseType, BaseType, DoublePtr, TickType};
 use super::thread::ThreadState::*;
 use crate::traits::{ThreadFn, ThreadParam, ThreadFnPtr, ThreadNotification, ToTick};
 use crate::utils::{Result, Error};
-use crate::{from_c_str, to_cstring, xTaskNotify, xTaskNotifyFromISR, xTaskNotifyWait};
+use crate::{from_c_str, xTaskNotify, xTaskNotifyFromISR, xTaskNotifyWait};
 
 #[derive(Copy, Clone, Debug, PartialEq)]
 #[repr(u8)]
@@ -133,6 +133,8 @@ unsafe extern "C" fn callback_c_wrapper(param_ptr: *mut c_void) {
 
     thread_instance.as_mut().handle = unsafe { xTaskGetCurrentTaskHandle() };
 
+    let thread = *thread_instance.clone();
+
     let param_arc: Option<Arc<dyn Any + Send + Sync>> = thread_instance
         .param
         .clone();
@@ -140,6 +142,8 @@ unsafe extern "C" fn callback_c_wrapper(param_ptr: *mut c_void) {
     if let Some(callback) = &thread_instance.callback.clone() {
         let _ = callback(thread_instance, param_arc);
     }
+
+    thread.delete();
 }
 
 
@@ -175,7 +179,6 @@ impl ThreadFn for Thread {
     }
 
     fn spawn(&mut self, param: Option<ThreadParam>) -> Result<Self> {        
-        let name = to_cstring!(self.name)?;
 
         let mut handle: ThreadHandle =  null_mut();
 
@@ -184,7 +187,7 @@ impl ThreadFn for Thread {
         let ret = unsafe {
             xTaskCreate(
                 Some(super::thread::callback_c_wrapper),
-                name.as_ptr(),
+                self.name.clone().as_ptr(),
                 self.stack_depth,
                 Box::into_raw(boxed_thread) as *mut _,
                 self.priority,
@@ -198,11 +201,9 @@ impl ThreadFn for Thread {
 
         Ok(Self { 
             handle,
-            name: self.name.clone(),
-            stack_depth: self.stack_depth,
-            priority: self.priority,
             callback: self.callback.clone(),
             param,
+            ..self.clone()
         })
     }
 

@@ -11,6 +11,8 @@ mod freertos;
 #[cfg(feature = "posix")]
 mod posix;
 
+pub mod log;
+
 mod traits;
 
 pub mod utils;
@@ -33,6 +35,8 @@ pub mod os {
     #[global_allocator]
     pub static ALLOCATOR: Allocator = Allocator;
 
+    
+
     #[allow(unused_imports)]
     pub use crate::osal::duration::*;
     pub use crate::osal::event_group::*;
@@ -45,9 +49,7 @@ pub mod os {
     pub use crate::traits::*;
     pub use crate::osal::config as config;
     pub use crate::osal::types as types;
-
-    #[cfg(not(feature = "disable_panic"))]
-    pub use crate::osal::printf;
+    
 }
 
 

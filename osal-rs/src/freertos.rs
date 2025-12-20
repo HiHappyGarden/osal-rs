@@ -10,5 +10,3 @@ pub mod system;
 pub mod thread;
 pub mod timer;
 pub mod types;
-
-pub use ffi::printf;

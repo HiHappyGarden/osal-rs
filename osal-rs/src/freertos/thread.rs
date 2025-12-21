@@ -9,10 +9,10 @@ use alloc::string::{String, ToString};
 use alloc::sync::Arc;
 
 use super::ffi::{INVALID, TaskStatus, ThreadHandle, pdPASS, pdTRUE, vTaskDelete, vTaskGetInfo, vTaskResume, vTaskSuspend, xTaskCreate, xTaskGetCurrentTaskHandle};
-use super::types::{StackType, UBaseType, BaseType, DoublePtr, TickType};
+use super::types::{StackType, UBaseType, BaseType, TickType};
 use super::thread::ThreadState::*;
 use crate::traits::{ThreadFn, ThreadParam, ThreadFnPtr, ThreadNotification, ToTick};
-use crate::utils::{Result, Error};
+use crate::utils::{Result, Error, DoublePtr};
 use crate::{from_c_str, xTaskNotify, xTaskNotifyFromISR, xTaskNotifyWait};
 
 #[derive(Copy, Clone, Debug, PartialEq)]

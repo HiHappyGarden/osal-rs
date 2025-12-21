@@ -3,8 +3,8 @@ use alloc::boxed::Box;
 use alloc::sync::Arc;
 
 use crate::os::{ThreadMetadata};
-use crate::os::types::{BaseType, ConstPtr, DoublePtr, StackType, TickType, UBaseType};
-use crate::utils::Result;
+use crate::os::types::{BaseType, StackType, TickType, UBaseType};
+use crate::utils::{Result, ConstPtr, DoublePtr};
 
 pub type ThreadParam = Arc<dyn Any + Send + Sync>;
 pub type ThreadFnPtr = dyn Fn(Box<dyn Thread>, Option<ThreadParam>) -> Result<ThreadParam> + Send + Sync + 'static;

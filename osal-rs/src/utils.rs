@@ -1,4 +1,6 @@
-use core::{fmt::Debug, time::Duration};
+use core::ffi::c_void;
+use core::fmt::Debug; 
+use core::time::Duration;
 
 
 pub enum Error {
@@ -13,6 +15,7 @@ pub enum Error {
     TaskNotFound,
     InvalidQueueSize,
     NullPtr,
+    NotFound,
     Unhandled(&'static str)
 }
 
@@ -33,6 +36,7 @@ impl Debug for Error {
             TaskNotFound => write!(f, "TaskNotFound"),
             InvalidQueueSize => write!(f, "InvalidQueueSize"),
             NullPtr => write!(f, "NullPtr"),
+            NotFound => write!(f, "NotFound"),
             Unhandled(msg) => write!(f, "Unhandled error: {}", msg),
         }
     }
@@ -55,6 +59,9 @@ pub const MAX_DELAY: Duration = Duration::from_millis(usize::MAX as u64);
 
 pub type Result<T, E = Error> = core::result::Result<T, E>;
 
+pub type DoublePtr = *mut *mut c_void;
+pub type Ptr = *mut c_void;
+pub type ConstPtr = *const c_void;
 
 #[macro_export]
 macro_rules! from_c_str {

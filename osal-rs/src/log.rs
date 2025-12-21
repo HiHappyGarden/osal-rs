@@ -147,12 +147,12 @@ pub fn sys_log(tag: &str, log_type: u8, to_print: &str) {
         };
 
 
-        let tick_count = System::get_tick_count();
+        let now = System::get_current_time_us();
 
 
         #[cfg(not(feature = "std"))]
         {
-            let formatted = format!("{color}({tick_count})[{tag}] {to_print}{color_reset}\r\n");
+            let formatted = format!("{color}({millis}ms)[{tag}] {to_print}{color_reset}\r\n", millis=now.as_millis());
             if let Ok(c_str) = CString::new(formatted) {
                 printf_on_uart(b"%s\0".as_ptr() as *const c_char, c_str.as_ptr());
             }

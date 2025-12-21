@@ -1,6 +1,7 @@
 extern crate alloc;
 
 use alloc::sync::Arc;
+use alloc::boxed::Box;
 use core::any::Any;
 use core::time::Duration;
 use osal_rs::os::*;
@@ -162,6 +163,69 @@ pub fn test_thread_get_current() -> Result<()> {
     Ok(())
 }
 
+// Thread function (not a closure)
+fn thread_function(_thread: Box<dyn ThreadFn>, param: Option<Arc<dyn Any + Send + Sync>>) -> Result<Arc<dyn Any + Send + Sync>> {
+    log_debug!(TAG, "Thread function executing");
+    
+    // Check if we received a parameter
+    if let Some(p) = param.as_ref() {
+        if let Some(val) = p.downcast_ref::<u32>() {
+            log_debug!(TAG, "Received parameter value: {}", *val);
+            assert_eq!(*val, 99);
+        }
+    }
+    
+    // Simulate some work
+    System::delay(Duration::from_millis(10).to_ticks());
+    
+    Ok(param.unwrap_or_else(|| Arc::new(())))
+}
+
+pub fn test_thread_with_function() -> Result<()> {
+    log_info!(TAG, "Starting test_thread_with_function");
+    let mut thread = Thread::new(
+        "function_test",
+        1024,
+        5,
+        thread_function
+    );
+
+    let result = thread.spawn(None);
+    assert!(result.is_ok());
+    
+    if let Ok(spawned) = result {
+        log_debug!(TAG, "Thread spawned with function (no param)");
+        System::delay(Duration::from_millis(20).to_ticks());
+        spawned.delete();
+    }
+    log_info!(TAG, "test_thread_with_function PASSED");
+    Ok(())
+}
+
+pub fn test_thread_with_function_and_param() -> Result<()> {
+    log_info!(TAG, "Starting test_thread_with_function_and_param");
+    let test_value: u32 = 99;
+    let param: Arc<dyn Any + Send + Sync> = Arc::new(test_value);
+    
+    let mut thread = Thread::new(
+        "function_param_test",
+        1024,
+        5,
+        thread_function
+    );
+
+    let result = thread.spawn(Some(param));
+    assert!(result.is_ok());
+    
+    if let Ok(spawned) = result {
+        log_debug!(TAG, "Thread spawned with function and parameter");
+        System::delay(Duration::from_millis(20).to_ticks());
+        spawned.delete();
+    }
+    log_info!(TAG, "test_thread_with_function_and_param PASSED");
+    Ok(())
+}
+
 pub fn run_all_tests() -> Result<()> {
     log_info!(TAG, "========== Running Thread Tests ==========");
     test_thread_creation()?;
@@ -171,6 +235,8 @@ pub fn run_all_tests() -> Result<()> {
     test_thread_get_metadata()?;
     test_thread_notification()?;
     test_thread_get_current()?;
+    test_thread_with_function()?;
+    test_thread_with_function_and_param()?;
     log_info!(TAG, "========== All Thread Tests PASSED ==========");
     Ok(())
 }

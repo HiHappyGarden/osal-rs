@@ -97,6 +97,7 @@ pub struct Thread {
 }
 
 unsafe impl Send for Thread {}
+unsafe impl Sync for Thread {}
 
 impl Thread {
     pub fn get_metadata_from_handle(handle: ThreadHandle) -> ThreadMetadata {

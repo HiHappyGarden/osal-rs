@@ -95,3 +95,22 @@ pub const fn register_bit_size() -> CpuRegisterSize {
         CpuRegisterSize::Bit32
     }
 }
+
+#[macro_export]
+macro_rules! from_str_to_array {
+    ($str:expr, $buff_name:ident, $buff_size:expr) => {
+        let mut $buff_name = [b' '; $buff_size];
+        let _bytes = $str.as_bytes();
+        let _len = core::cmp::min(_bytes.len(), $buff_size);
+        $buff_name[.._len].copy_from_slice(&_bytes[.._len]);
+    };
+}
+
+
+            // let mut name_array = [b' '; NAME_SIZE];
+            // let bytes = name.as_bytes();
+            // if name.len() > NAME_SIZE {
+            //     name_array[..bytes.len()].copy_from_slice(bytes[..NAME_SIZE]);
+            // } else {
+            //     name_array[..bytes.len()].copy_from_slice(bytes);
+            // }

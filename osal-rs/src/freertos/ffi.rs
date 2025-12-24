@@ -1,3 +1,6 @@
+#![allow(non_upper_case_globals)]
+#![allow(non_snake_case)]
+
 use core::ffi::{c_char, c_uint, c_void};
 use core::ptr;
 
@@ -19,43 +22,43 @@ pub const SUSPENDED: TaskState = 3;
 pub const DELETED: TaskState = 4;
 pub const INVALID: TaskState = 5;
 
-#[allow(non_upper_case_globals)]
+
 pub const pdFALSE: BaseType = 0;
-#[allow(non_upper_case_globals)]
+
 pub const pdTRUE: BaseType = 1;
-#[allow(non_upper_case_globals)]
+
 pub const pdPASS: BaseType = pdTRUE;
-#[allow(non_upper_case_globals)]
+
 pub const pdFAIL: BaseType = pdFALSE;
-#[allow(non_upper_case_globals)]
+
 pub const tskDEFAULT_INDEX_TO_NOTIFY: UBaseType = 0;
-#[allow(non_upper_case_globals)]
+
 pub const semBINARY_SEMAPHORE_QUEUE_LENGTH: u8 = 1;
-#[allow(non_upper_case_globals)]
+
 pub const semSEMAPHORE_QUEUE_ITEM_LENGTH: u8 = 0;
-#[allow(non_upper_case_globals)]
+
 pub const semGIVE_BLOCK_TIME: TickType = 0;
-#[allow(non_upper_case_globals)]
+
 pub const queueSEND_TO_BACK: BaseType = 0;
-#[allow(non_upper_case_globals)]
+
 pub const queueSEND_TO_FRONT: BaseType = 1;
-#[allow(non_upper_case_globals)]
+
 pub const queueOVERWRITE: BaseType = 2;
-#[allow(non_upper_case_globals)]
+
 pub const queueQUEUE_TYPE_BASE: u8 = 0;
-#[allow(non_upper_case_globals)]
+
 pub const queueQUEUE_TYPE_MUTEX: u8 = 1;
-#[allow(non_upper_case_globals)]
+
 pub const queueQUEUE_TYPE_COUNTING_SEMAPHORE: u8 = 2;
-#[allow(non_upper_case_globals)]
+
 pub const queueQUEUE_TYPE_BINARY_SEMAPHORE: u8 = 3;
-#[allow(non_upper_case_globals)]
+
 pub const queueQUEUE_TYPE_RECURSIVE_MUTEX: u8 = 4;
-#[allow(non_upper_case_globals)]
+
 pub const queueQUEUE_TYPE_SET: u8 = 5;
 
 
-#[allow(non_snake_case)]
+
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct TaskStatus {

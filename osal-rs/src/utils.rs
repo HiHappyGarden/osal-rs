@@ -1,6 +1,8 @@
-use core::ffi::c_void;
-use core::fmt::Debug; 
+use core::{ffi::c_void, str::from_utf8_mut};
+use core::fmt::{Debug, Display}; 
+use core::ops::Deref;
 use core::time::Duration;
+use alloc::string::{String, ToString};
 
 
 pub enum Error {
@@ -16,6 +18,7 @@ pub enum Error {
     InvalidQueueSize,
     NullPtr,
     NotFound,
+    OutOfIndex,
     Unhandled(&'static str)
 }
 
@@ -37,6 +40,7 @@ impl Debug for Error {
             InvalidQueueSize => write!(f, "InvalidQueueSize"),
             NullPtr => write!(f, "NullPtr"),
             NotFound => write!(f, "NotFound"),
+            OutOfIndex => write!(f, "OutOfIndex"),
             Unhandled(msg) => write!(f, "Unhandled error: {}", msg),
         }
     }
@@ -63,6 +67,15 @@ pub type DoublePtr = *mut *mut c_void;
 pub type Ptr = *mut c_void;
 pub type ConstPtr = *const c_void;
 
+
+pub const fn register_bit_size() -> CpuRegisterSize {
+    if size_of::<usize>() == 8 {
+        CpuRegisterSize::Bit64
+    } else {
+        CpuRegisterSize::Bit32
+    }
+}
+
 #[macro_export]
 macro_rules! from_c_str {
     ($str:expr) => {
@@ -88,14 +101,6 @@ macro_rules! to_c_str {
     };
 }
 
-pub const fn register_bit_size() -> CpuRegisterSize {
-    if size_of::<usize>() == 8 {
-        CpuRegisterSize::Bit64
-    } else {
-        CpuRegisterSize::Bit32
-    }
-}
-
 #[macro_export]
 macro_rules! from_str_to_array {
     ($str:expr, $buff_name:ident, $buff_size:expr) => {
@@ -106,11 +111,58 @@ macro_rules! from_str_to_array {
     };
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct Bytes<const SIZE: usize = 0> (pub [u8; SIZE]);
 
-            // let mut name_array = [b' '; NAME_SIZE];
-            // let bytes = name.as_bytes();
-            // if name.len() > NAME_SIZE {
-            //     name_array[..bytes.len()].copy_from_slice(bytes[..NAME_SIZE]);
-            // } else {
-            //     name_array[..bytes.len()].copy_from_slice(bytes);
-            // }
+impl<const SIZE: usize> Deref for Bytes<SIZE> {
+    type Target = [u8; SIZE];
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl<const SIZE: usize> Display for Bytes<SIZE> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(f, "{}", String::from_utf8_lossy(&self.0).to_string())
+    }
+}
+
+
+impl<const SIZE: usize> Bytes<SIZE> {
+    pub const fn new() -> Self {
+        Self( [0u8; SIZE] )
+    }
+
+    pub fn new_by_str(str: &str) -> Self {
+
+        let mut array = [0u8; SIZE];
+        
+        let mut i = 0usize ;
+        for byte in str.as_bytes() {
+            if i > SIZE {
+                break;
+            }
+            array[i] = *byte;
+            i += 1;
+        }  
+
+        Self( array )
+    }
+
+    pub fn new_by_string(str: &impl ToString) -> Self {
+        Self::new_by_str(&str.to_string())
+    }
+
+    pub fn fill_str(&mut self, dest: &mut str) {
+        match from_utf8_mut(&mut self.0) {
+            Ok(str) => {
+                let len = core::cmp::min(str.len(), dest.len());
+                unsafe {
+                    dest.as_bytes_mut()[..len].copy_from_slice(&str.as_bytes()[..len]);
+                }
+            }
+            Err(_) => todo!(),
+        }
+    }
+}

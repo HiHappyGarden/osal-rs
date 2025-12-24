@@ -3,6 +3,7 @@
 // Suppress warnings from FreeRTOS FFI bindings being included in multiple modules
 #![allow(clashing_extern_declarations)]
 #![allow(dead_code)]
+#![allow(unused_imports)]
 extern crate alloc;
 
 #[cfg(feature = "freertos")]
@@ -18,11 +19,9 @@ mod traits;
 pub mod utils;
 
 #[cfg(feature = "freertos")]
-#[allow(unused_imports)]
 use crate::freertos as osal;
 
 #[cfg(feature = "posix")]
-#[allow(unused_imports)]
 use crate::posix as osal;
 
 pub mod os {
@@ -36,8 +35,6 @@ pub mod os {
     pub static ALLOCATOR: Allocator = Allocator;
 
     
-
-    #[allow(unused_imports)]
     pub use crate::osal::duration::*;
     pub use crate::osal::event_group::*;
     pub use crate::osal::mutex::*;

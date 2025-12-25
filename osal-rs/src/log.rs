@@ -23,6 +23,7 @@ const COLOR_BLUE: &str = "\x1b[34m";
 const COLOR_MAGENTA: &str = "\x1b[35m";
 const COLOR_CYAN: &str = "\x1b[36m";
 const COLOR_RESET: &str = "\x1b[0m";
+pub const RETURN: &str = "\r\n";
 
 pub mod log_levels {
     pub const FLAG_DEBUG: u8 = 1 << 0;
@@ -152,7 +153,7 @@ pub fn sys_log(tag: &str, log_type: u8, to_print: &str) {
 
         #[cfg(not(feature = "std"))]
         {
-            let formatted = format!("{color}({millis}ms)[{tag}] {to_print}{color_reset}\r\n", millis=now.as_millis());
+            let formatted = format!("{color}({millis}ms)[{tag}] {to_print}{color_reset}{RETURN}", millis=now.as_millis());
             if let Ok(c_str) = CString::new(formatted) {
                 printf_on_uart(b"%s\0".as_ptr() as *const c_char, c_str.as_ptr());
             }

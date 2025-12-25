@@ -54,7 +54,10 @@ pub mod os {
 // Examples with std will provide their own
 #[cfg(not(feature = "disable_panic"))]
 #[panic_handler]
-fn panic(_info: &core::panic::PanicInfo) -> ! {
+
+fn panic(info: &core::panic::PanicInfo) -> ! {
+    println!("Panic occurred: {}", info);
+    #[allow(clippy::empty_loop)]
     loop {}
 }
 

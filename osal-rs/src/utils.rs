@@ -1,3 +1,4 @@
+use core::ffi::CStr;
 use core::{ffi::c_void, str::from_utf8_mut};
 use core::fmt::{Debug, Display}; 
 use core::ops::Deref;
@@ -124,7 +125,13 @@ impl<const SIZE: usize> Deref for Bytes<SIZE> {
 
 impl<const SIZE: usize> Display for Bytes<SIZE> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        write!(f, "{}", String::from_utf8_lossy(&self.0).to_string())
+        let str = unsafe {
+            CStr::from_ptr(self.0.as_ptr())
+            .to_str()
+            .unwrap_or("Conversion error")
+        };
+        
+        write!(f, "{}", str.to_string())
     }
 }
 
@@ -140,7 +147,7 @@ impl<const SIZE: usize> Bytes<SIZE> {
         
         let mut i = 0usize ;
         for byte in str.as_bytes() {
-            if i > SIZE {
+            if i > SIZE - 1{
                 break;
             }
             array[i] = *byte;

@@ -20,6 +20,7 @@ pub enum Error {
     NullPtr,
     NotFound,
     OutOfIndex,
+    InvalidType,
     Unhandled(&'static str)
 }
 
@@ -42,6 +43,7 @@ impl Debug for Error {
             NullPtr => write!(f, "NullPtr"),
             NotFound => write!(f, "NotFound"),
             OutOfIndex => write!(f, "OutOfIndex"),
+            InvalidType => write!(f, "InvalidType"),
             Unhandled(msg) => write!(f, "Unhandled error: {}", msg),
         }
     }

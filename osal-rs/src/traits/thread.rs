@@ -7,7 +7,8 @@ use crate::os::types::{BaseType, StackType, TickType, UBaseType};
 use crate::utils::{Result, ConstPtr, DoublePtr};
 
 pub type ThreadParam = Arc<dyn Any + Send + Sync>;
-pub type ThreadFnPtr = dyn Fn(Box<dyn Thread>, Option<ThreadParam>) -> Result<ThreadParam> + Send + Sync;
+pub type ThreadFnPtr = dyn Fn(Box<dyn Thread>, Option<ThreadParam>) -> Result<ThreadParam> + Send + Sync + 'static;
+pub type ThreadSimpleFnPtr = dyn Fn() + Send + Sync + 'static;
 
 #[derive(Debug, Copy, Clone)]
 pub enum ThreadNotification {
@@ -32,18 +33,23 @@ impl Into<(u32, u32)> for ThreadNotification {
 }
 
 pub trait Thread {
-    fn new<F>(name: &str, stack_depth: StackType, priority: UBaseType, callback: F) -> Self 
-    where 
-        F: Fn(Box<dyn Thread>, Option<ThreadParam>) -> Result<ThreadParam>,
-        F: Send + Sync + 'static,
+    fn new(name: &str, stack_depth: StackType, priority: UBaseType) -> Self 
+    where
         Self: Sized;
 
     fn new_with_handle(handle: ConstPtr, name: &str, stack_depth: StackType, priority: UBaseType) -> Result<Self>  
     where 
         Self: Sized;
 
-    fn spawn(&mut self, param: Option<ThreadParam>) -> Result<Self>
+    fn spawn<F>(&mut self, param: Option<ThreadParam>, callback: F) -> Result<Self>
     where 
+        F: Fn(Box<dyn Thread>, Option<ThreadParam>) -> Result<ThreadParam>,
+        F: Send + Sync + 'static,
+        Self: Sized;
+
+    fn spawn_simple<F>(&mut self, callback: F) -> Result<Self>
+    where
+        F: Fn() + Send + Sync + 'static,
         Self: Sized;
 
     fn delete(&self);

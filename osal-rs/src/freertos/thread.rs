@@ -11,6 +11,7 @@ use alloc::sync::Arc;
 use super::ffi::{INVALID, TaskStatus, ThreadHandle, pdPASS, pdTRUE, vTaskDelete, vTaskGetInfo, vTaskResume, vTaskSuspend, xTaskCreate, xTaskGetCurrentTaskHandle};
 use super::types::{StackType, UBaseType, BaseType, TickType};
 use super::thread::ThreadState::*;
+use crate::os::ThreadSimpleFnPtr;
 use crate::traits::{ThreadFn, ThreadParam, ThreadFnPtr, ThreadNotification, ToTick};
 use crate::utils::{Result, Error, DoublePtr};
 use crate::{from_c_str, xTaskNotify, xTaskNotifyFromISR, xTaskNotifyWait};
@@ -136,7 +137,7 @@ unsafe extern "C" fn callback_c_wrapper(param_ptr: *mut c_void) {
 
     let thread = *thread_instance.clone();
 
-    let param_arc: Option<Arc<dyn Any + Send + Sync>> = thread_instance
+    let param_arc: Option<ThreadParam> = thread_instance
         .param
         .clone();
 
@@ -147,35 +148,26 @@ unsafe extern "C" fn callback_c_wrapper(param_ptr: *mut c_void) {
     thread.delete();
 }
 
+unsafe extern "C" fn simple_callback_wrapper(param_ptr: *mut c_void) {
+    if param_ptr.is_null() {
+        return;
+    }
+
+    let func: Box<Arc<ThreadSimpleFnPtr>> = unsafe { Box::from_raw(param_ptr as *mut _) };
+    func();
+}
+
 
 
 impl ThreadFn for Thread {
-    /// Creates a new thread with a callback.
-    /// 
-    /// # Important
-    /// The callback must be `'static`, which means it cannot borrow local variables.
-    /// Use `move` in the closure to transfer ownership of any captured values:
-    /// 
-    /// ```ignore
-    /// let data = Arc::new(Mutex::new(0));
-    /// let thread = Thread::new("my_thread", 4096, 3, move |_thread, _param| {
-    ///     // Use 'move' to capture 'data' by value
-    ///     let mut guard = data.lock().unwrap();
-    ///     *guard += 1;
-    ///     Ok(Arc::new(()))
-    /// });
-    /// ```
-    fn new<F>(name: &str, stack_depth: StackType, priority: UBaseType, callback: F) -> Self 
-    where 
-        F: Fn(Box<dyn ThreadFn>, Option<ThreadParam>) -> Result<ThreadParam>,
-        F: Send + Sync + 'static
+    fn new(name: &str, stack_depth: StackType, priority: UBaseType) -> Self 
     {
         Self { 
             handle: null_mut(), 
             name: name.to_string(), 
             stack_depth, 
             priority, 
-            callback: Some(Arc::new(callback)),
+            callback: None,
             param: None 
         }
     }
@@ -194,10 +186,31 @@ impl ThreadFn for Thread {
         })
     }
 
-    fn spawn(&mut self, param: Option<ThreadParam>) -> Result<Self> {        
+    /// Creates a new thread with a callback.
+    /// 
+    /// # Important
+    /// The callback must be `'static`, which means it cannot borrow local variables.
+    /// Use `move` in the closure to transfer ownership of any captured values:
+    /// 
+    /// ```ignore
+    /// let data = Arc::new(Mutex::new(0));
+    /// let thread = Thread::new("my_thread", 4096, 3, move |_thread, _param| {
+    ///     // Use 'move' to capture 'data' by value
+    ///     let mut guard = data.lock().unwrap();
+    ///     *guard += 1;
+    ///     Ok(Arc::new(()))
+    /// });
+    /// ``
+    fn spawn<F>(&mut self, param: Option<ThreadParam>, callback: F) -> Result<Self> 
+        where 
+        F: Fn(Box<dyn ThreadFn>, Option<ThreadParam>) -> Result<ThreadParam>,
+        F: Send + Sync + 'static {
 
         let mut handle: ThreadHandle =  null_mut();
 
+        let func: Arc<ThreadFnPtr> = Arc::new(callback);
+        
+        self.callback = Some(func);
         self.param = param.clone();
 
         let boxed_thread = Box::new(self.clone());
@@ -221,6 +234,52 @@ impl ThreadFn for Thread {
             handle,
             callback: self.callback.clone(),
             param,
+            ..self.clone()
+        })
+    }
+
+    /// Spawns a new thread with a simple closure, similar to `std::thread::spawn`.
+    /// This is the recommended way to create threads for most use cases.
+    /// 
+    /// # Example
+    /// ```ignore
+    /// let counter = Arc::new(Mutex::new(0));
+    /// let counter_clone = Arc::clone(&counter);
+    /// 
+    /// let handle = Thread::spawn_simple("worker", 4096, 3, move || {
+    ///     let mut num = counter_clone.lock().unwrap();
+    ///     *num += 1;
+    /// }).unwrap();
+    /// 
+    /// handle.join(core::ptr::null_mut());
+    /// ```
+    fn spawn_simple<F>(&mut self, callback: F) -> Result<Self>
+    where
+        F: Fn() + Send + Sync + 'static,
+    {
+        let func: Arc<ThreadSimpleFnPtr> = Arc::new(callback);
+        let boxed_func = Box::new(func);
+        
+        let mut handle: ThreadHandle = null_mut();
+
+
+        let ret = unsafe {
+            xTaskCreate(
+                Some(simple_callback_wrapper),
+                self.name.clone().as_ptr(),
+                self.stack_depth,
+                Box::into_raw(boxed_func) as *mut _,
+                self.priority,
+                &mut handle,
+            )
+        };
+
+        if ret != pdPASS {
+            return Err(Error::OutOfMemory);
+        }
+
+        Ok(Self {
+            handle,
             ..self.clone()
         })
     }

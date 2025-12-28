@@ -1,7 +1,6 @@
 extern crate alloc;
 
 use alloc::sync::Arc;
-use alloc::boxed::Box;
 use core::any::Any;
 use core::time::Duration;
 use osal_rs::os::*;
@@ -16,10 +15,7 @@ pub fn test_thread_creation() -> Result<()> {
     let thread = Thread::new(
         "test_thread",
         1024,
-        5,
-        |_thread, _param| {
-            Ok(_param.unwrap_or_else(|| Arc::new(())))
-        }
+        5
     );
 
     let metadata = thread.get_metadata();
@@ -36,13 +32,12 @@ pub fn test_thread_spawn() -> Result<()> {
     let mut thread = Thread::new(
         "spawn_test",
         1024,
-        5,
-        |_thread, _param| {
-            Ok(_param.unwrap_or_else(|| Arc::new(())))
-        }
+        5
     );
 
-    let result = thread.spawn(None);
+    let result = thread.spawn(None, |_thread, _param| {
+        Ok(_param.unwrap_or_else(|| Arc::new(())))
+    });
     assert!(result.is_ok());
     
     if let Ok(spawned) = result {
@@ -64,22 +59,22 @@ pub fn test_thread_with_param() -> Result<()> {
     let mut thread = Thread::new(
         "param_test",
         1024,
-        5,
-        |_thread, param| {
-            if let Some(p) = param.as_ref() {
-                if let Some(val) = p.downcast_ref::<u32>() {
-                    assert_eq!(*val, 42);
-                }
-            }
-            Ok(param.unwrap_or_else(|| Arc::new(())))
-        }
+        5
     );
 
-    let result = thread.spawn(Some(param));
+    let result = thread.spawn(Some(param), |_thread, param| {
+        if let Some(p) = param.as_ref() {
+            if let Some(val) = p.downcast_ref::<u32>() {
+                assert_eq!(*val, 42);
+            }
+        }
+        Ok(param.unwrap_or_else(|| Arc::new(())))
+    });
     assert!(result.is_ok());
     
     if let Ok(spawned) = result {
         log_debug!(TAG, "Thread spawned with parameter");
+        System::delay(Duration::from_millis(50).to_ticks());
         spawned.delete();
     }
     log_info!(TAG, "test_thread_with_param PASSED");
@@ -91,17 +86,20 @@ pub fn test_thread_suspend_resume() -> Result<()> {
     let mut thread = Thread::new(
         "suspend_test",
         1024,
-        5,
-        |_thread, _param| {
-            Ok(_param.unwrap_or_else(|| Arc::new(())))
-        }
+        5
     );
 
-    let spawned = thread.spawn(None)?;
+    let spawned = thread.spawn(None, |_thread, _param| {
+        System::delay(Duration::from_millis(100).to_ticks());
+        Ok(_param.unwrap_or_else(|| Arc::new(())))
+    })?;
+    
     log_debug!(TAG, "Suspending thread...");
     spawned.suspend();
+    System::delay(Duration::from_millis(10).to_ticks());
     log_debug!(TAG, "Resuming thread...");
     spawned.resume();
+    System::delay(Duration::from_millis(50).to_ticks());
     spawned.delete();
     log_info!(TAG, "test_thread_suspend_resume PASSED");
     Ok(())
@@ -112,13 +110,14 @@ pub fn test_thread_get_metadata() -> Result<()> {
     let mut thread = Thread::new(
         "metadata_test",
         1024,
-        5,
-        |_thread, _param| {
-            Ok(_param.unwrap_or_else(|| Arc::new(())))
-        }
+        5
     );
 
-    let spawned = thread.spawn(None)?;
+    let spawned = thread.spawn(None, |_thread, _param| {
+        System::delay(Duration::from_millis(50).to_ticks());
+        Ok(_param.unwrap_or_else(|| Arc::new(())))
+    })?;
+    
     let metadata = spawned.get_metadata();
     
     log_debug!(TAG, "Metadata - name: {}, priority: {}", metadata.name, metadata.priority);
@@ -135,19 +134,22 @@ pub fn test_thread_notification() -> Result<()> {
     let mut thread = Thread::new(
         "notify_test",
         1024,
-        5,
-        |thread, _param| {
-            let _notification = thread.wait_notification(0, 0xFFFFFFFF, Duration::from_millis(1000).to_ticks());
-            Ok(Arc::new(()))
-        }
+        5
     );
 
-    let spawned = thread.spawn(None)?;
+    let spawned = thread.spawn(None, |thread, _param| {
+        let notification = thread.wait_notification(0, 0xFFFFFFFF, Duration::from_millis(1000).to_ticks())?;
+        log_debug!(TAG, "Received notification: 0x{:X}", notification);
+        assert_eq!(notification, 0x12345678);
+        Ok(Arc::new(()))
+    })?;
     
+    System::delay(Duration::from_millis(10).to_ticks());
     log_debug!(TAG, "Sending notification: 0x12345678");
     let notify_result = spawned.notify(ThreadNotification::SetValueWithOverwrite(0x12345678));
     assert!(notify_result.is_ok());
     
+    System::delay(Duration::from_millis(50).to_ticks());
     spawned.delete();
     log_info!(TAG, "test_thread_notification PASSED");
     Ok(())
@@ -163,66 +165,62 @@ pub fn test_thread_get_current() -> Result<()> {
     Ok(())
 }
 
-// Thread function (not a closure)
-fn thread_function(_thread: Box<dyn ThreadFn>, param: Option<Arc<dyn Any + Send + Sync>>) -> Result<Arc<dyn Any + Send + Sync>> {
-    log_debug!(TAG, "Thread function executing");
-    
-    // Check if we received a parameter
-    if let Some(p) = param.as_ref() {
-        if let Some(val) = p.downcast_ref::<u32>() {
-            log_debug!(TAG, "Received parameter value: {}", *val);
-            assert_eq!(*val, 99);
-        }
-    }
-    
-    // Simulate some work
-    System::delay(Duration::from_millis(10).to_ticks());
-    
-    Ok(param.unwrap_or_else(|| Arc::new(())))
-}
-
-pub fn test_thread_with_function() -> Result<()> {
-    log_info!(TAG, "Starting test_thread_with_function");
+pub fn test_thread_spawn_simple() -> Result<()> {
+    log_info!(TAG, "Starting test_thread_spawn_simple");
     let mut thread = Thread::new(
-        "function_test",
+        "simple_test",
         1024,
-        5,
-        thread_function
+        5
     );
 
-    let result = thread.spawn(None);
+    let result = thread.spawn_simple(|| {
+        log_debug!(TAG, "Simple thread executing");
+        System::delay(Duration::from_millis(10).to_ticks());
+    });
+    
     assert!(result.is_ok());
     
     if let Ok(spawned) = result {
-        log_debug!(TAG, "Thread spawned with function (no param)");
-        System::delay(Duration::from_millis(20).to_ticks());
+        log_debug!(TAG, "Simple thread spawned successfully");
+        System::delay(Duration::from_millis(50).to_ticks());
         spawned.delete();
     }
-    log_info!(TAG, "test_thread_with_function PASSED");
+    log_info!(TAG, "test_thread_spawn_simple PASSED");
     Ok(())
 }
 
-pub fn test_thread_with_function_and_param() -> Result<()> {
-    log_info!(TAG, "Starting test_thread_with_function_and_param");
-    let test_value: u32 = 99;
-    let param: Arc<dyn Any + Send + Sync> = Arc::new(test_value);
+pub fn test_thread_spawn_simple_with_shared_data() -> Result<()> {
+    log_info!(TAG, "Starting test_thread_spawn_simple_with_shared_data");
+    
+    let counter = Mutex::new_arc(0u32);
+    let counter_clone = Arc::clone(&counter);
     
     let mut thread = Thread::new(
-        "function_param_test",
+        "shared_data_test",
         1024,
-        5,
-        thread_function
+        5
     );
 
-    let result = thread.spawn(Some(param));
+    let result = thread.spawn_simple(move || {
+        for _ in 0..5 {
+            let mut num = counter_clone.lock().unwrap();
+            *num += 1;
+            log_debug!(TAG, "Counter: {}", *num);
+        }
+    });
+    
     assert!(result.is_ok());
     
     if let Ok(spawned) = result {
-        log_debug!(TAG, "Thread spawned with function and parameter");
-        System::delay(Duration::from_millis(20).to_ticks());
+        System::delay(Duration::from_millis(100).to_ticks());
         spawned.delete();
     }
-    log_info!(TAG, "test_thread_with_function_and_param PASSED");
+    
+    let final_count = *counter.lock().unwrap();
+    log_debug!(TAG, "Final counter value: {}", final_count);
+    assert_eq!(final_count, 5);
+    
+    log_info!(TAG, "test_thread_spawn_simple_with_shared_data PASSED");
     Ok(())
 }
 
@@ -235,8 +233,8 @@ pub fn run_all_tests() -> Result<()> {
     test_thread_get_metadata()?;
     test_thread_notification()?;
     test_thread_get_current()?;
-    test_thread_with_function()?;
-    test_thread_with_function_and_param()?;
+    test_thread_spawn_simple()?;
+    test_thread_spawn_simple_with_shared_data()?;
     log_info!(TAG, "========== All Thread Tests PASSED ==========");
     Ok(())
 }

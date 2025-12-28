@@ -116,7 +116,7 @@ impl Thread {
     }
 
     #[inline]
-    fn wait_notification_with_to_tick(&self, bits_to_clear_on_entry: u32, bits_to_clear_on_exit: u32 , timeout_ticks: impl ToTick) -> Result<u32> {
+    pub fn wait_notification_with_to_tick(&self, bits_to_clear_on_entry: u32, bits_to_clear_on_exit: u32 , timeout_ticks: impl ToTick) -> Result<u32> {
         if self.handle.is_null() {
             return Err(Error::NullPtr);
         }

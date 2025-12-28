@@ -150,6 +150,21 @@ unsafe extern "C" fn callback_c_wrapper(param_ptr: *mut c_void) {
 
 
 impl ThreadFn for Thread {
+    /// Creates a new thread with a callback.
+    /// 
+    /// # Important
+    /// The callback must be `'static`, which means it cannot borrow local variables.
+    /// Use `move` in the closure to transfer ownership of any captured values:
+    /// 
+    /// ```ignore
+    /// let data = Arc::new(Mutex::new(0));
+    /// let thread = Thread::new("my_thread", 4096, 3, move |_thread, _param| {
+    ///     // Use 'move' to capture 'data' by value
+    ///     let mut guard = data.lock().unwrap();
+    ///     *guard += 1;
+    ///     Ok(Arc::new(()))
+    /// });
+    /// ```
     fn new<F>(name: &str, stack_depth: StackType, priority: UBaseType, callback: F) -> Self 
     where 
         F: Fn(Box<dyn ThreadFn>, Option<ThreadParam>) -> Result<ThreadParam>,

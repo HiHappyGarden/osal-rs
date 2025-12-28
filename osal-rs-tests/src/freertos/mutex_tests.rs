@@ -8,15 +8,14 @@ const TAG: &str = "MutexTests";
 
 pub fn test_mutex_creation() -> Result<()> {
     log_info!(TAG, "Starting test_mutex_creation");
-    let mutex = Mutex::new(0u32);
-    assert!(mutex.is_ok());
+    let _mutex = Mutex::new(0u32);
     log_info!(TAG, "test_mutex_creation PASSED");
     Ok(())
 }
 
 pub fn test_mutex_lock_unlock() -> Result<()> {
     log_info!(TAG, "Starting test_mutex_lock_unlock");
-    let mutex = Mutex::new(42u32)?;
+    let mutex = Mutex::new(42u32);
     
     {
         let guard = mutex.lock();
@@ -39,7 +38,7 @@ pub fn test_mutex_lock_unlock() -> Result<()> {
 
 pub fn test_mutex_modify_data() -> Result<()> {
     log_info!(TAG, "Starting test_mutex_modify_data");
-    let mutex = Mutex::new(0u32)?;
+    let mutex = Mutex::new(0u32);
     
     {
         let mut guard = mutex.lock()?;
@@ -58,7 +57,7 @@ pub fn test_mutex_modify_data() -> Result<()> {
 
 pub fn test_mutex_multiple_locks() -> Result<()> {
     log_info!(TAG, "Starting test_mutex_multiple_locks");
-    let mutex = Mutex::new(0u32)?;
+    let mutex = Mutex::new(0u32);
     
     for i in 0..10 {
         let mut guard = mutex.lock()?;
@@ -75,7 +74,7 @@ pub fn test_mutex_multiple_locks() -> Result<()> {
 
 pub fn test_mutex_guard_drop() -> Result<()> {
     log_info!(TAG, "Starting test_mutex_guard_drop");
-    let mutex = Mutex::new(42u32)?;
+    let mutex = Mutex::new(42u32);
     
     {
         let _guard = mutex.lock()?;
@@ -96,7 +95,7 @@ pub fn test_mutex_with_struct() -> Result<()> {
         flag: bool,
     }
     
-    let mutex = Mutex::new(TestData { value: 0, flag: false })?;
+    let mutex = Mutex::new(TestData { value: 0, flag: false });
     
     {
         let mut guard = mutex.lock()?;
@@ -116,7 +115,7 @@ pub fn test_mutex_with_struct() -> Result<()> {
 
 pub fn test_mutex_recursive() -> Result<()> {
     log_info!(TAG, "Starting test_mutex_recursive");
-    let mutex = Mutex::new(0u32)?;
+    let mutex = Mutex::new(0u32);
     
     let _guard1 = mutex.lock()?;
     log_debug!(TAG, "Lock 1 acquired");
@@ -130,7 +129,7 @@ pub fn test_mutex_recursive() -> Result<()> {
 
 pub fn test_mutex_drop() -> Result<()> {
     log_info!(TAG, "Starting test_mutex_drop");
-    let mutex = Mutex::new(42u32)?;
+    let mutex = Mutex::new(42u32);
     drop(mutex);
     log_info!(TAG, "test_mutex_drop PASSED");
     Ok(())

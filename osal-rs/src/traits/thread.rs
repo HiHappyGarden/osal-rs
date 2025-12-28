@@ -7,7 +7,7 @@ use crate::os::types::{BaseType, StackType, TickType, UBaseType};
 use crate::utils::{Result, ConstPtr, DoublePtr};
 
 pub type ThreadParam = Arc<dyn Any + Send + Sync>;
-pub type ThreadFnPtr = dyn Fn(Box<dyn Thread>, Option<ThreadParam>) -> Result<ThreadParam> + Send + Sync + 'static;
+pub type ThreadFnPtr = dyn Fn(Box<dyn Thread>, Option<ThreadParam>) -> Result<ThreadParam> + Send + Sync;
 
 #[derive(Debug, Copy, Clone)]
 pub enum ThreadNotification {

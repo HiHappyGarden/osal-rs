@@ -26,7 +26,7 @@ pub trait Mutex<T: ?Sized> {
     type GuardFromIsr<'a>: MutexGuard<'a, T> where Self: 'a, T: 'a;
 
     /// Creates a new mutex wrapping the supplied data
-    fn new(data: T) -> Result<Self> 
+    fn new(data: T) -> Self
     where 
         Self: Sized,
         T: Sized;

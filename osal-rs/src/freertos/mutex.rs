@@ -3,6 +3,8 @@ use core::fmt::{Debug, Display, Formatter};
 use core::ops::{Deref, DerefMut};
 use core::marker::PhantomData;
 
+use alloc::sync::Arc;
+
 use super::ffi::{MutexHandle, pdFALSE, pdTRUE};
 use super::system::System;
 use crate::traits::SystemFn;
@@ -122,15 +124,14 @@ impl<T: ?Sized> MutexFn<T> for Mutex<T> {
     type Guard<'a> = MutexGuard<'a, T> where Self: 'a, T: 'a;
     type GuardFromIsr<'a> = MutexGuardFromIsr<'a, T> where Self: 'a, T: 'a;
 
-    fn new(data: T) -> Result<Self> 
+    fn new(data: T) -> Self
     where 
-        Self: Sized,
-        T: Sized 
+        T: Sized
     {
-        Ok(Mutex {
-            inner: RawMutex::new()?,
+        Self {
+            inner: RawMutex::new().unwrap(),
             data: UnsafeCell::new(data),
-        })
+        }
     }
 
     fn lock(&self) -> Result<Self::Guard<'_>> {
@@ -176,6 +177,20 @@ impl<T: ?Sized> Mutex<T> {
             }),
             OsalRsBool::False => Err(Error::MutexLockFailed),
         }
+    }
+}
+
+impl<T> Mutex<T> {
+    /// Creates a new mutex wrapped in an Arc for easy sharing between threads.
+    /// This is a convenience method that combines `Arc::new(Mutex::new(data))`.
+    /// 
+    /// # Example
+    /// ```ignore
+    /// let shared_data = Mutex::new_arc(0u32);
+    /// let data_clone = Arc::clone(&shared_data);
+    /// ```
+    pub fn new_arc(data: T) -> Arc<Self> {
+        Arc::new(Self::new(data))
     }
 }
 

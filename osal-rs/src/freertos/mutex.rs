@@ -10,7 +10,7 @@ use super::system::System;
 use crate::traits::SystemFn;
 use crate::traits::{MutexGuardFn, RawMutexFn, MutexFn, ToTick};
 use crate::utils::{Result, Error, OsalRsBool, MAX_DELAY};
-use crate::{vSemaphoreDelete, xSemaphoreCreateRecursiveMutex, xSemaphoreGiveFromISR, xSemaphoreGiveRecursive, xSemaphoreTake, xSemaphoreTakeFromISR};
+use crate::{vSemaphoreDelete, xSemaphoreCreateRecursiveMutex, xSemaphoreGiveFromISR, xSemaphoreGiveRecursive, xSemaphoreTake, xSemaphoreTakeFromISR, xSemaphoreTakeRecursive};
 
 
 struct RawMutex(MutexHandle);
@@ -29,7 +29,7 @@ impl RawMutexFn for RawMutex {
     }
     
     fn lock(&self) -> OsalRsBool {
-        let res = xSemaphoreTake!(self.0, MAX_DELAY.to_ticks());
+        let res = xSemaphoreTakeRecursive!(self.0, MAX_DELAY.to_ticks());
         if res == pdTRUE {
             OsalRsBool::True
         } else {

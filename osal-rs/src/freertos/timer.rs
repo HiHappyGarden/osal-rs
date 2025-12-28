@@ -27,34 +27,34 @@ unsafe impl Sync for Timer {}
 
 impl Timer {
     #[inline]
-    fn new_with_to_tick<F>(name: &str, timer_period_in_ticks: impl ToTick, auto_reload: bool, param: Option<TimerParam>, callback: F) -> Result<Self>
+    pub fn new_with_to_tick<F>(name: &str, timer_period_in_ticks: impl ToTick, auto_reload: bool, param: Option<TimerParam>, callback: F) -> Result<Self>
     where
         F: Fn(Box<dyn TimerFn>, Option<TimerParam>) -> Result<TimerParam> + Send + Sync + Clone + 'static {
             Self::new(name, timer_period_in_ticks.to_ticks(), auto_reload, param, callback)
         }
 
     #[inline]
-    fn start_with_to_tick(&self, ticks_to_wait: impl ToTick) -> OsalRsBool {
+    pub fn start_with_to_tick(&self, ticks_to_wait: impl ToTick) -> OsalRsBool {
         self.start(ticks_to_wait.to_ticks())
     }
 
     #[inline]
-    fn stop_with_to_tick(&self, ticks_to_wait: impl ToTick)  -> OsalRsBool {
+    pub fn stop_with_to_tick(&self, ticks_to_wait: impl ToTick)  -> OsalRsBool {
         self.stop(ticks_to_wait.to_ticks())
     }
 
     #[inline]
-    fn reset_with_to_tick(&self, ticks_to_wait: impl ToTick) -> OsalRsBool {
+    pub fn reset_with_to_tick(&self, ticks_to_wait: impl ToTick) -> OsalRsBool {
         self.reset(ticks_to_wait.to_ticks())
     }
 
     #[inline]
-    fn change_period_with_to_tick(&self, new_period_in_ticks: impl ToTick, new_period_ticks: impl ToTick) -> OsalRsBool {
+    pub fn change_period_with_to_tick(&self, new_period_in_ticks: impl ToTick, new_period_ticks: impl ToTick) -> OsalRsBool {
         self.change_period(new_period_in_ticks.to_ticks(), new_period_ticks.to_ticks())
     }
 
     #[inline]
-    fn delete_with_to_tick(&mut self, ticks_to_wait: impl ToTick) -> OsalRsBool {
+    pub fn delete_with_to_tick(&mut self, ticks_to_wait: impl ToTick) -> OsalRsBool {
         self.delete(ticks_to_wait.to_ticks())
     }
 }

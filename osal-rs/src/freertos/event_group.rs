@@ -15,7 +15,7 @@ unsafe impl Send for EventGroup {}
 unsafe impl Sync for EventGroup {}
 
 impl EventGroup {
-    fn wait_with_to_tick(&self, mask: EventBits, timeout_ticks: impl ToTick) -> EventBits {
+    pub fn wait_with_to_tick(&self, mask: EventBits, timeout_ticks: impl ToTick) -> EventBits {
         self.wait(mask, timeout_ticks.to_ticks())
     }
 }

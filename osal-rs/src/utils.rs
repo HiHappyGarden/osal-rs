@@ -114,6 +114,21 @@ macro_rules! from_str_to_array {
     };
 }
 
+#[macro_export]
+macro_rules! thread_extract_param {
+    ($param:expr, $t:ty) => {
+        match $param.as_ref() {
+            Some(p) => {
+                match p.downcast_ref::<$t>() {
+                    Some(value) => value,
+                    None => return Err($crate::utils::Error::InvalidType),
+                }
+            }
+            None => return Err($crate::utils::Error::NullPtr),
+        }
+    };
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct Bytes<const SIZE: usize = 0> (pub [u8; SIZE]);
 

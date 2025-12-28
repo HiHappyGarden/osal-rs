@@ -155,6 +155,8 @@ unsafe extern "C" fn simple_callback_wrapper(param_ptr: *mut c_void) {
 
     let func: Box<Arc<ThreadSimpleFnPtr>> = unsafe { Box::from_raw(param_ptr as *mut _) };
     func();
+
+    unsafe { vTaskDelete( xTaskGetCurrentTaskHandle()); } 
 }
 
 
@@ -186,7 +188,7 @@ impl ThreadFn for Thread {
         })
     }
 
-    /// Creates a new thread with a callback.
+    /// Spawns a new thread with a callback.
     /// 
     /// # Important
     /// The callback must be `'static`, which means it cannot borrow local variables.

@@ -198,6 +198,8 @@ impl ThreadFn for Thread {
 
         let mut handle: ThreadHandle =  null_mut();
 
+        self.param = param.clone();
+
         let boxed_thread = Box::new(self.clone());
 
         let ret = unsafe {

@@ -58,7 +58,9 @@ impl From<(ThreadHandle,TaskStatus)> for ThreadMetadata {
         ThreadMetadata {
             thread: status.0,
             name: from_c_str!(status.1.pcTaskName),
-            stack_depth: if status.1.pxStackBase.is_null() { 0 } else { unsafe { *status.1.pxStackBase } },
+            // Avoid dereferencing pxStackBase, which may be null or otherwise invalid.
+            // Use 0 as a safe default for unknown stack depth.
+            stack_depth: 0,
             priority: status.1.uxBasePriority,
             thread_number: status.1.xTaskNumber,
             state,

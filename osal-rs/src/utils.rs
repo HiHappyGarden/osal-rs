@@ -143,7 +143,7 @@ impl<const SIZE: usize> Deref for Bytes<SIZE> {
 impl<const SIZE: usize> Display for Bytes<SIZE> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         let str = unsafe {
-            CStr::from_ptr(self.0.as_ptr())
+            CStr::from_ptr(self.0.as_ptr() as *const i8)
             .to_str()
             .unwrap_or("Conversion error")
         };

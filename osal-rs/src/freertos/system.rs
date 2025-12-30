@@ -104,7 +104,7 @@ impl SystemFn for System {
             let count = uxTaskGetSystemState(
                 threads.as_mut_ptr(),
                 threads_count as UBaseType,
-                &mut total_run_time as *mut u32,
+                &raw mut total_run_time,
             ) as usize;
             
             // Set the length only after data has been written by FreeRTOS

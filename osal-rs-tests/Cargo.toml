@@ -2,6 +2,11 @@
 name = "osal-rs-tests"
 version = "0.1.0"
 edition = "2024"
+authors = ["Antonio Salsi"]
+description = "Test suite for osal-rs"
+license = "GPL-3.0"
+repository = "https://github.com/antoniosalsi/osal-rs"
+publish = false
 
 [lib]
 crate-type = ["staticlib", "rlib"]

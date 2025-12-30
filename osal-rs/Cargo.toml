@@ -31,7 +31,7 @@ std = ["disable_panic"]
 disable_panic = []
 
 [build-dependencies]
-osal-rs-build = { path = "../osal-rs-build" }
+osal-rs-build = { version = "0.1.0", path = "../osal-rs-build" }
 
 [profile.dev]
 panic = "abort"

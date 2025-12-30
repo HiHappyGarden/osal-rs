@@ -2,7 +2,7 @@
 name = "osal-rs"
 version = "0.1.0"
 edition = "2024"
-rust-version = "1.75"
+rust-version = "1.85.0"
 authors = ["Antonio Salsi"]
 description = "Operating System Abstraction Layer for Rust with support for FreeRTOS and POSIX"
 license = "GPL-3.0"

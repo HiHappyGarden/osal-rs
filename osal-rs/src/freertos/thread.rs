@@ -222,7 +222,7 @@ impl ThreadFn for Thread {
         let ret = unsafe {
             xTaskCreate(
                 Some(super::thread::callback_c_wrapper),
-                self.name.clone().as_ptr(),
+                self.name.clone().as_ptr() as *const i8,
                 self.stack_depth,
                 Box::into_raw(boxed_thread) as *mut _,
                 self.priority,
@@ -270,7 +270,7 @@ impl ThreadFn for Thread {
         let ret = unsafe {
             xTaskCreate(
                 Some(simple_callback_wrapper),
-                self.name.clone().as_ptr(),
+                self.name.clone().as_ptr() as *const i8,
                 self.stack_depth,
                 Box::into_raw(boxed_func) as *mut _,
                 self.priority,

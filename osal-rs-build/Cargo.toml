@@ -2,3 +2,16 @@
 name = "osal-rs-build"
 version = "0.1.0"
 edition = "2024"
+rust-version = "1.75"
+authors = ["Antonio Salsi"]
+description = "Build utilities for osal-rs"
+license = "GPL-3.0"
+repository = "https://github.com/antoniosalsi/osal-rs"
+homepage = "https://github.com/antoniosalsi/osal-rs"
+documentation = "https://docs.rs/osal-rs-build"
+keywords = ["build", "embedded", "freertos"]
+categories = ["development-tools::build-utils", "embedded"]
+exclude = [
+    "target/",
+    ".git/",
+]

@@ -2,6 +2,23 @@
 name = "osal-rs"
 version = "0.1.0"
 edition = "2024"
+rust-version = "1.75"
+authors = ["Antonio Salsi"]
+description = "Operating System Abstraction Layer for Rust with support for FreeRTOS and POSIX"
+license = "GPL-3.0"
+repository = "https://github.com/antoniosalsi/osal-rs"
+homepage = "https://github.com/antoniosalsi/osal-rs"
+documentation = "https://docs.rs/osal-rs"
+readme = "../README.md"
+keywords = ["os", "rtos", "freertos", "embedded", "posix"]
+categories = ["embedded", "no-std", "os"]
+exclude = [
+    "target/",
+    ".git/",
+    ".github/",
+    "*.swp",
+    "*.swo",
+]
 
 [lib]
 crate-type = ["staticlib", "rlib"]

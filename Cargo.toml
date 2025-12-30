@@ -5,6 +5,9 @@ members = [
     "osal-rs-build",
     "osal-rs-tests",
 ]
+exclude = [
+    "osal-rs-tests",
+]
 
 [profile.dev]
 panic = "abort"

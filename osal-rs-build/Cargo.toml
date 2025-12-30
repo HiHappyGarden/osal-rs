@@ -2,7 +2,7 @@
 name = "osal-rs-build"
 version = "0.1.0"
 edition = "2024"
-rust-version = "1.75"
+rust-version = "1.85.0"
 authors = ["Antonio Salsi"]
 description = "Build utilities for osal-rs"
 license = "GPL-3.0"

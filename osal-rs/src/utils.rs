@@ -5,7 +5,7 @@ use core::ops::Deref;
 use core::time::Duration;
 use alloc::string::{String, ToString};
 
-
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Error {
     OutOfMemory,
     QueueSendTimeout,
@@ -22,31 +22,6 @@ pub enum Error {
     OutOfIndex,
     InvalidType,
     Unhandled(&'static str)
-}
-
-impl Debug for Error {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-
-        use Error::*;
-
-        match self {
-            OutOfMemory => write!(f, "OutOfMemory"),
-            QueueSendTimeout => write!(f, "QueueSendTimeout"),
-            QueueReceiveTimeout => write!(f, "QueueReceiveTimeout"),
-            MutexTimeout => write!(f, "MutexTimeout"),
-            MutexLockFailed => write!(f, "MutexLockFailed"),
-            Timeout => write!(f, "Timeout"),
-            QueueFull => write!(f, "QueueFull"),
-            StringConversionError => write!(f, "StringConversionError"),
-            TaskNotFound => write!(f, "TaskNotFound"),
-            InvalidQueueSize => write!(f, "InvalidQueueSize"),
-            NullPtr => write!(f, "NullPtr"),
-            NotFound => write!(f, "NotFound"),
-            OutOfIndex => write!(f, "OutOfIndex"),
-            InvalidType => write!(f, "InvalidType"),
-            Unhandled(msg) => write!(f, "Unhandled error: {}", msg),
-        }
-    }
 }
 
 #[derive(PartialEq, Eq, Clone, Copy, Debug)]

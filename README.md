@@ -301,7 +301,7 @@ Antonio Salsi
 
 ## Repository
 
-[https://github.com/antoniosalsi/osal-rs](https://github.com/antoniosalsi/osal-rs)
+[https://github.com/HiHappyGarden/osal-rs](https://github.com/HiHappyGarden/osal-rs)
 
 ## Example implementation
 

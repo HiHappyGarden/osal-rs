@@ -16,7 +16,7 @@ default = ["freertos"]
 freertos = ["osal-rs/freertos"]
 
 [dependencies]
-osal-rs = { version = "0.1.0", path = "../osal-rs" }
+osal-rs = { version = "0.1.1", path = "../osal-rs" }
 
 [profile.dev]
 panic = "abort"

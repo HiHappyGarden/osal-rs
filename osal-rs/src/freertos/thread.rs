@@ -1,5 +1,5 @@
 use core::any::Any;
-use core::ffi::c_void;
+use core::ffi::{c_char, c_void};
 use core::fmt::{Debug, Display, Formatter};
 use core::ops::Deref;
 use core::ptr::null_mut;
@@ -270,7 +270,7 @@ impl ThreadFn for Thread {
         let ret = unsafe {
             xTaskCreate(
                 Some(simple_callback_wrapper),
-                self.name.clone().as_ptr(),
+                self.name.clone().as_ptr() as *const c_char,
                 self.stack_depth,
                 Box::into_raw(boxed_func) as *mut _,
                 self.priority,

@@ -222,7 +222,7 @@ impl ThreadFn for Thread {
         let ret = unsafe {
             xTaskCreate(
                 Some(super::thread::callback_c_wrapper),
-                self.name.clone().as_ptr(),
+                self.name.clone().as_ptr() as *const c_char,
                 self.stack_depth,
                 Box::into_raw(boxed_thread) as *mut _,
                 self.priority,

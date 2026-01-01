@@ -1,13 +1,13 @@
 [package]
 name = "osal-rs"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2024"
 rust-version = "1.85.0"
 authors = ["Antonio Salsi"]
 description = "Operating System Abstraction Layer for Rust with support for FreeRTOS and POSIX"
 license = "GPL-3.0"
-repository = "https://github.com/antoniosalsi/osal-rs"
-homepage = "https://github.com/antoniosalsi/osal-rs"
+repository = "https://github.com/HiHappyGarden/osal-rs"
+homepage = "https://github.com/HiHappyGarden/osal-rs"
 documentation = "https://docs.rs/osal-rs"
 readme = "../README.md"
 keywords = ["os", "rtos", "freertos", "embedded", "posix"]

@@ -31,7 +31,7 @@ use super::ffi::{INVALID, TaskStatus, ThreadHandle, pdPASS, pdTRUE, vTaskDelete,
 use super::types::{StackType, UBaseType, BaseType, TickType};
 use super::thread::ThreadState::*;
 use crate::os::ThreadSimpleFnPtr;
-use crate::traits::{ThreadFn, ThreadParam, ThreadFnPtr, ThreadNotification, ToTick};
+use crate::traits::{ThreadFn, ThreadParam, ThreadFnPtr, ThreadNotification, ToTick, ToPriority};
 use crate::utils::{Result, Error, DoublePtr};
 use crate::{from_c_str, xTaskNotify, xTaskNotifyFromISR, xTaskNotifyWait};
 
@@ -122,6 +122,33 @@ unsafe impl Send for Thread {}
 unsafe impl Sync for Thread {}
 
 impl Thread {
+
+    pub fn new_with_to_priority(name: &str, stack_depth: StackType, priority: impl ToPriority) -> Self 
+    {
+        Self { 
+            handle: null_mut(), 
+            name: name.to_string(), 
+            stack_depth, 
+            priority: priority.to_priority(), 
+            callback: None,
+            param: None 
+        }
+    }
+
+    pub fn new_with_handle_and_to_priority(handle: ThreadHandle, name: &str, stack_depth: StackType, priority: impl ToPriority) -> Result<Self> {
+        if handle.is_null() {
+            return Err(Error::NullPtr);
+        }
+        Ok(Self { 
+            handle, 
+            name: name.to_string(), 
+            stack_depth, 
+            priority: priority.to_priority(), 
+            callback: None,
+            param: None 
+        })
+    }
+
     pub fn get_metadata_from_handle(handle: ThreadHandle) -> ThreadMetadata {
         let mut status = TaskStatus::default();
         unsafe {

@@ -33,6 +33,6 @@ pub use crate::traits::mutex::{Mutex as MutexFn, MutexGuard as MutexGuardFn, Raw
 pub use crate::traits::queue::{Queue as QueueFn, QueueStreamed as QueueStreamedFn};
 pub use crate::traits::semaphore::Semaphore as SemaphoreFn;
 pub use crate::traits::system::System as SystemFn;
-pub use crate::traits::thread::{Thread as ThreadFn, ThreadParam, ThreadFnPtr, ThreadSimpleFnPtr, ThreadNotification};
+pub use crate::traits::thread::{Thread as ThreadFn, ThreadParam, ThreadFnPtr, ThreadSimpleFnPtr, ThreadNotification, ToPriority};
 pub use crate::traits::tick::*;
 pub use crate::traits::timer::{Timer as TimerFn, TimerParam, TimerFnPtr};

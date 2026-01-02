@@ -93,3 +93,7 @@ pub trait Thread {
 
 
 }
+
+pub trait ToPriority {
+    fn to_priority(&self) -> UBaseType;
+}

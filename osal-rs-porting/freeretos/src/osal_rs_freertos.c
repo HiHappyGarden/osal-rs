@@ -83,10 +83,11 @@ uint64_t osal_rs_config_cpu_clock_hz(void)
     return (uint64_t)configCPU_CLOCK_HZ;
 }
 
-TickType_t osal_rs_config_tick_rate_hz(void);
+TickType_t osal_rs_config_tick_rate_hz(void)
 {
     return configTICK_RATE_HZ;
 }
+
 uint32_t osal_rs_config_max_priorities(void)
 {
     return configMAX_PRIORITIES;
@@ -101,3 +102,5 @@ uint32_t osal_rs_config_max_task_name_len(void)
 {
     return configMAX_TASK_NAME_LEN;
 }
+
+StackType_t MINIMAL_STACK_SIZE = configMINIMAL_STACK_SIZE;

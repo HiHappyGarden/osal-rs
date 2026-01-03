@@ -24,6 +24,7 @@ use core::ops::Deref;
 use core::ptr::null_mut;
 
 use alloc::boxed::Box;
+use alloc::ffi::CString;
 use alloc::string::{String, ToString};
 use alloc::sync::Arc;
 
@@ -265,10 +266,14 @@ impl ThreadFn for Thread {
 
         let boxed_thread = Box::new(self.clone());
 
+        // Convert name to CString to ensure null termination and proper lifetime
+        let c_name = CString::new(self.name.as_str())
+            .map_err(|_| Error::Unhandled("Failed to convert thread name to CString"))?;
+
         let ret = unsafe {
             xTaskCreate(
                 Some(super::thread::callback_c_wrapper),
-                self.name.clone().as_ptr() as *const c_char,
+                c_name.as_ptr(),
                 self.stack_depth,
                 Box::into_raw(boxed_thread) as *mut _,
                 self.priority,
@@ -312,11 +317,14 @@ impl ThreadFn for Thread {
         
         let mut handle: ThreadHandle = null_mut();
 
+        // Convert name to CString to ensure null termination and proper lifetime
+        let c_name = CString::new(self.name.as_str())
+            .map_err(|_| Error::Unhandled("Failed to convert thread name to CString"))?;
 
         let ret = unsafe {
             xTaskCreate(
                 Some(simple_callback_wrapper),
-                self.name.clone().as_ptr() as *const c_char,
+                c_name.as_ptr(),
                 self.stack_depth,
                 Box::into_raw(boxed_func) as *mut _,
                 self.priority,

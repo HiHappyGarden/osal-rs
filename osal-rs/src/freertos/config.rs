@@ -17,6 +17,8 @@
  *
  ***************************************************************************/
 
+use crate::os::types::StackType;
+
 pub mod ffi {
     use crate::freertos::types::{TickType, StackType};
 
@@ -33,14 +35,14 @@ pub mod ffi {
 macro_rules! tick_period_ms {
     () => {
         // CHECK (1000 / $crate::freertos::config::TICK_RATE_HZ)
-        (unsafe { $crate::freertos::config::ffi::osal_rs_config_tick_rate_hz() })
+        (unsafe { $crate::os::config::ffi::osal_rs_config_tick_rate_hz() })
     };
 }
 
 #[macro_export]
 macro_rules! tick_rate_hz {
     () => {
-        (unsafe { $crate::freertos::config::ffi::osal_rs_config_tick_rate_hz() })
+        (unsafe { $crate::os::config::ffi::osal_rs_config_tick_rate_hz() })
     };
 }
 
@@ -48,27 +50,27 @@ macro_rules! tick_rate_hz {
 #[macro_export]
 macro_rules! cpu_clock_hz {
     () => {
-        (unsafe { $crate::freertos::config::ffi::osal_rs_config_cpu_clock_hz() })
+        (unsafe { $crate::os::config::ffi::osal_rs_config_cpu_clock_hz() })
     };
 }
 
 #[macro_export]
 macro_rules! max_priorities {
     () => {
-        (unsafe { $crate::freertos::config::ffi::osal_rs_config_max_priorities() })
+        (unsafe { $crate::os::config::ffi::osal_rs_config_max_priorities() })
     };
 }
 
 #[macro_export]
 macro_rules! minimal_stack_size {
     () => {
-        ( unsafe { $crate::freertos::config::ffi::osal_rs_config_minimal_stack_size() })
+        ( unsafe { $crate::os::config::ffi::osal_rs_config_minimal_stack_size() })
     };
 }   
 
 #[macro_export]
 macro_rules! max_task_name_len {
     () => {
-        (unsafe { $crate::freertos::config::ffi::osal_rs_config_max_task_name_len() })
+        (unsafe { $crate::os::config::ffi::osal_rs_config_max_task_name_len() })
     };
 }

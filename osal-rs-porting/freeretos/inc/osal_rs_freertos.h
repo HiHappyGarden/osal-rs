@@ -43,4 +43,10 @@ BaseType_t osal_rs_timer_delete(TimerHandle_t xTimer, TickType_t xTicksToWait);
 
 int printf_on_uart(const char *format, ...);
 
+uint64_t osal_rs_config_cpu_clock_hz(void);
+TickType_t osal_rs_config_tick_rate_hz(void);
+uint32_t osal_rs_config_max_priorities(void);
+StackType_t osal_rs_config_minimal_stack_size(void);
+uint32_t osal_rs_config_max_task_name_len(void);
+
 #endif /* OSAL_RS_FREERTOS_H */

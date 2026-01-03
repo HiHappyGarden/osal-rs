@@ -77,3 +77,27 @@ int printf_on_uart(const char *format, ...)
     va_end(args);
     return ret;
 }
+
+uint64_t osal_rs_config_cpu_clock_hz(void)
+{
+    return (uint64_t)configCPU_CLOCK_HZ;
+}
+
+TickType_t osal_rs_config_tick_rate_hz(void);
+{
+    return configTICK_RATE_HZ;
+}
+uint32_t osal_rs_config_max_priorities(void)
+{
+    return configMAX_PRIORITIES;
+}
+
+StackType_t osal_rs_config_minimal_stack_size(void)
+{
+    return configMINIMAL_STACK_SIZE;
+}
+
+uint32_t osal_rs_config_max_task_name_len(void)
+{
+    return configMAX_TASK_NAME_LEN;
+}

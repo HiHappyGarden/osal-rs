@@ -28,12 +28,15 @@ Before using OSAL-RS in your project, ensure that:
 
 1. **FreeRTOS is properly configured** in your project
 2. **FreeRTOS is linked** to your final binary
-3. **CMake build system** is set up for your embedded project
-4. **Rust toolchain** with appropriate target support is installed
+3. **C porting layer files** from `osal-rs-porting` must be compiled and linked to your project
+4. **CMake build system** is set up for your embedded project
+5. **Rust toolchain** with appropriate target support is installed
 
 ## CMake Integration
 
 OSAL-RS is designed to be integrated into CMake-based projects. Here are several integration examples:
+
+**Important**: Always ensure that the C porting layer files from `osal-rs-porting/freertos/` are compiled and linked to your project, as they provide the necessary FFI bridge between Rust and FreeRTOS.
 
 ### Basic CMake Integration
 

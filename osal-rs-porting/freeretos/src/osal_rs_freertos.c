@@ -102,5 +102,3 @@ uint32_t osal_rs_config_max_task_name_len(void)
 {
     return configMAX_TASK_NAME_LEN;
 }
-
-StackType_t MINIMAL_STACK_SIZE = configMINIMAL_STACK_SIZE;

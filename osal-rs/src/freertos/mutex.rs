@@ -17,6 +17,12 @@
  *
  ***************************************************************************/
 
+//! Mutex synchronization primitives for FreeRTOS.
+//!
+//! This module provides safe mutual exclusion primitives built on top of FreeRTOS
+//! recursive mutexes. It supports RAII-style lock guards for automatic lock management
+//! and ISR-safe variants for interrupt contexts.
+
 use core::cell::UnsafeCell;
 use core::fmt::{Debug, Display, Formatter};
 use core::ops::{Deref, DerefMut};
@@ -32,6 +38,16 @@ use crate::utils::{Result, Error, OsalRsBool, MAX_DELAY};
 use crate::{vSemaphoreDelete, xSemaphoreCreateRecursiveMutex, xSemaphoreGiveFromISR, xSemaphoreGiveRecursive, xSemaphoreTake, xSemaphoreTakeFromISR, xSemaphoreTakeRecursive};
 
 
+/// Low-level recursive mutex wrapper for FreeRTOS.
+///
+/// This is the underlying implementation of the mutex that directly interfaces
+/// with FreeRTOS semaphore APIs. It's recursive, meaning the same thread can
+/// lock it multiple times.
+///
+/// # Note
+///
+/// Users should typically use [`Mutex<T>`] instead, which provides type-safe
+/// data protection. This type is exposed for advanced use cases.
 struct RawMutex(MutexHandle);
 
 unsafe impl Send for RawMutex {}
@@ -130,6 +146,61 @@ impl Display for RawMutex {
     }
 }
 
+/// A mutual exclusion primitive useful for protecting shared data.
+///
+/// This mutex will block threads waiting for the lock to become available.
+/// The mutex is implemented using FreeRTOS recursive mutexes, supporting
+/// priority inheritance to prevent priority inversion.
+///
+/// # Type Parameters
+///
+/// * `T` - The type of data protected by the mutex
+///
+/// # Examples
+///
+/// ## Basic usage
+///
+/// ```ignore
+/// use osal_rs::os::Mutex;
+/// 
+/// let mutex = Mutex::new(0);
+/// 
+/// // Acquire the lock and modify the data
+/// {
+///     let mut guard = mutex.lock().unwrap();
+///     *guard += 1;
+/// }  // Lock is automatically released here
+/// ```
+///
+/// ## Sharing between threads
+///
+/// ```ignore
+/// use osal_rs::os::{Mutex, Thread};
+/// use alloc::sync::Arc;
+/// 
+/// let counter = Arc::new(Mutex::new(0));
+/// let counter_clone = counter.clone();
+/// 
+/// let thread = Thread::new("worker", 2048, 5, move || {
+///     let mut guard = counter_clone.lock().unwrap();
+///     *guard += 1;
+/// }).unwrap();
+/// 
+/// thread.start().unwrap();
+/// ```
+///
+/// ## Using from ISR context
+///
+/// ```ignore
+/// use osal_rs::os::Mutex;
+/// 
+/// let mutex = Mutex::new(0);
+/// 
+/// // In an interrupt handler:
+/// if let Ok(mut guard) = mutex.lock_from_isr() {
+///     *guard = 42;
+/// }
+/// ```
 pub struct Mutex<T: ?Sized> {
     inner: RawMutex,
     data: UnsafeCell<T>
@@ -173,6 +244,19 @@ impl<T: ?Sized> MutexFn<T> for Mutex<T> {
         }
     }
 
+    /// Consumes the mutex and returns the inner data.
+    ///
+    /// This is safe because we have unique ownership of the mutex.
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// use osal_rs::os::{Mutex, MutexFn};
+    /// 
+    /// let mutex = Mutex::new(5);
+    /// let value = mutex.into_inner().unwrap();
+    /// assert_eq!(value, 5);
+    /// ```
     fn into_inner(self) -> Result<T> 
     where 
         Self: Sized, 
@@ -181,13 +265,43 @@ impl<T: ?Sized> MutexFn<T> for Mutex<T> {
         Ok(self.data.into_inner())
     }
 
+    /// Returns a mutable reference to the inner data.
+    ///
+    /// Since this takes `&mut self`, we know there are no other references
+    /// to the data, so we can safely return a mutable reference.
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// use osal_rs::os::{Mutex, MutexFn};
+    /// 
+    /// let mut mutex = Mutex::new(0);
+    /// *mutex.get_mut() = 10;
+    /// assert_eq!(*mutex.get_mut(), 10);
+    /// ```
     fn get_mut(&mut self) -> &mut T {
         self.data.get_mut()
     }
 }
 
 impl<T: ?Sized> Mutex<T> {
-    /// Acquires the mutex from ISR context, returning a specific ISR guard
+    /// Acquires the mutex from ISR context, returning a specific ISR guard.
+    ///
+    /// This is an explicit version of `lock_from_isr` that returns the ISR-specific guard type.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(MutexGuardFromIsr)` - Lock acquired
+    /// * `Err(Error::MutexLockFailed)` - Failed to acquire lock
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// // In ISR context:
+    /// if let Ok(guard) = mutex.lock_from_isr_explicit() {
+    ///     *guard = new_value;
+    /// }
+    /// ```
     pub fn lock_from_isr_explicit(&self) -> Result<MutexGuardFromIsr<'_, T>> {
         match self.inner.lock_from_isr() {
             OsalRsBool::True => Ok(MutexGuardFromIsr {
@@ -201,12 +315,23 @@ impl<T: ?Sized> Mutex<T> {
 
 impl<T> Mutex<T> {
     /// Creates a new mutex wrapped in an Arc for easy sharing between threads.
-    /// This is a convenience method that combines `Arc::new(Mutex::new(data))`.
-    /// 
-    /// # Example
+    ///
+    /// This is a convenience method equivalent to `Arc::new(Mutex::new(data))`.
+    ///
+    /// # Examples
+    ///
     /// ```ignore
+    /// use osal_rs::os::Mutex;
+    /// use alloc::sync::Arc;
+    /// 
     /// let shared_data = Mutex::new_arc(0u32);
     /// let data_clone = Arc::clone(&shared_data);
+    /// 
+    /// // Use in thread...
+    /// let thread = Thread::new("worker", 2048, 5, move || {
+    ///     let mut guard = data_clone.lock().unwrap();
+    ///     *guard += 1;
+    /// });
     /// ```
     pub fn new_arc(data: T) -> Arc<Self> {
         Arc::new(Self::new(data))
@@ -231,7 +356,23 @@ where
     }   
 }
 
-/// RAII guard returned by `Mutex::lock`
+/// RAII guard returned by `Mutex::lock()`.
+///
+/// When this guard goes out of scope, the mutex is automatically unlocked.
+/// Provides access to the protected data through `Deref` and `DerefMut`.
+///
+/// # Examples
+///
+/// ```ignore
+/// use osal_rs::os::{Mutex, MutexFn};
+/// 
+/// let mutex = Mutex::new(0);
+/// 
+/// {
+///     let mut guard = mutex.lock().unwrap();
+///     *guard += 1;  // Access protected data
+/// }  // Mutex automatically unlocked here
+/// ```
 pub struct MutexGuard<'a, T: ?Sized + 'a> {
     mutex: &'a Mutex<T>,
     _phantom: PhantomData<&'a mut T>,
@@ -259,6 +400,19 @@ impl<'a, T: ?Sized> Drop for MutexGuard<'a, T> {
 
 impl<'a, T: ?Sized> MutexGuardFn<'a, T> for MutexGuard<'a, T> {}
 
+/// RAII guard returned by `Mutex::lock_from_isr()`.
+///
+/// Similar to `MutexGuard` but specifically for ISR context.
+/// Automatically unlocks the mutex when dropped using ISR-safe unlock.
+///
+/// # Examples
+///
+/// ```ignore
+/// // In ISR context:
+/// if let Ok(mut guard) = mutex.lock_from_isr() {
+///     *guard = new_value;
+/// }  // Automatically unlocked with ISR-safe method
+/// ```
 pub struct MutexGuardFromIsr<'a, T: ?Sized + 'a> {
     mutex: &'a Mutex<T>,
     _phantom: PhantomData<&'a mut T>,

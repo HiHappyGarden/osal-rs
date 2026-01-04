@@ -17,6 +17,8 @@
  *
  ***************************************************************************/
 
+//! Thread-related traits and type definitions.
+
 use core::any::Any;
 use alloc::boxed::Box;
 use alloc::sync::Arc;
@@ -25,16 +27,56 @@ use crate::os::{ThreadMetadata};
 use crate::os::types::{BaseType, StackType, TickType, UBaseType};
 use crate::utils::{Result, ConstPtr, DoublePtr};
 
+/// Type-erased parameter that can be passed to thread callbacks.
+///
+/// Allows passing arbitrary data to thread functions in a thread-safe manner.
+/// The parameter can be downcast to its original type using `downcast_ref()`.
 pub type ThreadParam = Arc<dyn Any + Send + Sync>;
+
+/// Thread callback function pointer type.
+///
+/// Thread callbacks receive a boxed thread handle and optional parameter,
+/// and can return an updated parameter value.
 pub type ThreadFnPtr = dyn Fn(Box<dyn Thread>, Option<ThreadParam>) -> Result<ThreadParam> + Send + Sync + 'static;
+
+/// Simple thread function pointer type without parameters.
+///
+/// Used for basic thread functions that don't need access to the thread handle or parameters.
 pub type ThreadSimpleFnPtr = dyn Fn() + Send + Sync + 'static;
 
+/// Thread notification actions.
+///
+/// Defines different ways to notify a thread using the FreeRTOS task notification mechanism.
+/// Task notifications provide a lightweight alternative to semaphores and queues for
+/// simple signaling.
+///
+/// # Examples
+///
+/// ```ignore
+/// use osal_rs::os::{Thread, ThreadNotification};
+/// 
+/// let thread = Thread::current();
+/// 
+/// // Increment notification counter
+/// thread.notify_with_action(ThreadNotification::Increment);
+/// 
+/// // Set specific bits
+/// thread.notify_with_action(ThreadNotification::SetBits(0b1010));
+/// 
+/// // Set value, overwriting any existing value
+/// thread.notify_with_action(ThreadNotification::SetValueWithOverwrite(42));
+/// ```
 #[derive(Debug, Copy, Clone)]
 pub enum ThreadNotification {
+    /// Don't update the notification value
     NoAction,
+    /// Bitwise OR the notification value with the specified bits
     SetBits(u32),
+    /// Increment the notification value by one
     Increment,
+    /// Set the notification value, overwriting any existing value
     SetValueWithOverwrite(u32),
+    /// Set the notification value only if the receiving thread has no pending notifications
     SetValueWithoutOverwrite(u32),
 }
 

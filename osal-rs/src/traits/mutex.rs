@@ -17,34 +17,79 @@
  *
  ***************************************************************************/
 
+//! Mutex trait definitions.
+
 use crate::utils::{OsalRsBool, Result};
 
+/// Low-level raw mutex operations.
+///
+/// This trait defines the basic mutex primitives that interface directly
+/// with the underlying RTOS mutex implementation.
 pub trait RawMutex
 where
     Self: Sized,
 {
+    /// Creates a new raw mutex.
     fn new() -> Result<Self>
     where 
         Self: Sized;
 
+    /// Locks the mutex (blocking).
+    ///
+    /// # Returns
+    ///
+    /// `True` if lock was acquired, `False` otherwise
     fn lock(&self) -> OsalRsBool;
 
+    /// Locks the mutex from ISR context (non-blocking).
+    ///
+    /// # Returns
+    ///
+    /// `True` if lock was acquired, `False` otherwise
     fn lock_from_isr(&self) -> OsalRsBool;
 
+    /// Unlocks the mutex.
+    ///
+    /// # Returns
+    ///
+    /// `True` if unlock succeeded, `False` otherwise
     fn unlock(&self) -> OsalRsBool;
 
+    /// Unlocks the mutex from ISR context.
+    ///
+    /// # Returns
+    ///
+    /// `True` if unlock succeeded, `False` otherwise
     fn unlock_from_isr(&self) -> OsalRsBool;
 
+    /// Deletes the mutex and frees its resources.
     fn delete(&mut self);
 }
 
+/// Marker trait for mutex guard types.
+///
+/// Implemented by types that represent active mutex locks.
 pub trait MutexGuard<'a, T: ?Sized + 'a> {}
 
+/// High-level mutex trait with type-safe data protection.
+///
+/// This trait provides RAII-style mutex operations with automatic lock
+/// management through guard types.
 pub trait Mutex<T: ?Sized> {
+    /// The guard type for normal mutex locks
     type Guard<'a>: MutexGuard<'a, T> where Self: 'a, T: 'a;
+    /// The guard type for ISR-context mutex locks
     type GuardFromIsr<'a>: MutexGuard<'a, T> where Self: 'a, T: 'a;
 
-    /// Creates a new mutex wrapping the supplied data
+    /// Creates a new mutex wrapping the supplied data.
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// use osal_rs::os::{Mutex, MutexFn};
+    /// 
+    /// let mutex = Mutex::new(0);
+    /// ```
     fn new(data: T) -> Self
     where 
         Self: Sized,

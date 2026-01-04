@@ -398,7 +398,30 @@ impl<'a, T: ?Sized> Drop for MutexGuard<'a, T> {
     }
 }
 
-impl<'a, T: ?Sized> MutexGuardFn<'a, T> for MutexGuard<'a, T> {}
+impl<'a, T: ?Sized> MutexGuardFn<'a, T> for MutexGuard<'a, T> {
+    /// Updates the protected value with a new value.
+    ///
+    /// # Note
+    ///
+    /// This requires `T` to implement `Clone` to copy the value.
+    /// Use the dereference operator directly for types that implement `Copy`.
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// let mut guard = mutex.lock().unwrap();
+    /// let new_value = 42;
+    /// guard.update(&new_value);
+    /// ```
+    fn update(&mut self, t: &T) 
+    where
+        T: Clone
+    {
+        // Dereference twice: first to get &mut T from MutexGuard,
+        // then assign the cloned value
+        **self = t.clone();
+    }
+}
 
 /// RAII guard returned by `Mutex::lock_from_isr()`.
 ///
@@ -438,4 +461,25 @@ impl<'a, T: ?Sized> Drop for MutexGuardFromIsr<'a, T> {
     }
 }
 
-impl<'a, T: ?Sized> MutexGuardFn<'a, T> for MutexGuardFromIsr<'a, T> {}
+impl<'a, T: ?Sized> MutexGuardFn<'a, T> for MutexGuardFromIsr<'a, T> {
+    /// Updates the protected value from ISR context.
+    ///
+    /// # Note
+    ///
+    /// This requires `T` to implement `Clone` to copy the value.
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// // In ISR context:
+    /// if let Ok(mut guard) = mutex.lock_from_isr() {
+    ///     guard.update(&new_value);
+    /// }
+    /// ```
+    fn update(&mut self, t: &T) 
+    where
+        T: Clone
+    {
+        **self = t.clone();
+    }
+}

@@ -69,7 +69,29 @@ where
 /// Marker trait for mutex guard types.
 ///
 /// Implemented by types that represent active mutex locks.
-pub trait MutexGuard<'a, T: ?Sized + 'a> {}
+pub trait MutexGuard<'a, T: ?Sized + 'a> {
+    /// Updates the value protected by the mutex guard.
+    ///
+    /// # Parameters
+    ///
+    /// * `t` - Reference to the new value to assign
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// use osal_rs::os::{Mutex, MutexFn};
+    /// use osal_rs::traits::MutexGuard;
+    /// 
+    /// let mutex = Mutex::new(0);
+    /// let mut guard = mutex.lock().unwrap();
+    /// guard.update(&42);
+    /// assert_eq!(*guard, 42);
+    /// ```
+    fn update(&mut self, t: &T)
+    where
+        T: Clone;
+
+}
 
 /// High-level mutex trait with type-safe data protection.
 ///

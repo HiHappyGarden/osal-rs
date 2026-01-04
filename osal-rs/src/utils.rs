@@ -629,3 +629,47 @@ impl<const SIZE: usize> Bytes<SIZE> {
         }
     }
 }
+
+/// Trait for types that can provide a string reference in a thread-safe manner.
+///
+/// This trait extends the basic string reference functionality with thread-safety
+/// guarantees by requiring both `Sync` and `Send` bounds. It's useful for types
+/// that need to provide string data across thread boundaries in a concurrent
+/// environment.
+///
+/// # Thread Safety
+///
+/// Implementors must be both `Sync` (safe to share references across threads) and
+/// `Send` (safe to transfer ownership across threads).
+///
+/// # Examples
+///
+/// ```ignore
+/// use osal_rs::utils::AsSyncStr;
+/// 
+/// struct ThreadSafeName {
+///     name: &'static str,
+/// }
+/// 
+/// impl AsSyncStr for ThreadSafeName {
+///     fn as_str(&self) -> &str {
+///         self.name
+///     }
+/// }
+/// 
+/// // Can be safely shared across threads
+/// fn use_in_thread(item: &dyn AsSyncStr) {
+///     println!("Name: {}", item.as_str());
+/// }
+/// ```
+pub trait AsSyncStr : Sync + Send { 
+    /// Returns a string slice reference.
+    ///
+    /// This method provides access to the underlying string data in a way
+    /// that is safe to use across thread boundaries.
+    ///
+    /// # Returns
+    ///
+    /// A reference to a string slice with lifetime tied to `self`.
+    fn as_str(&self) -> &str;
+}

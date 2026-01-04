@@ -17,6 +17,42 @@
  *
  ***************************************************************************/
 
+//! Foreign Function Interface (FFI) bindings for FreeRTOS.
+//!
+//! This module provides raw FFI declarations for FreeRTOS kernel functions and types.
+//! It directly interfaces with the FreeRTOS C API, providing the foundation for
+//! the safe Rust wrappers in other modules.
+//!
+//! # Contents
+//!
+//! - **Type definitions**: Handles for tasks, queues, semaphores, etc.
+//! - **Constants**: FreeRTOS constants (pdTRUE, pdFALSE, etc.)
+//! - **Function declarations**: Direct bindings to FreeRTOS C functions
+//! - **Utility macros**: Rust macros wrapping common FreeRTOS patterns
+//!
+//! # Safety
+//!
+//! All functions in this module are `unsafe` and require careful handling:
+//! - Null pointer checks
+//! - Proper synchronization
+//! - Correct memory management
+//! - Valid handle usage
+//!
+//! Use the safe wrappers in parent modules instead of calling these directly.
+//!
+//! # Examples
+//!
+//! ```ignore
+//! // Don't use FFI directly - use safe wrappers instead:
+//! use osal_rs::os::{Thread, ThreadFn};
+//! 
+//! // This is safe:
+//! let thread = Thread::new("task", 1024, 5);
+//! 
+//! // This is unsafe and should be avoided:
+//! // unsafe { xTaskCreate(...) }
+//! ```
+
 #![allow(non_upper_case_globals)]
 #![allow(non_snake_case)]
 
@@ -25,15 +61,24 @@ use core::ptr;
 
 use super::types::{BaseType, StackType, UBaseType, TickType, EventBits};
 
+/// Opaque handle to a FreeRTOS task/thread
 pub type ThreadHandle = *const c_void;
+/// Opaque handle to a FreeRTOS queue
 pub type QueueHandle = *const c_void;
+/// Opaque handle to a FreeRTOS semaphore
 pub type SemaphoreHandle = *const c_void;
+/// Opaque handle to a FreeRTOS event group
 pub type EventGroupHandle = *const c_void;
+/// Opaque handle to a FreeRTOS timer
 pub type TimerHandle = *const c_void;
+/// Opaque handle to a FreeRTOS mutex
 pub type MutexHandle = *const c_void;
+/// Callback function type for timers
 pub type TimerCallback = unsafe extern "C" fn(timer: TimerHandle);
+/// Task state enumeration
 pub type TaskState = c_uint;
 
+// Task states
 pub const RUNNING: TaskState = 0;
 pub const READY: TaskState = 1;
 pub const BLOCKED: TaskState = 2;
@@ -41,7 +86,7 @@ pub const SUSPENDED: TaskState = 3;
 pub const DELETED: TaskState = 4;
 pub const INVALID: TaskState = 5;
 
-
+// Boolean/status constants
 pub const pdFALSE: BaseType = 0;
 
 pub const pdTRUE: BaseType = 1;
@@ -50,20 +95,24 @@ pub const pdPASS: BaseType = pdTRUE;
 
 pub const pdFAIL: BaseType = pdFALSE;
 
+// Task notification constants
 pub const tskDEFAULT_INDEX_TO_NOTIFY: UBaseType = 0;
 
+// Semaphore constants
 pub const semBINARY_SEMAPHORE_QUEUE_LENGTH: u8 = 1;
 
 pub const semSEMAPHORE_QUEUE_ITEM_LENGTH: u8 = 0;
 
 pub const semGIVE_BLOCK_TIME: TickType = 0;
 
+// Queue constants
 pub const queueSEND_TO_BACK: BaseType = 0;
 
 pub const queueSEND_TO_FRONT: BaseType = 1;
 
 pub const queueOVERWRITE: BaseType = 2;
 
+// Queue type constants
 pub const queueQUEUE_TYPE_BASE: u8 = 0;
 
 pub const queueQUEUE_TYPE_MUTEX: u8 = 1;
@@ -78,17 +127,29 @@ pub const queueQUEUE_TYPE_SET: u8 = 5;
 
 
 
+/// Task status information structure.
+///
+/// Contains detailed information about a task's state, priority, stack usage, etc.
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct TaskStatus {
+    /// Task handle
     pub xHandle: ThreadHandle,
+    /// Task name (null-terminated C string)
     pub pcTaskName: *const c_char,
+    /// Task number (unique ID)
     pub xTaskNumber: UBaseType,
+    /// Current task state
     pub eCurrentState: TaskState,
+    /// Current priority
     pub uxCurrentPriority: UBaseType,
+    /// Base priority (before priority inheritance)
     pub uxBasePriority: UBaseType,
+    /// Total runtime counter
     pub ulRunTimeCounter: u32,
+    /// Stack base address
     pub pxStackBase: *mut StackType,
+    /// Stack high water mark (minimum free stack)
     pub usStackHighWaterMark: StackType
 }
 

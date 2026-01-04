@@ -17,6 +17,11 @@
  *
  ***************************************************************************/
 
+//! Thread management and synchronization for FreeRTOS.
+//!
+//! This module provides a safe Rust interface for creating and managing FreeRTOS tasks.
+//! It supports thread creation with callbacks, priority management, and thread notifications.
+
 use core::any::Any;
 use core::ffi::{c_char, c_void};
 use core::fmt::{Debug, Display, Formatter};
@@ -36,28 +41,79 @@ use crate::traits::{ThreadFn, ThreadParam, ThreadFnPtr, ThreadNotification, ToTi
 use crate::utils::{Result, Error, DoublePtr};
 use crate::{from_c_str, xTaskNotify, xTaskNotifyFromISR, xTaskNotifyWait};
 
+/// Represents the possible states of a FreeRTOS task/thread.
+///
+/// # Examples
+///
+/// ```ignore
+/// use osal_rs::os::{Thread, ThreadState};
+/// 
+/// let thread = Thread::current();
+/// let metadata = thread.metadata().unwrap();
+/// 
+/// match metadata.state {
+///     ThreadState::Running => println!("Thread is currently executing"),
+///     ThreadState::Ready => println!("Thread is ready to run"),
+///     ThreadState::Blocked => println!("Thread is waiting for an event"),
+///     ThreadState::Suspended => println!("Thread is suspended"),
+///     _ => println!("Unknown state"),
+/// }
+/// ```
 #[derive(Copy, Clone, Debug, PartialEq)]
 #[repr(u8)]
 pub enum ThreadState {
+    /// Thread is currently executing on a CPU
     Running = 0,
+    /// Thread is ready to run but not currently executing
     Ready = 1,
+    /// Thread is blocked waiting for an event (e.g., semaphore, queue)
     Blocked = 2,
+    /// Thread has been explicitly suspended
     Suspended = 3,
+    /// Thread has been deleted
     Deleted = 4,
+    /// Invalid or unknown state
     Invalid,
 }
 
+/// Metadata and runtime information about a thread.
+///
+/// Contains detailed information about a thread's state, priorities, stack usage,
+/// and runtime statistics.
+///
+/// # Examples
+///
+/// ```ignore
+/// use osal_rs::os::Thread;
+/// 
+/// let thread = Thread::current();
+/// let metadata = thread.metadata().unwrap();
+/// 
+/// println!("Thread: {}", metadata.name);
+/// println!("Priority: {}", metadata.priority);
+/// println!("Stack high water mark: {}", metadata.stack_high_water_mark);
+/// ```
 #[derive(Clone, Debug)]
 pub struct ThreadMetadata {
+    /// FreeRTOS task handle
     pub thread: ThreadHandle,
+    /// Thread name
     pub name: String,
+    /// Original stack depth allocated for this thread
     pub stack_depth: StackType,
+    /// Thread priority
     pub priority: UBaseType,
+    /// Unique thread number assigned by FreeRTOS
     pub thread_number: UBaseType,
+    /// Current execution state
     pub state: ThreadState,
+    /// Current priority (may differ from base priority due to priority inheritance)
     pub current_priority: UBaseType,
+    /// Base priority without inheritance
     pub base_priority: UBaseType,
+    /// Total runtime counter (requires configGENERATE_RUN_TIME_STATS)
     pub run_time_counter: UBaseType,
+    /// Minimum remaining stack space ever recorded (lower values indicate higher stack usage)
     pub stack_high_water_mark: StackType,
 }
 
@@ -109,6 +165,52 @@ impl Default for ThreadMetadata {
     }
 }
 
+/// A FreeRTOS task/thread wrapper.
+///
+/// Provides a safe Rust interface for creating and managing FreeRTOS tasks.
+/// Threads can be created with closures or function pointers and support
+/// various synchronization primitives.
+///
+/// # Examples
+///
+/// ## Creating a simple thread
+///
+/// ```ignore
+/// use osal_rs::os::{Thread, ThreadPriority};
+/// use core::time::Duration;
+/// 
+/// let thread = Thread::new(
+///     "worker",
+///     2048,  // stack size in words
+///     ThreadPriority::Normal,
+///     || {
+///         loop {
+///             println!("Working...");
+///             Duration::from_secs(1).sleep();
+///         }
+///     }
+/// ).unwrap();
+/// 
+/// thread.start().unwrap();
+/// ```
+///
+/// ## Using thread notifications
+///
+/// ```ignore
+/// use osal_rs::os::{Thread, ThreadNotification};
+/// use core::time::Duration;
+/// 
+/// let thread = Thread::new("notified", 2048, 5, || {
+///     loop {
+///         if let Some(value) = Thread::current().wait_notification(Duration::from_secs(1)) {
+///             println!("Received notification: {}", value);
+///         }
+///     }
+/// }).unwrap();
+/// 
+/// thread.start().unwrap();
+/// thread.notify(42).unwrap();  // Send notification
+/// ```
 #[derive(Clone)]
 pub struct Thread {
     handle: ThreadHandle,
@@ -124,6 +226,23 @@ unsafe impl Sync for Thread {}
 
 impl Thread {
 
+    /// Creates a new thread with a priority that implements `ToPriority`.
+    ///
+    /// This is a convenience constructor that allows using various priority types.
+    ///
+    /// # Parameters
+    ///
+    /// * `name` - Thread name for debugging
+    /// * `stack_depth` - Stack size in words (not bytes)
+    /// * `priority` - Thread priority (any type implementing `ToPriority`)
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// use osal_rs::os::Thread;
+    /// 
+    /// let thread = Thread::new_with_to_priority("worker", 2048, 5);
+    /// ```
     pub fn new_with_to_priority(name: &str, stack_depth: StackType, priority: impl ToPriority) -> Self 
     {
         Self { 
@@ -136,6 +255,28 @@ impl Thread {
         }
     }
 
+    /// Creates a thread from an existing FreeRTOS task handle.
+    ///
+    /// # Parameters
+    ///
+    /// * `handle` - Valid FreeRTOS task handle
+    /// * `name` - Thread name
+    /// * `stack_depth` - Stack size
+    /// * `priority` - Thread priority
+    ///
+    /// # Returns
+    ///
+    /// * `Err(Error::NullPtr)` if handle is null
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// use osal_rs::os::Thread;
+    /// 
+    /// // Get current task handle from FreeRTOS
+    /// let handle = get_task_handle();
+    /// let thread = Thread::new_with_handle_and_to_priority(handle, "existing", 2048, 5).unwrap();
+    /// ```
     pub fn new_with_handle_and_to_priority(handle: ThreadHandle, name: &str, stack_depth: StackType, priority: impl ToPriority) -> Result<Self> {
         if handle.is_null() {
             return Err(Error::NullPtr);
@@ -150,6 +291,25 @@ impl Thread {
         })
     }
 
+    /// Retrieves metadata for a thread from its handle.
+    ///
+    /// # Parameters
+    ///
+    /// * `handle` - FreeRTOS task handle
+    ///
+    /// # Returns
+    ///
+    /// Thread metadata including state, priority, stack usage, etc.
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// use osal_rs::os::Thread;
+    /// 
+    /// let handle = get_some_task_handle();
+    /// let metadata = Thread::get_metadata_from_handle(handle);
+    /// println!("Thread '{}' state: {:?}", metadata.name, metadata.state);
+    /// ```
     pub fn get_metadata_from_handle(handle: ThreadHandle) -> ThreadMetadata {
         let mut status = TaskStatus::default();
         unsafe {
@@ -158,6 +318,25 @@ impl Thread {
         ThreadMetadata::from((handle, status))
     }
 
+    /// Retrieves metadata for a thread object.
+    ///
+    /// # Parameters
+    ///
+    /// * `thread` - Thread reference
+    ///
+    /// # Returns
+    ///
+    /// Thread metadata or default if handle is null
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// use osal_rs::os::Thread;
+    /// 
+    /// let thread = Thread::new("worker", 2048, 5);
+    /// let metadata = Thread::get_metadata(&thread);
+    /// println!("Stack high water mark: {}", metadata.stack_high_water_mark);
+    /// ```
     pub fn get_metadata(thread: &Thread) -> ThreadMetadata {
         if thread.handle.is_null() {
             return ThreadMetadata::default();
@@ -165,6 +344,34 @@ impl Thread {
         Self::get_metadata_from_handle(thread.handle)
     }
 
+    /// Waits for a thread notification with a timeout that implements `ToTick`.
+    ///
+    /// Convenience method that accepts `Duration` or other tick-convertible types.
+    ///
+    /// # Parameters
+    ///
+    /// * `bits_to_clear_on_entry` - Bits to clear before waiting
+    /// * `bits_to_clear_on_exit` - Bits to clear after receiving notification
+    /// * `timeout_ticks` - Maximum time to wait (convertible to ticks)
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(u32)` - Notification value received
+    /// * `Err(Error::NullPtr)` - Thread handle is null
+    /// * `Err(Error::Timeout)` - No notification received within timeout
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// use osal_rs::os::{Thread, ThreadFn};
+    /// use core::time::Duration;
+    /// 
+    /// let thread = Thread::current();
+    /// match thread.wait_notification_with_to_tick(0, 0xFF, Duration::from_secs(1)) {
+    ///     Ok(value) => println!("Received: {}", value),
+    ///     Err(_) => println!("Timeout"),
+    /// }
+    /// ```
     #[inline]
     pub fn wait_notification_with_to_tick(&self, bits_to_clear_on_entry: u32, bits_to_clear_on_exit: u32 , timeout_ticks: impl ToTick) -> Result<u32> {
         if self.handle.is_null() {
@@ -211,6 +418,17 @@ unsafe extern "C" fn simple_callback_wrapper(param_ptr: *mut c_void) {
 
 
 impl ThreadFn for Thread {
+    /// Creates a new uninitialized thread.
+    ///
+    /// The thread must be started with `spawn()` or `spawn_simple()`.
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// use osal_rs::os::{Thread, ThreadFn};
+    /// 
+    /// let thread = Thread::new("worker", 4096, 5);
+    /// ```
     fn new(name: &str, stack_depth: StackType, priority: UBaseType) -> Self 
     {
         Self { 
@@ -223,6 +441,11 @@ impl ThreadFn for Thread {
         }
     }
 
+    /// Creates a thread from an existing task handle.
+    ///
+    /// # Returns
+    ///
+    /// * `Err(Error::NullPtr)` if handle is null
     fn new_with_handle(handle: ThreadHandle, name: &str, stack_depth: StackType, priority: UBaseType) -> Result<Self> {
         if handle.is_null() {
             return Err(Error::NullPtr);
@@ -342,24 +565,65 @@ impl ThreadFn for Thread {
         })
     }
 
+    /// Deletes the thread and frees its resources.
+    ///
+    /// # Safety
+    ///
+    /// After calling this, the thread handle becomes invalid.
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// use osal_rs::os::{Thread, ThreadFn};
+    /// 
+    /// let thread = Thread::new("temp", 2048, 5);
+    /// thread.delete();
+    /// ```
     fn delete(&self) {
         if !self.handle.is_null() {
             unsafe { vTaskDelete( self.handle ); } 
         }
     }
 
+    /// Suspends the thread execution.
+    ///
+    /// The thread remains suspended until `resume()` is called.
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// use osal_rs::os::{Thread, ThreadFn};
+    /// use core::time::Duration;
+    /// 
+    /// let thread = get_some_thread();
+    /// thread.suspend();
+    /// Duration::from_secs(1).sleep();
+    /// thread.resume();
+    /// ```
     fn suspend(&self) {
         if !self.handle.is_null() {
             unsafe { vTaskSuspend( self.handle ); } 
         }
     }
 
+    /// Resumes a previously suspended thread.
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// thread.resume();
+    /// ```
     fn resume(&self) {
         if !self.handle.is_null() {
             unsafe { vTaskResume( self.handle ); } 
         }
     }
 
+    /// Waits for the thread to complete (currently deletes the thread).
+    ///
+    /// # Returns
+    ///
+    /// Always returns `Ok(0)`
     fn join(&self, _retval: DoublePtr) -> Result<i32> {
         if !self.handle.is_null() {
             unsafe { vTaskDelete( self.handle ); } 
@@ -367,6 +631,17 @@ impl ThreadFn for Thread {
         Ok(0)
     }
 
+    /// Retrieves this thread's metadata.
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// use osal_rs::os::{Thread, ThreadFn};
+    /// 
+    /// let thread = Thread::current();
+    /// let meta = thread.get_metadata();
+    /// println!("Running thread: {}", meta.name);
+    /// ```
     fn get_metadata(&self) -> ThreadMetadata {
         let mut status = TaskStatus::default();
         unsafe {
@@ -375,6 +650,16 @@ impl ThreadFn for Thread {
         ThreadMetadata::from((self.handle, status))
     }
 
+    /// Returns a Thread object representing the currently executing thread.
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// use osal_rs::os::{Thread, ThreadFn};
+    /// 
+    /// let current = Thread::get_current();
+    /// println!("Current thread: {}", current.get_metadata().name);
+    /// ```
     fn get_current() -> Self {
         let handle = unsafe { xTaskGetCurrentTaskHandle() };
         let metadata = Self::get_metadata_from_handle(handle);
@@ -388,6 +673,26 @@ impl ThreadFn for Thread {
         }
     }
 
+    /// Sends a notification to this thread.
+    ///
+    /// # Parameters
+    ///
+    /// * `notification` - Type of notification action to perform
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(())` - Notification sent successfully
+    /// * `Err(Error::NullPtr)` - Thread handle is null
+    /// * `Err(Error::QueueFull)` - Notification failed
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// use osal_rs::os::{Thread, ThreadFn, ThreadNotification};
+    /// 
+    /// let thread = get_worker_thread();
+    /// thread.notify(ThreadNotification::SetValueWithOverwrite(42)).unwrap();
+    /// ```
     fn notify(&self, notification: ThreadNotification) -> Result<()> {
         if self.handle.is_null() {
             return Err(Error::NullPtr);
@@ -409,6 +714,26 @@ impl ThreadFn for Thread {
 
     }
 
+    /// Sends a notification to this thread from an ISR.
+    ///
+    /// # Parameters
+    ///
+    /// * `notification` - Type of notification action
+    /// * `higher_priority_task_woken` - Set to pdTRUE if a higher priority task was woken
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(())` - Notification sent successfully
+    /// * `Err(Error::NullPtr)` - Thread handle is null
+    /// * `Err(Error::QueueFull)` - Notification failed
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// // In ISR context:
+    /// let mut woken = pdFALSE;
+    /// thread.notify_from_isr(ThreadNotification::Increment, &mut woken).ok();
+    /// ```
     fn notify_from_isr(&self, notification: ThreadNotification, higher_priority_task_woken: &mut BaseType) -> Result<()> {
         if self.handle.is_null() {
             return Err(Error::NullPtr);
@@ -430,6 +755,31 @@ impl ThreadFn for Thread {
         }
     }
 
+    /// Waits for a thread notification.
+    ///
+    /// # Parameters
+    ///
+    /// * `bits_to_clear_on_entry` - Bits to clear in notification value before waiting
+    /// * `bits_to_clear_on_exit` - Bits to clear after receiving notification
+    /// * `timeout_ticks` - Maximum ticks to wait
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(u32)` - Notification value received
+    /// * `Err(Error::NullPtr)` - Thread handle is null
+    /// * `Err(Error::Timeout)` - No notification within timeout
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// use osal_rs::os::{Thread, ThreadFn};
+    /// 
+    /// let thread = Thread::current();
+    /// match thread.wait_notification(0, 0xFFFFFFFF, 1000) {
+    ///     Ok(value) => println!("Received notification: {}", value),
+    ///     Err(_) => println!("Timeout waiting for notification"),
+    /// }
+    /// ```
     fn wait_notification(&self, bits_to_clear_on_entry: u32, bits_to_clear_on_exit: u32 , timeout_ticks: TickType) -> Result<u32> {
         if self.handle.is_null() {
             return Err(Error::NullPtr);

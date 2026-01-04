@@ -17,6 +17,13 @@
  *
  ***************************************************************************/
 
+//! Event group synchronization primitives for FreeRTOS.
+//!
+//! Event groups allow threads to synchronize on multiple events simultaneously.
+//! Each event group contains a set of event bits (flags) that can be set, cleared,
+//! and waited upon. This is useful for complex synchronization scenarios where
+//! multiple conditions must be met.
+
 use core::fmt::{Debug, Display, Formatter};
 use core::ops::Deref;
 use core::ptr::null_mut;
@@ -28,6 +35,132 @@ use crate::traits::{ToTick, EventGroupFn, SystemFn};
 use crate::utils::{Result, Error};
 use crate::xEventGroupGetBits;
 
+/// A set of event flags for thread synchronization.
+///
+/// Event groups contain multiple event bits (typically 24 bits) that can be
+/// manipulated independently. Threads can wait for specific combinations of bits
+/// to be set, making them ideal for complex synchronization scenarios.
+///
+/// # Examples
+///
+/// ## Basic event signaling
+///
+/// ```ignore
+/// use osal_rs::os::{EventGroup, EventGroupFn};
+/// use core::time::Duration;
+/// 
+/// const EVENT_A: u32 = 0b0001;
+/// const EVENT_B: u32 = 0b0010;
+/// const EVENT_C: u32 = 0b0100;
+/// 
+/// let events = EventGroup::new().unwrap();
+/// 
+/// // Set event A
+/// events.set(EVENT_A);
+/// 
+/// // Check if event A is set
+/// let current = events.get();
+/// if current & EVENT_A != 0 {
+///     println!("Event A is set");
+/// }
+/// 
+/// // Clear event A
+/// events.clear(EVENT_A);
+/// ```
+///
+/// ## Waiting for multiple events
+///
+/// ```ignore
+/// use osal_rs::os::{EventGroup, EventGroupFn, Thread};
+/// use alloc::sync::Arc;
+/// use core::time::Duration;
+/// 
+/// const READY: u32 = 0b0001;
+/// const DATA_AVAILABLE: u32 = 0b0010;
+/// const STOP: u32 = 0b0100;
+/// 
+/// let events = Arc::new(EventGroup::new().unwrap());
+/// let events_clone = events.clone();
+/// 
+/// // Worker thread waits for events
+/// let worker = Thread::new("worker", 2048, 5, move || {
+///     loop {
+///         // Wait for either READY or STOP
+///         let bits = events_clone.wait_with_to_tick(
+///             READY | STOP,
+///             Duration::from_secs(1)
+///         );
+///         
+///         if bits & STOP != 0 {
+///             println!("Stopping...");
+///             break;
+///         }
+///         
+///         if bits & READY != 0 {
+///             println!("Ready to work!");
+///         }
+///     }
+/// }).unwrap();
+/// 
+/// worker.start().unwrap();
+/// 
+/// // Signal events
+/// events.set(READY);
+/// Duration::from_secs(2).sleep();
+/// events.set(STOP);
+/// ```
+///
+/// ## State machine synchronization
+///
+/// ```ignore
+/// use osal_rs::os::{EventGroup, EventGroupFn};
+/// use core::time::Duration;
+/// 
+/// const INIT_COMPLETE: u32 = 1 << 0;
+/// const CONFIG_LOADED: u32 = 1 << 1;
+/// const NETWORK_UP: u32 = 1 << 2;
+/// const READY_TO_RUN: u32 = INIT_COMPLETE | CONFIG_LOADED | NETWORK_UP;
+/// 
+/// let state = EventGroup::new().unwrap();
+/// 
+/// // Different subsystems set their bits
+/// state.set(INIT_COMPLETE);
+/// state.set(CONFIG_LOADED);
+/// state.set(NETWORK_UP);
+/// 
+/// // Wait for all systems to be ready
+/// let current = state.wait_with_to_tick(READY_TO_RUN, Duration::from_secs(5));
+/// 
+/// if (current & READY_TO_RUN) == READY_TO_RUN {
+///     println!("All systems ready!");
+/// }
+/// ```
+///
+/// ## ISR to thread signaling
+///
+/// ```ignore
+/// use osal_rs::os::{EventGroup, EventGroupFn, Thread};
+/// use alloc::sync::Arc;
+/// 
+/// const IRQ_EVENT: u32 = 1 << 0;
+/// 
+/// let events = Arc::new(EventGroup::new().unwrap());
+/// let events_isr = events.clone();
+/// 
+/// // In interrupt handler:
+/// // events_isr.set_from_isr(IRQ_EVENT).ok();
+/// 
+/// // Handler thread
+/// let handler = Thread::new("handler", 2048, 5, move || {
+///     loop {
+///         let bits = events.wait(IRQ_EVENT, 1000);
+///         if bits & IRQ_EVENT != 0 {
+///             println!("Handling interrupt event");
+///             events.clear(IRQ_EVENT);
+///         }
+///     }
+/// }).unwrap();
+/// ```
 pub struct EventGroup (EventGroupHandle);
 
 unsafe impl Send for EventGroup {}

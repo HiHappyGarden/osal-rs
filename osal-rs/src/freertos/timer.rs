@@ -17,6 +17,12 @@
  *
  ***************************************************************************/
 
+//! Software timer support for FreeRTOS.
+//!
+//! This module provides software timers that run callbacks at specified intervals.
+//! Timers can be one-shot or auto-reloading (periodic) and execute their callbacks
+//! in the timer daemon task context.
+
 use core::any::Any;
 use core::fmt::{Debug, Display};
 use core::ops::Deref;
@@ -33,11 +39,152 @@ use crate::utils::{OsalRsBool, Result, Error};
 use super::ffi::{TimerHandle, pvTimerGetTimerID, xTimerCreate, osal_rs_timer_start, osal_rs_timer_change_period, osal_rs_timer_delete, osal_rs_timer_reset, osal_rs_timer_stop};
 use super::types::{TickType};
 
+/// A software timer that executes a callback at regular intervals.
+///
+/// Timers can be configured as:
+/// - **One-shot**: Executes once after the specified period
+/// - **Auto-reload**: Executes repeatedly at the specified interval
+///
+/// Timer callbacks execute in the context of the timer daemon task, not in
+/// interrupt context. This means they can call most RTOS functions safely.
+///
+/// # Important Notes
+///
+/// - Timer callbacks should complete quickly to avoid delaying other timers
+/// - Callbacks must not block indefinitely
+/// - Requires `configUSE_TIMERS = 1` in FreeRTOSConfig.h
+///
+/// # Examples
+///
+/// ## One-shot timer
+///
+/// ```ignore
+/// use osal_rs::os::{Timer, TimerFn};
+/// use core::time::Duration;
+/// 
+/// let timer = Timer::new_with_to_tick(
+///     "oneshot",
+///     Duration::from_secs(1),
+///     false,  // Not auto-reload (one-shot)
+///     None,
+///     |timer, param| {
+///         println!("Timer fired once!");
+///         Ok(param)
+///     }
+/// ).unwrap();
+/// 
+/// timer.start_with_to_tick(Duration::from_millis(10)).unwrap();
+/// ```
+///
+/// ## Periodic timer
+///
+/// ```ignore
+/// use osal_rs::os::{Timer, TimerFn};
+/// use core::time::Duration;
+/// 
+/// let timer = Timer::new_with_to_tick(
+///     "periodic",
+///     Duration::from_millis(500),
+///     true,  // Auto-reload (periodic)
+///     None,
+///     |timer, param| {
+///         println!("Tick every 500ms");
+///         Ok(param)
+///     }
+/// ).unwrap();
+/// 
+/// timer.start_with_to_tick(Duration::from_millis(10)).unwrap();
+/// 
+/// // Stop after some time
+/// Duration::from_secs(5).sleep();
+/// timer.stop_with_to_tick(Duration::from_millis(10));
+/// ```
+///
+/// ## Timer with custom parameters
+///
+/// ```ignore
+/// use osal_rs::os::{Timer, TimerFn, TimerParam};
+/// use alloc::sync::Arc;
+/// use core::time::Duration;
+/// 
+/// struct CounterData {
+///     count: u32,
+/// }
+/// 
+/// let data = Arc::new(CounterData { count: 0 });
+/// let param: TimerParam = data.clone();
+/// 
+/// let timer = Timer::new_with_to_tick(
+///     "counter",
+///     Duration::from_secs(1),
+///     true,
+///     Some(param),
+///     |timer, param| {
+///         if let Some(param_arc) = param {
+///             if let Some(data) = param_arc.downcast_ref::<CounterData>() {
+///                 println!("Counter: {}", data.count);
+///             }
+///         }
+///         Ok(None)
+///     }
+/// ).unwrap();
+/// 
+/// timer.start_with_to_tick(Duration::from_millis(10));
+/// ```
+///
+/// ## Changing timer period
+///
+/// ```ignore
+/// use osal_rs::os::{Timer, TimerFn};
+/// use core::time::Duration;
+/// 
+/// let timer = Timer::new_with_to_tick(
+///     "adjustable",
+///     Duration::from_millis(100),
+///     true,
+///     None,
+///     |_, _| { println!("Tick"); Ok(None) }
+/// ).unwrap();
+/// 
+/// timer.start_with_to_tick(Duration::from_millis(10));
+/// 
+/// // Change period to 500ms
+/// Duration::from_secs(2).sleep();
+/// timer.change_period_with_to_tick(
+///     Duration::from_millis(500),
+///     Duration::from_millis(10)
+/// );
+/// ```
+///
+/// ## Resetting a timer
+///
+/// ```ignore
+/// use osal_rs::os::{Timer, TimerFn};
+/// use core::time::Duration;
+/// 
+/// let timer = Timer::new_with_to_tick(
+///     "watchdog",
+///     Duration::from_secs(5),
+///     false,
+///     None,
+///     |_, _| { println!("Timeout!"); Ok(None) }
+/// ).unwrap();
+/// 
+/// timer.start_with_to_tick(Duration::from_millis(10));
+/// 
+/// // Reset timer before it expires (like a watchdog)
+/// Duration::from_secs(2).sleep();
+/// timer.reset_with_to_tick(Duration::from_millis(10));  // Restart the 5s countdown
+/// ```
 #[derive(Clone)]
 pub struct Timer {
+    /// FreeRTOS timer handle
     pub handle: TimerHandle,
+    /// Timer name for debugging
     name: String, 
+    /// Callback function to execute when timer expires
     callback: Option<Arc<TimerFnPtr>>,
+    /// Optional parameter passed to callback
     param: Option<TimerParam>, 
 }
 

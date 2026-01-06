@@ -483,6 +483,23 @@ impl<const SIZE: usize> Display for Bytes<SIZE> {
     }
 }
 
+impl AsSyncStr for Bytes<> {
+    /// Returns a string slice reference.
+    ///
+    /// This method provides access to the underlying string data in a way
+    /// that is safe to use across thread boundaries.
+    ///
+    /// # Returns
+    ///
+    /// A reference to a string slice with lifetime tied to `self`.
+    fn as_str(&self) -> &str {
+        unsafe {
+            CStr::from_ptr(self.0.as_ptr() as *const c_char)
+            .to_str()
+            .unwrap_or("Conversion error")
+        }
+    }
+}
 
 impl<const SIZE: usize> Bytes<SIZE> {
     /// Creates a new `Bytes` instance filled with zeros.
@@ -626,24 +643,6 @@ impl<const SIZE: usize> Bytes<SIZE> {
                 }
             }
             Err(_) => todo!(),
-        }
-    }
-}
-
-impl AsSyncStr for Bytes<> {
-    /// Returns a string slice reference.
-    ///
-    /// This method provides access to the underlying string data in a way
-    /// that is safe to use across thread boundaries.
-    ///
-    /// # Returns
-    ///
-    /// A reference to a string slice with lifetime tied to `self`.
-    fn as_str(&self) -> &str {
-        unsafe {
-            CStr::from_ptr(self.0.as_ptr() as *const c_char)
-            .to_str()
-            .unwrap_or("Conversion error")
         }
     }
 }

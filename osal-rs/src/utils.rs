@@ -395,7 +395,7 @@ macro_rules! thread_extract_param {
 #[macro_export]
 macro_rules! arcmux {
     ($value:expr) => {
-        alloc::sync::Arc::new($crate::os::Mutex::new($value))
+        alloc::sync::Arc::new($crate::os::MutexFn::new($value))
     };
 }
 
@@ -673,3 +673,24 @@ pub trait AsSyncStr : Sync + Send {
     /// A reference to a string slice with lifetime tied to `self`.
     fn as_str(&self) -> &str;
 }
+
+impl PartialEq for dyn AsSyncStr {
+    fn eq(&self, other: &Self) -> bool {
+        self.as_str() == other.as_str()
+    }
+}
+
+impl Eq for dyn AsSyncStr {}
+
+impl Debug for dyn AsSyncStr {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(f, "{}", self.as_str())
+    }
+}
+
+impl Display for dyn AsSyncStr {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(f, "{}", self.as_str())
+    }
+}
+

@@ -107,7 +107,7 @@ impl Queue {
 }
 
 impl QueueFn for Queue {
-    fn new (size: UBaseType, message_size: super::types::UBaseType) -> Result<Self> {
+    fn new (size: UBaseType, message_size: UBaseType) -> Result<Self> {
         let handle = unsafe { xQueueCreateCountingSemaphore(size, message_size) };
         if handle.is_null() {
             Err(Error::OutOfMemory)

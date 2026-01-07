@@ -219,6 +219,13 @@ unsafe extern "C" {
         pulTotalRunTime: *mut u32,
     ) -> UBaseType;
 
+    pub fn osal_rs_task_enter_critical();
+    pub fn osal_rs_task_exit_critical();
+
+    pub fn osal_rs_task_enter_critical_from_isr() -> UBaseType;
+    pub fn osal_rs_task_exit_critical_from_isr(uxSavedInterruptStatus: UBaseType);
+
+
     pub fn xTaskCreate(
         pxTaskCode: TaskFunction,
         pcName: *const c_char,

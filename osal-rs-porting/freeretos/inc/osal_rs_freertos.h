@@ -49,4 +49,10 @@ uint32_t osal_rs_config_max_priorities(void);
 StackType_t osal_rs_config_minimal_stack_size(void);
 uint32_t osal_rs_config_max_task_name_len(void);
 
+void osal_rs_task_enter_critical( void );
+void osal_rs_task_exit_critical( void );
+
+UBaseType_t osal_rs_task_enter_critical_from_isr(void);
+void osal_rs_task_exit_critical_from_isr(UBaseType_t uxSavedInterruptStatus);
+
 #endif /* OSAL_RS_FREERTOS_H */

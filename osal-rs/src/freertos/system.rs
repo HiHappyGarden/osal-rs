@@ -33,7 +33,7 @@ use core::time::Duration;
 use alloc::vec::Vec;
 
 use super::ffi::{
-    BLOCKED, DELETED, READY, RUNNING, SUSPENDED, TaskStatus, eTaskGetState, osal_rs_critical_section_enter, osal_rs_critical_section_exit, osal_rs_port_end_switching_isr, osal_rs_port_yield_from_isr, uxTaskGetNumberOfTasks, uxTaskGetSystemState, vTaskDelay, vTaskEndScheduler, vTaskStartScheduler, vTaskSuspendAll, xPortGetFreeHeapSize, xTaskDelayUntil, xTaskGetCurrentTaskHandle, xTaskGetTickCount, xTaskResumeAll
+    BLOCKED, DELETED, READY, RUNNING, SUSPENDED, TaskStatus, eTaskGetState, osal_rs_critical_section_enter, osal_rs_critical_section_exit, osal_rs_port_end_switching_isr, osal_rs_port_yield_from_isr, uxTaskGetNumberOfTasks, uxTaskGetSystemState, vTaskDelay, vTaskEndScheduler, vTaskStartScheduler, vTaskSuspendAll, xPortGetFreeHeapSize, xTaskDelayUntil, xTaskGetCurrentTaskHandle, xTaskGetTickCount, xTaskResumeAll, osal_rs_task_enter_critical, osal_rs_task_enter_critical_from_isr, osal_rs_task_exit_critical, osal_rs_task_exit_critical_from_isr
 };
 use super::thread::{ThreadState, ThreadMetadata};
 use super::types::{BaseType, TickType, UBaseType};
@@ -573,6 +573,99 @@ impl SystemFn for System {
             osal_rs_port_end_switching_isr( switch_required );
         }
     }
+
+    /// Enters a critical section at task level.
+    ///
+    /// Disables scheduler and interrupts to protect shared resources.
+    /// Must be paired with [`exit_critical()`](Self::exit_critical).
+    /// This is the task-level version; for ISR context use 
+    /// [`enter_critical_from_isr()`](Self::enter_critical_from_isr).
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// use osal_rs::os::{System, SystemFn};
+    /// 
+    /// System::enter_critical();
+    /// // Access shared resource safely
+    /// System::exit_critical();
+    /// ```
+    fn enter_critical() {
+        unsafe {
+            osal_rs_task_enter_critical();
+        }
+    }
+
+    /// Exits a critical section at task level.
+    ///
+    /// Re-enables scheduler and interrupts after [`enter_critical()`](Self::enter_critical).
+    /// Must be called from the same task that called `enter_critical()`.
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// use osal_rs::os::{System, SystemFn};
+    /// 
+    /// System::enter_critical();
+    /// // Critical section code
+    /// System::exit_critical();
+    /// ```
+    fn exit_critical() {
+        unsafe {
+            osal_rs_task_exit_critical();
+        }
+    }
+
+    /// Enters a critical section from an ISR context.
+    ///
+    /// ISR-safe version of critical section entry. Returns the interrupt mask state
+    /// that must be passed to [`exit_critical_from_isr()`](Self::exit_critical_from_isr).
+    /// Use this instead of [`enter_critical()`](Self::enter_critical) when in interrupt context.
+    ///
+    /// # Returns
+    ///
+    /// Saved interrupt status to be restored on exit
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// use osal_rs::os::{System, SystemFn};
+    /// 
+    /// // In an interrupt handler
+    /// let saved_status = System::enter_critical_from_isr();
+    /// // Critical ISR code
+    /// System::exit_critical_from_isr(saved_status);
+    /// ```
+    fn enter_critical_from_isr() -> UBaseType {
+        unsafe {
+            osal_rs_task_enter_critical_from_isr()
+        }
+    }
+
+    /// Exits a critical section from an ISR context.
+    ///
+    /// Restores the interrupt mask to the state saved by 
+    /// [`enter_critical_from_isr()`](Self::enter_critical_from_isr).
+    ///
+    /// # Parameters
+    ///
+    /// * `saved_interrupt_status` - Interrupt status returned by `enter_critical_from_isr()`
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// use osal_rs::os::{System, SystemFn};
+    /// 
+    /// let saved = System::enter_critical_from_isr();
+    /// // Protected ISR operations
+    /// System::exit_critical_from_isr(saved);
+    /// ```
+    fn exit_critical_from_isr(saved_interrupt_status: UBaseType) {
+        unsafe {
+            osal_rs_task_exit_critical_from_isr(saved_interrupt_status);
+        }
+    }
+
 
     /// Returns the amount of free heap space.
     ///

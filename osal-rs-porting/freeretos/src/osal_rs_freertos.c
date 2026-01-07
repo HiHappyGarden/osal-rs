@@ -102,3 +102,23 @@ uint32_t osal_rs_config_max_task_name_len(void)
 {
     return configMAX_TASK_NAME_LEN;
 }
+
+void osal_rs_task_enter_critical( void )
+{
+    taskENTER_CRITICAL();
+}
+
+void osal_rs_task_exit_critical( void )
+{
+    taskEXIT_CRITICAL();
+}
+
+UBaseType_t osal_rs_task_enter_critical_from_isr(void)
+{
+    return taskENTER_CRITICAL_FROM_ISR();
+}
+
+void osal_rs_task_exit_critical_from_isr(UBaseType_t saved_interrupt_status)
+{
+    taskEXIT_CRITICAL_FROM_ISR(saved_interrupt_status);
+}

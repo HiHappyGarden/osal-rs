@@ -54,6 +54,9 @@ use core::ffi::c_void;
 use core::alloc::{GlobalAlloc, Layout};
 
 use crate::freertos::ffi::{pvPortMalloc, vPortFree};
+use crate::os::{System, SystemFn};
+
+use critical_section::{CriticalSection, Impl};
 
 /// Global memory allocator using FreeRTOS heap.
 ///
@@ -175,5 +178,46 @@ unsafe impl GlobalAlloc for Allocator {
             }
         }
         new_ptr
+    }
+}
+
+/// Implementation of the `Impl` trait for critical section support.
+///
+/// This implementation integrates Rust's critical section system with
+/// FreeRTOS synchronization primitives, enabling the use of the
+/// `critical-section` crate in embedded contexts with FreeRTOS.
+unsafe impl Impl for Allocator {
+    /// Acquires a critical section by disabling interrupts.
+    ///
+    /// This function is called automatically when entering a critical section
+    /// via `critical_section::with()`. It uses FreeRTOS primitives
+    /// (`taskENTER_CRITICAL`) to disable interrupts and guarantee exclusive
+    /// access to shared resources.
+    ///
+    /// # Safety
+    ///
+    /// - Must only be called by the `critical-section` crate
+    /// - Each call to `acquire()` must have a corresponding `release()`
+    /// - Must not be called recursively without releasing first
+    unsafe fn acquire() {
+        System::enter_critical();
+    }
+
+    /// Releases a critical section by re-enabling interrupts.
+    ///
+    /// This function is called automatically when exiting a critical section.
+    /// It uses FreeRTOS primitives (`taskEXIT_CRITICAL`) to re-enable
+    /// interrupts previously disabled by `acquire()`.
+    ///
+    /// # Parameters
+    ///
+    /// * `_token` - Unit token that ensures correct pairing with `acquire()`
+    ///
+    /// # Safety
+    ///
+    /// - Must only be called after a corresponding `acquire()`
+    /// - Must be called from the same context (task) that called `acquire()`
+    unsafe fn release(_token: ()) {
+        System::exit_critical();
     }
 }

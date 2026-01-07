@@ -32,11 +32,13 @@ use alloc::sync::Arc;
 
 use super::ffi::{MutexHandle, pdFALSE, pdTRUE};
 use super::system::System;
+use crate::os::StaticMutexFn;
 use crate::traits::SystemFn;
 use crate::traits::{MutexGuardFn, RawMutexFn, MutexFn, ToTick};
 use crate::utils::{Result, Error, OsalRsBool, MAX_DELAY};
 use crate::{vSemaphoreDelete, xSemaphoreCreateRecursiveMutex, xSemaphoreGiveFromISR, xSemaphoreGiveRecursive, xSemaphoreTake, xSemaphoreTakeFromISR, xSemaphoreTakeRecursive};
 
+//// RawMutex ////
 
 /// Low-level recursive mutex wrapper for FreeRTOS.
 ///
@@ -145,6 +147,8 @@ impl Display for RawMutex {
         write!(f, "RawMutex {{ handle: {:?} }}", self.0)
     }
 }
+
+//// Mutex ////
 
 /// A mutual exclusion primitive useful for protecting shared data.
 ///
@@ -356,6 +360,8 @@ where
     }   
 }
 
+//// MutexGuard ////
+
 /// RAII guard returned by `Mutex::lock()`.
 ///
 /// When this guard goes out of scope, the mutex is automatically unlocked.
@@ -481,5 +487,167 @@ impl<'a, T: ?Sized> MutexGuardFn<'a, T> for MutexGuardFromIsr<'a, T> {
         T: Clone
     {
         **self = t.clone();
+    }
+}
+
+//// StaticMutex ////
+
+/// A statically-allocated mutex for protecting shared data.
+///
+/// Similar to `Mutex<T>` but designed to be allocated at compile time
+/// as a static variable. Requires explicit initialization before use.
+///
+/// # Examples
+///
+/// ```ignore
+/// use osal_rs::os::StaticMutex;
+/// 
+/// static mut COUNTER_MUTEX: Option<StaticMutex<u32>> = None;
+/// 
+/// // During initialization:
+/// unsafe {
+///     COUNTER_MUTEX = Some(StaticMutex::new(0).unwrap());
+/// }
+/// ```
+pub struct StaticMutex<T: ?Sized> {
+    inner: RawMutex,
+    data: UnsafeCell<T>,
+}
+
+impl<T> StaticMutex<T> {
+    /// Creates a new static mutex protecting the given data.
+    ///
+    /// # Parameters
+    ///
+    /// * `data` - The initial value to protect
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(StaticMutex)` - Successfully created
+    /// * `Err(Error::OutOfMemory)` - Failed to allocate mutex resources
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// let mutex = StaticMutex::new(42).unwrap();
+    /// ```
+    pub fn new(data: T) -> Result<Self>  {
+        Ok(Self {
+            inner: RawMutex::new()?, 
+            data: UnsafeCell::new(data),
+        })
+    }
+}
+
+
+impl<T> StaticMutexFn<T> for StaticMutex<T> {
+    type Guard<'a> = StaticMutexGuard<'a, T> where Self: 'a, T: 'a;
+    type GuardFromIsr<'a> = StaticMutexGuardFromIsr<'a, T> where Self: 'a, T: 'a;
+
+    /// Acquires the lock and returns a guard.
+    ///
+    /// Blocks until the lock is available.
+    fn lock(&self) -> Result<StaticMutexGuard<'_, T>> {
+        match self.inner.lock() {
+            OsalRsBool::True => Ok(StaticMutexGuard {
+                mutex: self,
+                _phantom: core::marker::PhantomData,
+            }),
+            OsalRsBool::False => Err(Error::MutexLockFailed),
+        }
+    }
+
+    /// Acquires the lock from ISR context and returns an ISR guard.
+    ///
+    /// Non-blocking version for interrupt service routines.
+    fn lock_from_isr(&self) -> Result<StaticMutexGuardFromIsr<'_, T>> {
+        match self.inner.lock_from_isr() {
+            OsalRsBool::True => Ok(StaticMutexGuardFromIsr {
+                mutex: self,
+                _phantom: core::marker::PhantomData,
+            }),
+            OsalRsBool::False => Err(Error::MutexLockFailed),
+        }
+    }
+
+    /// Returns a mutable reference to the underlying data.
+    ///
+    /// Safe because it requires exclusive mutable access to the mutex.
+    fn get_mut(&mut self) -> &mut T {
+        unsafe { &mut *self.data.get() }
+    }
+}
+
+impl<T> StaticMutex<T> {
+    /// Initializes the mutex.
+    ///
+    /// Note: The mutex is already initialized in the constructor.
+    /// This method is provided for API compatibility.
+    ///
+    /// # Returns
+    ///
+    /// Always returns `Ok(())`
+    pub fn init(&mut self) -> Result<()> {
+        // Mutex is already initialized in the constructor
+        // This method exists for API compatibility
+        Ok(())
+    }
+}
+
+/// RAII guard for `StaticMutex` returned by `lock()`.
+///
+/// Automatically releases the mutex when dropped. Provides access to
+/// the protected data through `Deref` and `DerefMut`.
+pub struct StaticMutexGuard<'a, T: ?Sized + 'a> {
+    mutex: &'a StaticMutex<T>,
+    _phantom: core::marker::PhantomData<&'a mut T>,
+}
+
+impl<'a, T: ?Sized> Deref for StaticMutexGuard<'a, T> {
+    type Target = T;
+
+    fn deref(&self) -> &T {
+        unsafe { &*self.mutex.data.get() }
+    }
+}
+
+impl<'a, T: ?Sized> DerefMut for StaticMutexGuard<'a, T> {
+    fn deref_mut(&mut self) -> &mut T {
+        unsafe { &mut *self.mutex.data.get() }
+    }
+}
+
+impl<'a, T: ?Sized> Drop for StaticMutexGuard<'a, T> {
+    fn drop(&mut self) {
+        self.mutex.inner.unlock();
+    }
+}
+
+/// RAII guard for `StaticMutex` returned by `lock_from_isr()`.
+///
+/// Similar to `StaticMutexGuard` but for ISR context. Automatically
+/// releases the mutex using ISR-safe unlock when dropped.
+pub struct StaticMutexGuardFromIsr<'a, T: ?Sized + 'a> {
+    mutex: &'a StaticMutex<T>,
+    _phantom: core::marker::PhantomData<&'a mut T>,
+}
+
+impl<'a, T: ?Sized> Deref for StaticMutexGuardFromIsr<'a, T> {
+    type Target = T;
+
+    fn deref(&self) -> &T {
+        unsafe { &*self.mutex.data.get() }
+    }
+}
+
+impl<'a, T: ?Sized> DerefMut for StaticMutexGuardFromIsr<'a, T> {
+    fn deref_mut(&mut self) -> &mut T {
+        unsafe { &mut *self.mutex.data.get() }
+    }
+}
+
+impl<'a, T: ?Sized> Drop for StaticMutexGuardFromIsr<'a, T> {
+    fn drop(&mut self) {
+        self.mutex.inner.unlock_from_isr();
     }
 }

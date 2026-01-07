@@ -19,6 +19,8 @@
 
 //! Mutex trait definitions.
 
+use core::ops::{Deref, DerefMut};
+
 use crate::utils::{OsalRsBool, Result};
 
 /// Low-level raw mutex operations.
@@ -130,5 +132,102 @@ pub trait Mutex<T: ?Sized> {
         T: Sized;
 
     /// Returns a mutable reference to the underlying data
+    fn get_mut(&mut self) -> &mut T;
+}
+
+/// Static mutex trait for compile-time allocated mutexes.
+///
+/// This trait provides mutex operations for statically allocated mutexes,
+/// which can be used in const contexts or as static variables. Unlike the
+/// `Mutex` trait, this doesn't require dynamic allocation and can be
+/// initialized at compile time.
+///
+/// # Type Parameters
+///
+/// * `T` - The type of data protected by the mutex
+///
+/// # Examples
+///
+/// ```ignore
+/// use osal_rs::os::StaticMutex;
+/// 
+/// static COUNTER: StaticMutex<u32> = StaticMutex::new(0);
+/// 
+/// fn increment() {
+///     let mut guard = COUNTER.lock().unwrap();
+///     *guard += 1;
+/// }
+/// ```
+pub trait StaticMutex<T> {
+    /// Guard type returned by `lock()`, providing RAII-style mutex access.
+    ///
+    /// Automatically releases the mutex when dropped. Implements `Deref` and
+    /// `DerefMut` for transparent access to the protected data.
+    type Guard<'a>: Deref<Target = T> + DerefMut
+    where
+        Self: 'a;
+    
+    /// Guard type returned by `lock_from_isr()`, for ISR-context mutex access.
+    ///
+    /// Similar to `Guard` but designed for use in interrupt service routines.
+    /// Automatically releases the mutex when dropped.
+    type GuardFromIsr<'a>: Deref<Target = T> + DerefMut
+    where
+        Self: 'a;
+
+    /// Acquires the mutex, blocking until it becomes available.
+    ///
+    /// Returns a guard that provides access to the protected data and
+    /// automatically releases the mutex when dropped.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(Guard)` - Successfully acquired the mutex
+    /// * `Err(_)` - Failed to acquire (e.g., mutex deleted or invalid)
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// let guard = mutex.lock()?;
+    /// *guard = 42;  // Mutex automatically released when guard drops
+    /// ```
+    fn lock(&self) -> Result<Self::Guard<'_>>;
+
+    /// Acquires the mutex from an interrupt service routine (ISR).
+    ///
+    /// Non-blocking version for use in ISR context. Returns immediately
+    /// if the mutex cannot be acquired.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(GuardFromIsr)` - Successfully acquired the mutex
+    /// * `Err(_)` - Could not acquire (already locked or invalid)
+    ///
+    /// # Safety
+    ///
+    /// Must only be called from ISR context. Calling from normal task
+    /// context may lead to priority inversion or deadlock.
+    fn lock_from_isr(&self) -> Result<Self::GuardFromIsr<'_>>;
+
+    /// Returns a mutable reference to the underlying data.
+    ///
+    /// This method bypasses the locking mechanism and provides direct access
+    /// to the protected data. Safe because it requires exclusive mutable
+    /// access to the mutex itself.
+    ///
+    /// # Parameters
+    ///
+    /// * `&mut self` - Exclusive mutable reference ensuring no other access
+    ///
+    /// # Returns
+    ///
+    /// Mutable reference to the protected data
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// let mut mutex = StaticMutex::new(0);
+    /// *mutex.get_mut() = 42;  // No locking needed
+    /// ```
     fn get_mut(&mut self) -> &mut T;
 }

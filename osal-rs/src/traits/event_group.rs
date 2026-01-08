@@ -44,24 +44,6 @@ use crate::os::types::{EventBits, TickType};
 /// let bits = events.wait(0b0101, 1000);
 /// ```
 pub trait EventGroup {
-    /// Creates a new event group.
-    ///
-    /// # Returns
-    ///
-    /// * `Ok(Self)` - Successfully created event group
-    /// * `Err(Error)` - Creation failed (out of memory, etc.)
-    ///
-    /// # Examples
-    ///
-    /// ```ignore
-    /// use osal_rs::os::{EventGroup, EventGroupFn};
-    /// 
-    /// let events = EventGroup::new().unwrap();
-    /// ```
-    fn new() -> Result<Self> 
-    where 
-        Self: Sized;
-
     /// Sets the specified event bits.
     ///
     /// Any tasks waiting for these bits will be unblocked if their

@@ -65,55 +65,6 @@ use super::ToTick;
 /// }
 /// ```
 pub trait Semaphore {
-    /// Creates a new counting semaphore.
-    ///
-    /// # Parameters
-    ///
-    /// * `max_count` - Maximum value the semaphore can reach
-    /// * `initial_count` - Starting count value
-    ///
-    /// # Returns
-    ///
-    /// * `Ok(Self)` - Successfully created semaphore
-    /// * `Err(Error)` - Creation failed
-    ///
-    /// # Examples
-    ///
-    /// ```ignore
-    /// use osal_rs::os::{Semaphore, SemaphoreFn};
-    /// 
-    /// // Resource pool with 5 items, all available
-    /// let pool = Semaphore::new(5, 5).unwrap();
-    /// ```
-    fn new(max_count: UBaseType, initial_count: UBaseType) -> Result<Self> 
-    where 
-        Self: Sized;
-
-    /// Creates a binary semaphore with specified initial count.
-    ///
-    /// Equivalent to `new(1, initial_count)` - creates a semaphore
-    /// that can only hold a single count.
-    ///
-    /// # Parameters
-    ///
-    /// * `initial_count` - Starting count (0 or 1)
-    ///
-    /// # Returns
-    ///
-    /// * `Ok(Self)` - Successfully created semaphore
-    /// * `Err(Error)` - Creation failed
-    ///
-    /// # Examples
-    ///
-    /// ```ignore
-    /// use osal_rs::os::{Semaphore, SemaphoreFn};
-    /// 
-    /// // Binary semaphore, initially not available
-    /// let sem = Semaphore::new_with_count(0).unwrap();
-    /// ```
-    fn new_with_count(initial_count: UBaseType) -> Result<Self> 
-    where 
-        Self: Sized;
 
     /// Waits to acquire the semaphore (blocking).
     ///

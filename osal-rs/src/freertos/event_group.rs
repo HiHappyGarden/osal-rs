@@ -172,8 +172,23 @@ impl EventGroup {
     }
 }
 
-impl EventGroupFn for EventGroup {
-    fn new() -> Result<Self> {
+
+impl EventGroup {
+    /// Creates a new event group.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(Self)` - Successfully created event group
+    /// * `Err(Error)` - Creation failed (out of memory, etc.)
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// use osal_rs::os::{EventGroup, EventGroupFn};
+    /// 
+    /// let events = EventGroup::new().unwrap();
+    /// ```
+    pub fn new() -> Result<Self> {
         let handle = unsafe { xEventGroupCreate() };
         if handle.is_null() {
             Err(Error::OutOfMemory)
@@ -181,6 +196,9 @@ impl EventGroupFn for EventGroup {
             Ok(Self (handle))
         }
     }
+
+}
+impl EventGroupFn for EventGroup {
 
     fn set(&self, bits: EventBits) -> EventBits {
         unsafe { xEventGroupSetBits(self.0, bits) }

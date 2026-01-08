@@ -45,30 +45,6 @@ use crate::utils::Result;
 /// queue.fetch(&mut buffer, 100).unwrap();
 /// ```
 pub trait Queue {
-    /// Creates a new queue.
-    ///
-    /// # Parameters
-    ///
-    /// * `size` - Maximum number of messages the queue can hold
-    /// * `message_size` - Size in bytes of each message
-    ///
-    /// # Returns
-    ///
-    /// * `Ok(Self)` - Successfully created queue
-    /// * `Err(Error)` - Creation failed (insufficient memory, etc.)
-    ///
-    /// # Examples
-    ///
-    /// ```ignore
-    /// use osal_rs::os::{Queue, QueueFn};
-    /// 
-    /// // Queue for 5 messages of 16 bytes each
-    /// let queue = Queue::new(5, 16).unwrap();
-    /// ```
-    fn new (size: UBaseType, message_size: UBaseType) -> Result<Self>
-    where 
-        Self: Sized;
-
     /// Fetches a message from the queue (blocking).
     ///
     /// Removes and retrieves the oldest message from the queue.
@@ -180,20 +156,6 @@ pub trait QueueStreamed<T>
 where 
     T: ToBytes + Sized {
 
-    /// Creates a new type-safe queue.
-    ///
-    /// # Parameters
-    ///
-    /// * `size` - Maximum number of messages
-    /// * `message_size` - Size of each message (typically `size_of::<T>()`)
-    ///
-    /// # Returns
-    ///
-    /// * `Ok(Self)` - Successfully created queue
-    /// * `Err(Error)` - Creation failed
-    fn new (size: UBaseType, message_size: UBaseType) -> Result<Self>
-    where 
-        Self: Sized;
 
     /// Fetches a typed message from the queue (blocking).
     ///

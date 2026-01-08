@@ -395,7 +395,7 @@ macro_rules! thread_extract_param {
 #[macro_export]
 macro_rules! arcmux {
     ($value:expr) => {
-        alloc::sync::Arc::new($crate::os::MutexFn::new($value))
+        alloc::sync::Arc::new($crate::os::Mutex::new($value))
     };
 }
 

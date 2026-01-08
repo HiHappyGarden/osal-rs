@@ -248,8 +248,39 @@ extern "C" fn callback_c_wrapper(handle: TimerHandle) {
     }
 }
 
-impl TimerFn for Timer {
-    fn new<F>(name: &str, timer_period_in_ticks: TickType, auto_reload: bool, param: Option<TimerParam>, callback: F) -> Result<Self>
+
+
+impl Timer {
+    /// Creates a new software timer.
+    ///
+    /// # Parameters
+    ///
+    /// * `name` - Timer name for debugging
+    /// * `timer_period_in_ticks` - Timer period in ticks
+    /// * `auto_reload` - `true` for periodic, `false` for one-shot
+    /// * `param` - Optional parameter passed to callback
+    /// * `callback` - Function called when timer expires
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(Self)` - Successfully created timer
+    /// * `Err(Error)` - Creation failed
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// use osal_rs::os::{Timer, TimerFn};
+    /// 
+    /// let timer = Timer::new(
+    ///     "my_timer",
+    ///     1000,
+    ///     false,
+    ///     None,
+    ///     |_timer, _param| Ok(None)
+    /// ).unwrap();
+    /// ``
+    
+    pub fn new<F>(name: &str, timer_period_in_ticks: TickType, auto_reload: bool, param: Option<TimerParam>, callback: F) -> Result<Self>
     where
         F: Fn(Box<dyn TimerFn>, Option<TimerParam>) -> Result<TimerParam> + Send + Sync + Clone + 'static {
 
@@ -277,6 +308,10 @@ impl TimerFn for Timer {
             }
 
     }
+    
+}
+
+impl TimerFn for Timer {
 
     fn start(&self, ticks_to_wait: TickType) -> OsalRsBool {
         if unsafe {

@@ -95,6 +95,35 @@ unsafe impl Send for Queue {}
 unsafe impl Sync for Queue {}
 
 impl Queue {
+    /// Creates a new queue.
+    ///
+    /// # Parameters
+    ///
+    /// * `size` - Maximum number of messages the queue can hold
+    /// * `message_size` - Size in bytes of each message
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(Self)` - Successfully created queue
+    /// * `Err(Error)` - Creation failed (insufficient memory, etc.)
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// use osal_rs::os::{Queue, QueueFn};
+    /// 
+    /// // Queue for 5 messages of 16 bytes each
+    /// let queue = Queue::new(5, 16).unwrap();
+    /// ```
+    pub fn new (size: UBaseType, message_size: UBaseType) -> Result<Self> {
+        let handle = unsafe { xQueueCreateCountingSemaphore(size, message_size) };
+        if handle.is_null() {
+            Err(Error::OutOfMemory)
+        } else {
+            Ok(Self (handle))
+        }
+    }
+
     #[inline]
     pub fn fetch_with_to_tick(&self, buffer: &mut [u8], time: impl ToTick) -> Result<()> {
         self.fetch(buffer, time.to_ticks())
@@ -107,14 +136,6 @@ impl Queue {
 }
 
 impl QueueFn for Queue {
-    fn new (size: UBaseType, message_size: UBaseType) -> Result<Self> {
-        let handle = unsafe { xQueueCreateCountingSemaphore(size, message_size) };
-        if handle.is_null() {
-            Err(Error::OutOfMemory)
-        } else {
-            Ok(Self (handle))
-        }
-    }
 
     fn fetch(&self, buffer: &mut [u8], time: TickType) -> Result<()> {
         let ret = unsafe {
@@ -298,6 +319,22 @@ unsafe impl<T: ToBytes + BytesHasLen + FromBytes> Sync for QueueStreamed<T> {}
 impl<T> QueueStreamed<T> 
 where 
     T: ToBytes + BytesHasLen + FromBytes {
+    /// Creates a new type-safe queue.
+    ///
+    /// # Parameters
+    ///
+    /// * `size` - Maximum number of messages
+    /// * `message_size` - Size of each message (typically `size_of::<T>()`)
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(Self)` - Successfully created queue
+    /// * `Err(Error)` - Creation failed
+    #[inline]
+    pub fn new (size: UBaseType, message_size: UBaseType) -> Result<Self> {
+        Ok(Self (Queue::new(size, message_size)?, PhantomData))
+    }
+
     #[inline]
     fn fetch_with_to_tick(&self, buffer: &mut T, time: impl ToTick) -> Result<()> {
         self.fetch(buffer, time.to_ticks())
@@ -312,11 +349,6 @@ where
 impl<T> QueueStreamedFn<T> for QueueStreamed<T> 
 where 
     T: ToBytes + BytesHasLen + FromBytes {
-
-    #[inline]
-    fn new (size: UBaseType, message_size: UBaseType) -> Result<Self> {
-        Ok(Self (Queue::new(size, message_size)?, PhantomData))
-    }
 
     fn fetch(&self, buffer: &mut T, time: TickType) -> Result<()> {
         let mut buf_bytes = vec![0u8; buffer.len()];        

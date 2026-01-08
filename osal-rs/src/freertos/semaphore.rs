@@ -134,9 +134,8 @@ pub struct Semaphore (SemaphoreHandle);
 unsafe impl Send for Semaphore {}
 unsafe impl Sync for Semaphore {}
 
-
-impl SemaphoreFn for Semaphore {
-    /// Creates a new counting semaphore.
+impl Semaphore {
+        /// Creates a new counting semaphore.
     ///
     /// # Parameters
     ///
@@ -159,7 +158,7 @@ impl SemaphoreFn for Semaphore {
     /// // Counting semaphore for 5 resources
     /// let counting_sem = Semaphore::new(5, 5).unwrap();
     /// ```
-    fn new(max_count: UBaseType, initial_count: UBaseType) -> Result<Self> {
+    pub fn new(max_count: UBaseType, initial_count: UBaseType) -> Result<Self> {
         let handle = xSemaphoreCreateCounting!(max_count, initial_count);
         if handle.is_null() {
             Err(Error::OutOfMemory)
@@ -188,7 +187,7 @@ impl SemaphoreFn for Semaphore {
     /// 
     /// let sem = Semaphore::new_with_count(0).unwrap();
     /// ```
-    fn new_with_count(initial_count: UBaseType) -> Result<Self> {
+    pub fn new_with_count(initial_count: UBaseType) -> Result<Self> {
         let handle = xSemaphoreCreateCounting!(UBaseType::MAX, initial_count);
         if handle.is_null() {
             Err(Error::OutOfMemory)
@@ -196,6 +195,10 @@ impl SemaphoreFn for Semaphore {
             Ok(Self (handle))
         }
     }
+
+}
+
+impl SemaphoreFn for Semaphore {
 
     /// Waits to acquire the semaphore (decrements count).
     ///

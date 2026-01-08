@@ -31,11 +31,6 @@ pub trait RawMutex
 where
     Self: Sized,
 {
-    /// Creates a new raw mutex.
-    fn new() -> Result<Self>
-    where 
-        Self: Sized;
-
     /// Locks the mutex (blocking).
     ///
     /// # Returns
@@ -104,20 +99,6 @@ pub trait Mutex<T: ?Sized> {
     type Guard<'a>: MutexGuard<'a, T> where Self: 'a, T: 'a;
     /// The guard type for ISR-context mutex locks
     type GuardFromIsr<'a>: MutexGuard<'a, T> where Self: 'a, T: 'a;
-
-    /// Creates a new mutex wrapping the supplied data.
-    ///
-    /// # Examples
-    ///
-    /// ```ignore
-    /// use osal_rs::os::{Mutex, MutexFn};
-    /// 
-    /// let mutex = Mutex::new(0);
-    /// ```
-    fn new(data: T) -> Self
-    where 
-        Self: Sized,
-        T: Sized;
 
     /// Acquires the mutex, blocking the current thread until it is able to do so
     fn lock(&self) -> Result<Self::Guard<'_>>;

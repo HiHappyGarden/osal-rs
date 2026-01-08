@@ -85,39 +85,6 @@ pub type TimerFnPtr = dyn Fn(Box<dyn Timer>, Option<TimerParam>) -> Result<Timer
 /// // Runs every 100ms until stopped
 /// ```
 pub trait Timer {
-    /// Creates a new software timer.
-    ///
-    /// # Parameters
-    ///
-    /// * `name` - Timer name for debugging
-    /// * `timer_period_in_ticks` - Timer period in ticks
-    /// * `auto_reload` - `true` for periodic, `false` for one-shot
-    /// * `param` - Optional parameter passed to callback
-    /// * `callback` - Function called when timer expires
-    ///
-    /// # Returns
-    ///
-    /// * `Ok(Self)` - Successfully created timer
-    /// * `Err(Error)` - Creation failed
-    ///
-    /// # Examples
-    ///
-    /// ```ignore
-    /// use osal_rs::os::{Timer, TimerFn};
-    /// 
-    /// let timer = Timer::new(
-    ///     "my_timer",
-    ///     1000,
-    ///     false,
-    ///     None,
-    ///     |_timer, _param| Ok(None)
-    /// ).unwrap();
-    /// ```
-    fn new<F>(name: &str, timer_period_in_ticks: TickType, auto_reload: bool, param: Option<TimerParam>, callback: F) -> Result<Self>
-    where
-        Self: Sized,
-        F: Fn(Box<dyn Timer>, Option<TimerParam>) -> Result<TimerParam> + Send + Sync + Clone + 'static;
-
     /// Starts or restarts the timer.
     ///
     /// If the timer is already running, it is reset to its full period.

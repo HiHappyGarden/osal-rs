@@ -226,6 +226,48 @@ unsafe impl Sync for Thread {}
 
 impl Thread {
 
+    /// Creates a new uninitialized thread.
+    ///
+    /// The thread must be started with `spawn()` or `spawn_simple()`.
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// use osal_rs::os::{Thread, ThreadFn};
+    /// 
+    /// let thread = Thread::new("worker", 4096, 5);
+    /// ```
+    pub fn new(name: &str, stack_depth: StackType, priority: UBaseType) -> Self 
+    {
+        Self { 
+            handle: null_mut(), 
+            name: name.to_string(), 
+            stack_depth, 
+            priority, 
+            callback: None,
+            param: None 
+        }
+    }
+
+    /// Creates a thread from an existing task handle.
+    ///
+    /// # Returns
+    ///
+    /// * `Err(Error::NullPtr)` if handle is null
+    pub fn new_with_handle(handle: ThreadHandle, name: &str, stack_depth: StackType, priority: UBaseType) -> Result<Self> {
+        if handle.is_null() {
+            return Err(Error::NullPtr);
+        }
+        Ok(Self { 
+            handle, 
+            name: name.to_string(), 
+            stack_depth, 
+            priority, 
+            callback: None,
+            param: None 
+        })
+    }
+
     /// Creates a new thread with a priority that implements `ToPriority`.
     ///
     /// This is a convenience constructor that allows using various priority types.
@@ -418,47 +460,6 @@ unsafe extern "C" fn simple_callback_wrapper(param_ptr: *mut c_void) {
 
 
 impl ThreadFn for Thread {
-    /// Creates a new uninitialized thread.
-    ///
-    /// The thread must be started with `spawn()` or `spawn_simple()`.
-    ///
-    /// # Examples
-    ///
-    /// ```ignore
-    /// use osal_rs::os::{Thread, ThreadFn};
-    /// 
-    /// let thread = Thread::new("worker", 4096, 5);
-    /// ```
-    fn new(name: &str, stack_depth: StackType, priority: UBaseType) -> Self 
-    {
-        Self { 
-            handle: null_mut(), 
-            name: name.to_string(), 
-            stack_depth, 
-            priority, 
-            callback: None,
-            param: None 
-        }
-    }
-
-    /// Creates a thread from an existing task handle.
-    ///
-    /// # Returns
-    ///
-    /// * `Err(Error::NullPtr)` if handle is null
-    fn new_with_handle(handle: ThreadHandle, name: &str, stack_depth: StackType, priority: UBaseType) -> Result<Self> {
-        if handle.is_null() {
-            return Err(Error::NullPtr);
-        }
-        Ok(Self { 
-            handle, 
-            name: name.to_string(), 
-            stack_depth, 
-            priority, 
-            callback: None,
-            param: None 
-        })
-    }
 
     /// Spawns a new thread with a callback.
     /// 

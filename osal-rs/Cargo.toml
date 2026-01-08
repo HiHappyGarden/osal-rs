@@ -23,9 +23,6 @@ exclude = [
 [lib]
 crate-type = ["staticlib", "rlib"]
 
-[dependencies]
-critical-section = "=1.2.0"
-
 
 [features]
 default = ["freertos"]

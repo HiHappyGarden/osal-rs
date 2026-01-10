@@ -80,6 +80,8 @@ pub enum Error {
     OutOfIndex,
     /// Invalid type for operation
     InvalidType,
+    /// Return error with code
+    ReturnWithCode(i32),
     /// Unhandled error with description
     Unhandled(&'static str)
 }

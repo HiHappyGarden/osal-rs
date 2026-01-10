@@ -27,6 +27,7 @@ use core::{ffi::c_void, str::from_utf8_mut};
 use core::fmt::{Debug, Display}; 
 use core::ops::Deref;
 use core::time::Duration;
+use alloc::ffi::CString;
 use alloc::string::{String, ToString};
 use alloc::sync::Arc;
 
@@ -643,6 +644,88 @@ impl<const SIZE: usize> Bytes<SIZE> {
                 }
             }
             Err(_) => todo!(),
+        }
+    }
+
+    /// Converts the byte array to a C string reference.
+    ///
+    /// Creates a `CStr` reference from the internal byte array, treating it as
+    /// a null-terminated C string. This is useful for passing strings to C FFI
+    /// functions that expect `*const c_char` or `&CStr`.
+    ///
+    /// # Safety
+    ///
+    /// This method is unsafe because it assumes:
+    /// - The byte array contains valid UTF-8 data
+    /// - The byte array is null-terminated
+    /// - There are no interior null bytes before the terminating null
+    ///
+    /// Violating these assumptions may lead to undefined behavior.
+    ///
+    /// # Returns
+    ///
+    /// A reference to a `CStr` with lifetime tied to `self`.
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// use osal_rs::utils::Bytes;
+    /// 
+    /// let bytes = Bytes::<16>::new_by_str("Hello");
+    /// let c_str = bytes.as_c_str();
+    /// 
+    /// extern "C" {
+    ///     fn print_string(s: *const core::ffi::c_char);
+    /// }
+    /// 
+    /// unsafe {
+    ///     print_string(c_str.as_ptr());
+    /// }
+    /// ```
+    pub fn as_c_str(&self) -> &CStr {
+        unsafe {
+            CStr::from_ptr(self.0.as_ptr() as *const c_char)
+        }
+    }
+
+    /// Converts the byte array to an owned C string.
+    ///
+    /// Creates a new `CString` by copying the contents of the internal byte array.
+    /// Unlike [`as_c_str`](Self::as_c_str), this method allocates heap memory and
+    /// returns an owned string that can outlive the original `Bytes` instance.
+    ///
+    /// # Safety
+    ///
+    /// This method uses `from_vec_unchecked` which assumes the byte array
+    /// does not contain any interior null bytes. If this assumption is violated,
+    /// the resulting `CString` will be invalid.
+    ///
+    /// # Returns
+    ///
+    /// An owned `CString` containing a copy of the byte array data.
+    ///
+    /// # Memory Allocation
+    ///
+    /// This method allocates on the heap. In memory-constrained embedded systems,
+    /// prefer [`as_c_str`](Self::as_c_str) when possible.
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// use osal_rs::utils::Bytes;
+    /// 
+    /// fn process_name(bytes: &Bytes<16>) -> alloc::ffi::CString {
+    ///     // Create an owned copy that can be returned
+    ///     bytes.as_cstring()
+    /// }
+    /// 
+    /// let name = Bytes::<16>::new_by_str("Task");
+    /// let owned = process_name(&name);
+    /// // 'name' can be dropped, 'owned' still valid
+    /// ```
+    pub fn as_cstring(&self) -> CString {
+        unsafe {
+            CString::from_vec_unchecked(self.0.to_vec())
         }
     }
 }

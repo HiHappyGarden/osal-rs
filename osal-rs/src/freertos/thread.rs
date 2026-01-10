@@ -29,7 +29,6 @@ use core::ops::Deref;
 use core::ptr::null_mut;
 
 use alloc::boxed::Box;
-use alloc::ffi::CString;
 use alloc::string::{String, ToString};
 use alloc::sync::Arc;
 
@@ -38,8 +37,8 @@ use super::types::{StackType, UBaseType, BaseType, TickType};
 use super::thread::ThreadState::*;
 use crate::os::ThreadSimpleFnPtr;
 use crate::traits::{ThreadFn, ThreadParam, ThreadFnPtr, ThreadNotification, ToTick, ToPriority};
-use crate::utils::{Result, Error, DoublePtr};
-use crate::{from_c_str, xTaskNotify, xTaskNotifyFromISR, xTaskNotifyWait};
+use crate::utils::{Bytes, DoublePtr, Error, Result};
+use crate::{from_c_str, max_task_name_len, xTaskNotify, xTaskNotifyFromISR, xTaskNotifyWait};
 
 /// Represents the possible states of a FreeRTOS task/thread.
 ///
@@ -214,7 +213,7 @@ impl Default for ThreadMetadata {
 #[derive(Clone)]
 pub struct Thread {
     handle: ThreadHandle,
-    name: String,
+    name: Bytes<16>,
     stack_depth: StackType,
     priority: UBaseType,
     callback: Option<Arc<ThreadFnPtr>>,
@@ -241,7 +240,7 @@ impl Thread {
     {
         Self { 
             handle: null_mut(), 
-            name: name.to_string(), 
+            name: Bytes::new_by_str(name),
             stack_depth, 
             priority, 
             callback: None,
@@ -260,7 +259,7 @@ impl Thread {
         }
         Ok(Self { 
             handle, 
-            name: name.to_string(), 
+            name: Bytes::new_by_str(name), 
             stack_depth, 
             priority, 
             callback: None,
@@ -289,7 +288,7 @@ impl Thread {
     {
         Self { 
             handle: null_mut(), 
-            name: name.to_string(), 
+            name: Bytes::new_by_str(name), 
             stack_depth, 
             priority: priority.to_priority(), 
             callback: None,
@@ -325,7 +324,7 @@ impl Thread {
         }
         Ok(Self { 
             handle, 
-            name: name.to_string(), 
+            name: Bytes::new_by_str(name),
             stack_depth, 
             priority: priority.to_priority(), 
             callback: None,
@@ -490,14 +489,10 @@ impl ThreadFn for Thread {
 
         let boxed_thread = Box::new(self.clone());
 
-        // Convert name to CString to ensure null termination and proper lifetime
-        let c_name = CString::new(self.name.as_str())
-            .map_err(|_| Error::Unhandled("Failed to convert thread name to CString"))?;
-
         let ret = unsafe {
             xTaskCreate(
                 Some(super::thread::callback_c_wrapper),
-                c_name.as_ptr(),
+                self.name.as_c_str().as_ptr(),
                 self.stack_depth,
                 Box::into_raw(boxed_thread) as *mut _,
                 self.priority,
@@ -541,14 +536,10 @@ impl ThreadFn for Thread {
         
         let mut handle: ThreadHandle = null_mut();
 
-        // Convert name to CString to ensure null termination and proper lifetime
-        let c_name = CString::new(self.name.as_str())
-            .map_err(|_| Error::Unhandled("Failed to convert thread name to CString"))?;
-
         let ret = unsafe {
             xTaskCreate(
                 Some(simple_callback_wrapper),
-                c_name.as_ptr(),
+                self.name.as_c_str().as_ptr(),
                 self.stack_depth,
                 Box::into_raw(boxed_func) as *mut _,
                 self.priority,
@@ -666,7 +657,7 @@ impl ThreadFn for Thread {
         let metadata = Self::get_metadata_from_handle(handle);
         Self {
             handle,
-            name: metadata.name,
+            name: Bytes::new_by_str(&metadata.name),
             stack_depth: metadata.stack_depth,
             priority: metadata.priority,
             callback: None,

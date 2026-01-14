@@ -82,6 +82,10 @@ pub enum Error {
     InvalidType,
     /// No data available
     Empty,
+    /// Write error occurred
+    WriteError,
+    /// Read error occurred
+    ReadError,
     /// Return error with code
     ReturnWithCode(i32),
     /// Unhandled error with description

@@ -25,7 +25,7 @@
 use core::ffi::{CStr, c_char};
 use core::{ffi::c_void, str::from_utf8_mut};
 use core::fmt::{Debug, Display}; 
-use core::ops::Deref;
+use core::ops::{Deref, DerefMut};
 use core::time::Duration;
 use alloc::ffi::CString;
 use alloc::string::{String, ToString};
@@ -458,6 +458,27 @@ impl<const SIZE: usize> Deref for Bytes<SIZE> {
     /// ```
     fn deref(&self) -> &Self::Target {
         &self.0
+    }
+}
+
+impl<const SIZE: usize> DerefMut for Bytes<SIZE> {
+    /// Provides mutable access to the underlying byte array.
+    ///
+    /// This allows `Bytes` to be mutably dereferenced, enabling direct modification
+    /// of the internal byte array through the `DerefMut` trait.
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// use osal_rs::utils::Bytes;
+    /// 
+    /// let mut bytes = Bytes::<8>::new();
+    /// bytes[0] = b'H';
+    /// bytes[1] = b'i';
+    /// assert_eq!(bytes[0], b'H');
+    /// ```
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
     }
 }
 

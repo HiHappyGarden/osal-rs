@@ -35,7 +35,12 @@ fn main() {
         .expect("Failed to find workspace root");
     
     // Set the FreeRTOSConfig.h path
-    let freertos_config = workspace_root.join("inc/hhg-config/pico/FreeRTOSConfig.h");
+    let freertos_config = if let Ok(config_path) = env::var("FREERTOS_CONFIG_PATH") {
+        PathBuf::from(config_path)
+    } else {
+        // Default fallback
+        workspace_root.join("inc/FreeRTOSConfig.h")
+    };
     
     // Generate FreeRTOS type mappings and configuration constants
     let generator = FreeRtosTypeGenerator::with_config_path(freertos_config);

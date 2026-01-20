@@ -11,6 +11,38 @@ An extensible serialization/deserialization framework for Rust, inspired by Serd
 - ✅ **Type-safe**: Leverages Rust's type system
 - ✅ **Reusable**: Can be used in any project, not just with osal-rs
 
+
+### Supported Types
+
+#### Primitives
+- Integers: `u8`, `i8`, `u16`, `i16`, `u32`, `i32`, `u64`, `i64`, `u128`, `i128`
+- Floats: `f32`, `f64`
+- Boolean: `bool`
+
+#### Compound
+- Arrays: `[T; N]`
+- Tuples: `(T1, T2)`, `(T1, T2, T3)`
+- Option: `Option<T>`
+
+#### Custom
+- Any struct with `#[derive(Serialize, Deserialize)]`
+
+### Memory Sizes
+
+```
+bool:       1 byte
+u8/i8:      1 byte
+u16/i16:    2 bytes
+u32/i32:    4 bytes
+u64/i64:    8 bytes
+u128/i128:  16 bytes
+f32:        4 bytes
+f64:        8 bytes
+Option<T>:  1 byte (tag) + sizeof(T) if Some, 1 byte if None
+Array[T;N]: sizeof(T) * N
+Tuple:      sum(sizeof each field)
+```
+
 ## Installation
 
 Add to your `Cargo.toml`:

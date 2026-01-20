@@ -329,7 +329,10 @@ impl Deserialize for f64 {
 }
 
 // Array implementation
-impl<T: Deserialize, const N: usize> Deserialize for [T; N] {
+impl<T, const N: usize> Deserialize for [T; N] 
+where 
+    T: Deserialize 
+{
     fn deserialize<D: Deserializer>(deserializer: &mut D) -> core::result::Result<Self, D::Error> {
         let mut result = core::mem::MaybeUninit::<[T; N]>::uninit();
         let result_ptr = result.as_mut_ptr() as *mut T;
@@ -345,7 +348,11 @@ impl<T: Deserialize, const N: usize> Deserialize for [T; N] {
 }
 
 // Tuple implementations
-impl<T1: Deserialize, T2: Deserialize> Deserialize for (T1, T2) {
+impl<T1: Deserialize, T2: Deserialize> Deserialize for (T1, T2) 
+where
+    T1: Deserialize,
+    T2: Deserialize
+{
     fn deserialize<D: Deserializer>(deserializer: &mut D) -> core::result::Result<Self, D::Error> {
         Ok((
             T1::deserialize(deserializer)?,
@@ -354,7 +361,12 @@ impl<T1: Deserialize, T2: Deserialize> Deserialize for (T1, T2) {
     }
 }
 
-impl<T1: Deserialize, T2: Deserialize, T3: Deserialize> Deserialize for (T1, T2, T3) {
+impl<T1: Deserialize, T2: Deserialize, T3: Deserialize> Deserialize for (T1, T2, T3)
+where
+    T1: Deserialize,
+    T2: Deserialize,
+    T3: Deserialize,
+{
     fn deserialize<D: Deserializer>(deserializer: &mut D) -> core::result::Result<Self, D::Error> {
         Ok((
             T1::deserialize(deserializer)?,
@@ -365,7 +377,9 @@ impl<T1: Deserialize, T2: Deserialize, T3: Deserialize> Deserialize for (T1, T2,
 }
 
 // Option implementation
-impl<T: Deserialize> Deserialize for Option<T> {
+impl<T> Deserialize for Option<T> 
+where T: Deserialize
+{
     fn deserialize<D: Deserializer>(deserializer: &mut D) -> core::result::Result<Self, D::Error> {
         let tag = deserializer.deserialize_u8()?;
         match tag {

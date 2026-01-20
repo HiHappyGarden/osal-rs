@@ -1,0 +1,27 @@
+[package]
+name = "osal-rs-serde-derive"
+version = "0.3.0"
+edition = "2024"
+rust-version = "1.85.0"
+authors = ["Antonio Salsi"]
+description = "Derive macros for osal-rs-serde serialization framework"
+license = "GPL-3.0"
+repository = "https://github.com/HiHappyGarden/osal-rs"
+homepage = "https://github.com/HiHappyGarden/osal-rs"
+documentation = "https://docs.rs/osal-rs-serde-derive"
+keywords = ["serialization", "derive", "macro", "no-std"]
+categories = ["embedded", "no-std", "encoding"]
+
+[lib]
+proc-macro = true
+
+[dependencies]
+syn = { version = "2.0", features = ["full"] }
+quote = "1.0"
+proc-macro2 = "1.0"
+
+[profile.dev]
+panic = "abort"
+
+[profile.release]
+panic = "abort"

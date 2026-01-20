@@ -6,14 +6,23 @@ Operating System Abstraction Layer for Rust - A cross-platform compatibility lay
 
 OSAL-RS provides a unified API for developing multi-platform embedded applications in Rust. It abstracts operating system-specific functionality, allowing you to write portable code that can run on different platforms with minimal changes.
 
+### Workspace Components
+
+- **osal-rs**: Main Operating System Abstraction Layer
+- **osal-rs-build**: Build tools
+- **osal-rs-tests**: Test suite
+- **osal-rs-serde**: ✨ **NEW!** Extensible serialization/deserialization framework (includes derive macros)
+
 ## Current Implementation Status
 
 - ✅ **FreeRTOS**: Fully implemented
+- ✅ **Serialization**: osal-rs-serde with derive macros
 - 🚧 **POSIX**: Planned
 - 🚧 **Other RTOSes**: Future consideration
 
 ## Features
 
+### Core OSAL Features
 - **Thread Management**: Create, manage, and synchronize threads
 - **Synchronization Primitives**: Mutexes, semaphores, event groups
 - **Message Queues**: Inter-thread communication
@@ -21,6 +30,33 @@ OSAL-RS provides a unified API for developing multi-platform embedded applicatio
 - **Memory Allocation**: Custom allocator support
 - **Time Management**: Duration and tick handling
 - **No-std Support**: Suitable for bare-metal embedded systems
+
+### 🆕 osal-rs-serde Features
+- **No-std Compatible**: Perfect for embedded systems
+- **Derive Macros**: `#[derive(Serialize, Deserialize)]` for automatic serialization
+- **Extensible**: Create custom serializers for any format
+- **Reusable**: Can be used in projects outside of osal-rs
+- **Type-Safe**: Leverages Rust's type system
+
+#### Quick Example
+
+```rust
+use osal_rs_serde::{Serialize, Deserialize, to_bytes, from_bytes};
+
+#[derive(Serialize, Deserialize)]
+struct SensorData {
+    temperature: i16,
+    humidity: u8,
+    pressure: u32,
+}
+
+let data = SensorData { temperature: 25, humidity: 60, pressure: 1013 };
+let mut buffer = [0u8; 32];
+let len = to_bytes(&data, &mut buffer).unwrap();
+let restored: SensorData = from_bytes(&buffer[..len]).unwrap();
+```
+
+For more details, see [osal-rs-serde/README.md](osal-rs-serde/README.md).
 
 ## Prerequisites
 

@@ -121,7 +121,9 @@ pub use osal_rs_serde_derive::{Serialize, Deserialize};
 /// let len = to_bytes(&value, &mut buffer).unwrap();
 /// assert_eq!(len, 4);
 /// ```
-pub fn to_bytes<T: Serialize>(value: &T, buffer: &mut [u8]) -> Result<usize> {
+pub fn to_bytes<T>(value: &T, buffer: &mut [u8]) -> Result<usize> 
+where T: Serialize
+{
     let mut serializer = ByteSerializer::new(buffer);
     value.serialize(&mut serializer)?;
     Ok(serializer.position())
@@ -140,7 +142,9 @@ pub fn to_bytes<T: Serialize>(value: &T, buffer: &mut [u8]) -> Result<usize> {
 /// let value: u32 = from_bytes(&buffer).unwrap();
 /// assert_eq!(value, 42);
 /// ```
-pub fn from_bytes<T: Deserialize>(buffer: &[u8]) -> Result<T> {
+pub fn from_bytes<T>(buffer: &[u8]) -> Result<T> 
+where T: Deserialize
+{
     let mut deserializer = ByteDeserializer::new(buffer);
     T::deserialize(&mut deserializer)
 }

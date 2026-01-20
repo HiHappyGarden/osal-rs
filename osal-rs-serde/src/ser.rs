@@ -211,86 +211,129 @@ impl<'a> Serializer for ByteSerializer<'a> {
 // Implementations for primitive types
 
 impl Serialize for bool {
-    fn serialize<S: Serializer>(&self, serializer: &mut S) -> core::result::Result<(), S::Error> {
+    fn serialize<S>(&self, serializer: &mut S) -> core::result::Result<(), S::Error> 
+    where
+        S: Serializer
+    {
+    
         serializer.serialize_bool(*self)
     }
 }
 
 impl Serialize for u8 {
-    fn serialize<S: Serializer>(&self, serializer: &mut S) -> core::result::Result<(), S::Error> {
+    fn serialize<S>(&self, serializer: &mut S) -> core::result::Result<(), S::Error> 
+    where
+        S: Serializer,
+    {
         serializer.serialize_u8(*self)
     }
 }
 
 impl Serialize for i8 {
-    fn serialize<S: Serializer>(&self, serializer: &mut S) -> core::result::Result<(), S::Error> {
+    fn serialize<S>(&self, serializer: &mut S) -> core::result::Result<(), S::Error> 
+    where
+        S: Serializer,
+    {
         serializer.serialize_i8(*self)
     }
 }
 
 impl Serialize for u16 {
-    fn serialize<S: Serializer>(&self, serializer: &mut S) -> core::result::Result<(), S::Error> {
+    fn serialize<S>(&self, serializer: &mut S) -> core::result::Result<(), S::Error> 
+    where
+        S: Serializer,
+    {
         serializer.serialize_u16(*self)
     }
 }
 
 impl Serialize for i16 {
-    fn serialize<S: Serializer>(&self, serializer: &mut S) -> core::result::Result<(), S::Error> {
+    fn serialize<S>(&self, serializer: &mut S) -> core::result::Result<(), S::Error> 
+    where
+        S: Serializer,
+    {
         serializer.serialize_i16(*self)
     }
 }
 
 impl Serialize for u32 {
-    fn serialize<S: Serializer>(&self, serializer: &mut S) -> core::result::Result<(), S::Error> {
+    fn serialize<S>(&self, serializer: &mut S) -> core::result::Result<(), S::Error> 
+    where
+        S: Serializer,
+    {
         serializer.serialize_u32(*self)
     }
 }
 
 impl Serialize for i32 {
-    fn serialize<S: Serializer>(&self, serializer: &mut S) -> core::result::Result<(), S::Error> {
+    fn serialize<S>(&self, serializer: &mut S) -> core::result::Result<(), S::Error> 
+    where
+        S: Serializer,
+    {
         serializer.serialize_i32(*self)
     }
 }
 
 impl Serialize for u64 {
-    fn serialize<S: Serializer>(&self, serializer: &mut S) -> core::result::Result<(), S::Error> {
+    fn serialize<S>(&self, serializer: &mut S) -> core::result::Result<(), S::Error> 
+    where
+        S: Serializer,
+    {
         serializer.serialize_u64(*self)
     }
 }
 
 impl Serialize for i64 {
-    fn serialize<S: Serializer>(&self, serializer: &mut S) -> core::result::Result<(), S::Error> {
+    fn serialize<S>(&self, serializer: &mut S) -> core::result::Result<(), S::Error> 
+    where
+        S: Serializer,
+    {
         serializer.serialize_i64(*self)
     }
 }
 
 impl Serialize for u128 {
-    fn serialize<S: Serializer>(&self, serializer: &mut S) -> core::result::Result<(), S::Error> {
+    fn serialize<S>(&self, serializer: &mut S) -> core::result::Result<(), S::Error> 
+    where
+        S: Serializer,
+    {
         serializer.serialize_u128(*self)
     }
 }
 
 impl Serialize for i128 {
-    fn serialize<S: Serializer>(&self, serializer: &mut S) -> core::result::Result<(), S::Error> {
+    fn serialize<S>(&self, serializer: &mut S) -> core::result::Result<(), S::Error> 
+    where
+        S: Serializer,
+    {
         serializer.serialize_i128(*self)
     }
 }
 
 impl Serialize for f32 {
-    fn serialize<S: Serializer>(&self, serializer: &mut S) -> core::result::Result<(), S::Error> {
+    fn serialize<S>(&self, serializer: &mut S) -> core::result::Result<(), S::Error> 
+    where
+        S: Serializer,
+    {
         serializer.serialize_f32(*self)
     }
 }
 
 impl Serialize for f64 {
-    fn serialize<S: Serializer>(&self, serializer: &mut S) -> core::result::Result<(), S::Error> {
+    fn serialize<S>(&self, serializer: &mut S) -> core::result::Result<(), S::Error> 
+    where
+        S: Serializer,
+    {
         serializer.serialize_f64(*self)
     }
 }
 
 // Array implementation
 impl<T: Serialize, const N: usize> Serialize for [T; N] {
-    fn serialize<S: Serializer>(&self, serializer: &mut S) -> core::result::Result<(), S::Error> {
+    fn serialize<S>(&self, serializer: &mut S) -> core::result::Result<(), S::Error> 
+    where
+        S: Serializer
+    {
         for item in self.iter() {
             item.serialize(serializer)?;
         }
@@ -300,7 +343,10 @@ impl<T: Serialize, const N: usize> Serialize for [T; N] {
 
 // Tuple implementations
 impl<T1: Serialize, T2: Serialize> Serialize for (T1, T2) {
-    fn serialize<S: Serializer>(&self, serializer: &mut S) -> core::result::Result<(), S::Error> {
+    fn serialize<S>(&self, serializer: &mut S) -> core::result::Result<(), S::Error> 
+    where
+        S: Serializer,
+    {
         self.0.serialize(serializer)?;
         self.1.serialize(serializer)?;
         Ok(())
@@ -308,7 +354,10 @@ impl<T1: Serialize, T2: Serialize> Serialize for (T1, T2) {
 }
 
 impl<T1: Serialize, T2: Serialize, T3: Serialize> Serialize for (T1, T2, T3) {
-    fn serialize<S: Serializer>(&self, serializer: &mut S) -> core::result::Result<(), S::Error> {
+    fn serialize<S>(&self, serializer: &mut S) -> core::result::Result<(), S::Error> 
+    where
+        S: Serializer
+    {
         self.0.serialize(serializer)?;
         self.1.serialize(serializer)?;
         self.2.serialize(serializer)?;
@@ -318,7 +367,10 @@ impl<T1: Serialize, T2: Serialize, T3: Serialize> Serialize for (T1, T2, T3) {
 
 // Option implementation
 impl<T: Serialize> Serialize for Option<T> {
-    fn serialize<S: Serializer>(&self, serializer: &mut S) -> core::result::Result<(), S::Error> {
+    fn serialize<S>(&self, serializer: &mut S) -> core::result::Result<(), S::Error> 
+    where
+        S: Serializer,
+    {
         match self {
             Some(value) => {
                 serializer.serialize_u8(1)?;

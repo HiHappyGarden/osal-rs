@@ -22,7 +22,7 @@ std = ["alloc"]
 derive = ["osal-rs-serde-derive"]
 
 [dependencies]
-osal-rs-serde-derive = { version = "0.3.0", path = "derive", optional = true }
+osal-rs-serde-derive = { version = "0.3", path = "derive", optional = true }
 
 [profile.dev]
 panic = "abort"

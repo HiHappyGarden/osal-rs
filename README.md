@@ -68,6 +68,19 @@ Before using OSAL-RS in your project, ensure that:
 4. **CMake build system** is set up for your embedded project
 5. **Rust toolchain** with appropriate target support is installed
 
+### Configuration
+
+OSAL-RS requires proper FreeRTOS configuration. Ensure your `FreeRTOSConfig.h` includes:
+
+```c
+#define configUSE_MUTEXES                1
+#define configUSE_RECURSIVE_MUTEXES      1
+#define configUSE_COUNTING_SEMAPHORES    1
+#define configUSE_TIMERS                 1
+#define configUSE_QUEUE_SETS             1
+#define configSUPPORT_DYNAMIC_ALLOCATION 1
+```
+
 ## CMake Integration
 
 OSAL-RS is designed to be integrated into CMake-based projects. Here are several integration examples:
@@ -244,6 +257,54 @@ cmake -DCMAKE_TOOLCHAIN_FILE=toolchain-arm-none-eabi.cmake -B build
 cmake --build build
 ```
 
+### Custom FreeRTOS Configuration Path
+
+By default, OSAL-RS looks for `FreeRTOSConfig.h` at `<workspace_root>/inc/FreeRTOSConfig.h`. You can override this path using the `FREERTOS_CONFIG_PATH` environment variable.
+
+#### Setting via CMake
+
+```cmake
+# Set custom path to FreeRTOSConfig.h
+set(FREERTOS_CONFIG_PATH "${CMAKE_SOURCE_DIR}/inc/hhg-config/pico/FreeRTOSConfig.h")
+
+# Pass to Cargo build via environment variable
+add_custom_command(
+    OUTPUT ${OSAL_RS_LIB}
+    COMMAND ${CMAKE_COMMAND} -E env FREERTOS_CONFIG_PATH=${FREERTOS_CONFIG_PATH}
+            cargo build --release --target ${RUST_TARGET} --features freertos
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/osal-rs
+    COMMENT "Building OSAL-RS library"
+)
+```
+
+#### Setting via Environment Variable
+
+```bash
+# Set environment variable before building
+export FREERTOS_CONFIG_PATH="/path/to/your/FreeRTOSConfig.h"
+cargo build --release --target thumbv7em-none-eabihf --features freertos
+```
+
+#### Using with Corrosion
+
+```cmake
+# Set environment variable for Corrosion
+set(FREERTOS_CONFIG_PATH "${CMAKE_SOURCE_DIR}/inc/custom/FreeRTOSConfig.h")
+
+corrosion_import_crate(
+    MANIFEST_PATH osal-rs/Cargo.toml
+    FEATURES freertos
+)
+
+# Set environment for the build
+corrosion_set_env_vars(osal-rs
+    FREERTOS_CONFIG_PATH=${FREERTOS_CONFIG_PATH}
+)
+```
+
+**Note**: The build system will automatically regenerate Rust type bindings from the specified `FreeRTOSConfig.h` during the build process.
+
+
 ## Usage Example
 
 ```rust
@@ -360,66 +421,6 @@ osal-rs/
         ├── inc/          # Header files
         └── src/          # Implementation
 ```
-
-## Configuration
-
-OSAL-RS requires proper FreeRTOS configuration. Ensure your `FreeRTOSConfig.h` includes:
-
-```c
-#define configUSE_MUTEXES                1
-#define configUSE_RECURSIVE_MUTEXES      1
-#define configUSE_COUNTING_SEMAPHORES    1
-#define configUSE_TIMERS                 1
-#define configUSE_QUEUE_SETS             1
-#define configSUPPORT_DYNAMIC_ALLOCATION 1
-```
-
-### Custom FreeRTOS Configuration Path
-
-By default, OSAL-RS looks for `FreeRTOSConfig.h` at `<workspace_root>/inc/FreeRTOSConfig.h`. You can override this path using the `FREERTOS_CONFIG_PATH` environment variable.
-
-#### Setting via CMake
-
-```cmake
-# Set custom path to FreeRTOSConfig.h
-set(FREERTOS_CONFIG_PATH "${CMAKE_SOURCE_DIR}/inc/hhg-config/pico/FreeRTOSConfig.h")
-
-# Pass to Cargo build via environment variable
-add_custom_command(
-    OUTPUT ${OSAL_RS_LIB}
-    COMMAND ${CMAKE_COMMAND} -E env FREERTOS_CONFIG_PATH=${FREERTOS_CONFIG_PATH}
-            cargo build --release --target ${RUST_TARGET} --features freertos
-    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/osal-rs
-    COMMENT "Building OSAL-RS library"
-)
-```
-
-#### Setting via Environment Variable
-
-```bash
-# Set environment variable before building
-export FREERTOS_CONFIG_PATH="/path/to/your/FreeRTOSConfig.h"
-cargo build --release --target thumbv7em-none-eabihf --features freertos
-```
-
-#### Using with Corrosion
-
-```cmake
-# Set environment variable for Corrosion
-set(FREERTOS_CONFIG_PATH "${CMAKE_SOURCE_DIR}/inc/custom/FreeRTOSConfig.h")
-
-corrosion_import_crate(
-    MANIFEST_PATH osal-rs/Cargo.toml
-    FEATURES freertos
-)
-
-# Set environment for the build
-corrosion_set_env_vars(osal-rs
-    FREERTOS_CONFIG_PATH=${FREERTOS_CONFIG_PATH}
-)
-```
-
-**Note**: The build system will automatically regenerate Rust type bindings from the specified `FreeRTOSConfig.h` during the build process.
 
 ## License
 

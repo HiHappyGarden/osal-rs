@@ -21,8 +21,12 @@
 //!
 //! Provides both raw byte-based queues and type-safe streamed queues
 //! for message passing between tasks.
-
+#[cfg(not(feature = "serde"))]
 use crate::os::ToBytes;
+
+#[cfg(feature = "serde")]
+use osal_rs_serde::Deserialize;
+
 use crate::os::types::{UBaseType, TickType};
 use crate::utils::Result;
 
@@ -152,9 +156,75 @@ pub trait Queue {
 /// let mut received = Message { id: 0, value: 0 };
 /// queue.fetch(&mut received, 100).unwrap();
 /// ```
+#[cfg(not(feature = "serde"))]
 pub trait QueueStreamed<T> 
 where 
     T: ToBytes + Sized {
+
+
+    /// Fetches a typed message from the queue (blocking).
+    ///
+    /// # Parameters
+    ///
+    /// * `buffer` - Mutable reference to receive the message
+    /// * `time` - Maximum ticks to wait
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(())` - Message received
+    /// * `Err(Error)` - Timeout or error
+    fn fetch(&self, buffer: &mut T, time: TickType) -> Result<()>;
+
+    /// Fetches a typed message from ISR context (non-blocking).
+    ///
+    /// # Parameters
+    ///
+    /// * `buffer` - Mutable reference to receive the message
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(())` - Message received
+    /// * `Err(Error)` - Queue empty or error
+    fn fetch_from_isr(&self, buffer: &mut T) -> Result<()>;
+    
+    /// Posts a typed message to the queue (blocking).
+    ///
+    /// # Parameters
+    ///
+    /// * `item` - Reference to the message to send
+    /// * `time` - Maximum ticks to wait if full
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(())` - Message sent
+    /// * `Err(Error)` - Timeout or error
+    fn post(&self, item: &T, time: TickType) -> Result<()>;
+
+    /// Posts a typed message from ISR context (non-blocking).
+    ///
+    /// # Parameters
+    ///
+    /// * `item` - Reference to the message to send
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(())` - Message sent
+    /// * `Err(Error)` - Queue full or error
+    fn post_from_isr(&self, item: &T) -> Result<()>;
+
+    /// Deletes the queue and frees its resources.
+    ///
+    /// # Safety
+    ///
+    /// Ensure no tasks are blocked on this queue before deletion.
+    fn delete(&mut self);
+}
+
+
+#[cfg(feature = "serde")]
+pub trait QueueStreamed<T> 
+where 
+    T: Deserialize + Sized {
 
 
     /// Fetches a typed message from the queue (blocking).

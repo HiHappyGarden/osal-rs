@@ -27,12 +27,20 @@ use core::fmt::{Debug, Display};
 use core::marker::PhantomData;
 use core::ops::Deref;
 
-use alloc::vec;
+use alloc::vec::Vec;
 
 use super::ffi::{QueueHandle, pdFALSE, vQueueDelete, xQueueCreateCountingSemaphore, xQueueReceive, xQueueReceiveFromISR};
 use super::types::{BaseType, UBaseType, TickType};
 use super::system::System;
-use crate::traits::{ToTick, QueueFn, SystemFn, QueueStreamedFn, ToBytes, BytesHasLen, FromBytes};
+use crate::traits::{ToTick, QueueFn, SystemFn, QueueStreamedFn, BytesHasLen};
+#[cfg(not(feature = "serde"))]
+use crate::traits::{Serialize, Deserialize};
+
+#[cfg(feature = "serde")]
+use osal_rs_serde::{Serialize, Deserialize, to_bytes};
+
+pub trait StructSerde : Serialize + BytesHasLen + Deserialize {}
+
 use crate::utils::{Result, Error};
 use crate::{xQueueSendToBack, xQueueSendToBackFromISR};
 
@@ -311,14 +319,14 @@ impl Display for Queue {
 ///     }
 /// }).unwrap();
 /// ```
-pub struct QueueStreamed<T: ToBytes + BytesHasLen + FromBytes> (Queue, PhantomData<T>);
+pub struct QueueStreamed<T: StructSerde> (Queue, PhantomData<T>);
 
-unsafe impl<T: ToBytes + BytesHasLen + FromBytes> Send for QueueStreamed<T> {}
-unsafe impl<T: ToBytes + BytesHasLen + FromBytes> Sync for QueueStreamed<T> {}
+unsafe impl<T: StructSerde> Send for QueueStreamed<T> {}
+unsafe impl<T: StructSerde> Sync for QueueStreamed<T> {}
 
 impl<T> QueueStreamed<T> 
 where 
-    T: ToBytes + BytesHasLen + FromBytes {
+    T: StructSerde {
     /// Creates a new type-safe queue.
     ///
     /// # Parameters
@@ -346,12 +354,13 @@ where
     }
 }
 
+#[cfg(not(feature = "serde"))]
 impl<T> QueueStreamedFn<T> for QueueStreamed<T> 
 where 
-    T: ToBytes + BytesHasLen + FromBytes {
+    T: StructSerde {
 
     fn fetch(&self, buffer: &mut T, time: TickType) -> Result<()> {
-        let mut buf_bytes = vec![0u8; buffer.len()];        
+        let mut buf_bytes = Vec::with_capacity(buffer.len());         
 
         if let Ok(()) = self.0.fetch(&mut buf_bytes, time) {
             *buffer = T::from_bytes(&buf_bytes)?;
@@ -362,7 +371,7 @@ where
     }
 
     fn fetch_from_isr(&self, buffer: &mut T) -> Result<()> {
-        let mut buf_bytes = vec![0u8; buffer.len()];        
+        let mut buf_bytes = Vec::with_capacity(buffer.len());      
 
         if let Ok(()) = self.0.fetch_from_isr(&mut buf_bytes) {
             *buffer = T::from_bytes(&buf_bytes)?;
@@ -388,9 +397,63 @@ where
     }
 }
 
+#[cfg(feature = "serde")]
+impl<T> QueueStreamedFn<T> for QueueStreamed<T> 
+where 
+    T: StructSerde {
+
+    fn fetch(&self, buffer: &mut T, time: TickType) -> Result<()> {
+        let mut buf_bytes = Vec::with_capacity(buffer.len());     
+
+        if let Ok(()) = self.0.fetch(&mut buf_bytes, time) {
+            
+            to_bytes(buffer, &mut buf_bytes).map_err(|_| Error::Unhandled("Deserializiation error"))?;
+
+            Ok(())
+        } else {
+            Err(Error::Timeout)
+        }
+    }
+
+    fn fetch_from_isr(&self, buffer: &mut T) -> Result<()> {
+        let mut buf_bytes = Vec::with_capacity(buffer.len());       
+
+        if let Ok(()) = self.0.fetch_from_isr(&mut buf_bytes) {
+            to_bytes(buffer, &mut buf_bytes).map_err(|_| Error::Unhandled("Deserializiation error"))?;
+            Ok(())
+        } else {
+            Err(Error::Timeout)
+        }
+    }
+
+    fn post(&self, item: &T, time: TickType) -> Result<()> {
+
+
+        let mut buf_bytes = Vec::with_capacity(item.len()); 
+
+        to_bytes(item, &mut buf_bytes).map_err(|_| Error::Unhandled("Deserializiation error"))?;
+
+        self.0.post(&buf_bytes, time)
+    }
+
+    fn post_from_isr(&self, item: &T) -> Result<()> {
+
+        let mut buf_bytes = Vec::with_capacity(item.len()); 
+
+        to_bytes(item, &mut buf_bytes).map_err(|_| Error::Unhandled("Deserializiation error"))?;
+
+        self.0.post_from_isr(&buf_bytes)
+    }
+
+    #[inline]
+    fn delete(&mut self) {
+        self.0.delete()
+    }
+}
+
 impl<T> Deref for QueueStreamed<T> 
 where 
-    T: ToBytes + BytesHasLen + FromBytes {
+    T: StructSerde {
     type Target = QueueHandle;
 
     fn deref(&self) -> &Self::Target {
@@ -400,7 +463,7 @@ where
 
 impl<T> Debug for QueueStreamed<T> 
 where 
-    T: ToBytes + BytesHasLen + FromBytes {
+    T: StructSerde {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("QueueStreamed")
             .field("handle", &self.0.0)
@@ -410,8 +473,9 @@ where
 
 impl<T> Display for QueueStreamed<T> 
 where 
-    T: ToBytes + BytesHasLen + FromBytes {
+    T: StructSerde {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         write!(f, "QueueStreamed {{ handle: {:?} }}", self.0.0)
     }
 }
+

@@ -1,0 +1,47 @@
+[package]
+name = "osal-rs-serde"
+version = "0.3.0"
+edition = "2024"
+rust-version = "1.85.0"
+authors = ["Antonio Salsi"]
+description = "Serialization/Deserialization framework for osal-rs - extensible and reusable"
+license = "GPL-3.0"
+repository = "https://github.com/HiHappyGarden/osal-rs"
+homepage = "https://github.com/HiHappyGarden/osal-rs"
+documentation = "https://docs.rs/osal-rs-serde"
+keywords = ["serialization", "deserialization", "no-std", "embedded"]
+categories = ["embedded", "no-std", "encoding"]
+
+[lib]
+crate-type = ["rlib"]
+
+[features]
+default = ["alloc"]
+alloc = []
+std = ["alloc"]
+derive = ["osal-rs-serde-derive"]
+
+[dependencies]
+osal-rs-serde-derive = { version = "0.3", path = "derive", optional = true }
+
+[profile.dev]
+panic = "abort"
+
+[profile.release]
+panic = "abort"
+
+[[example]]
+name = "basic"
+required-features = []
+
+[[example]]
+name = "with_derive"
+required-features = ["derive"]
+
+[[example]]
+name = "custom_serializer"
+required-features = ["derive"]
+
+[[example]]
+name = "integration"
+required-features = ["derive"]

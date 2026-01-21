@@ -34,15 +34,11 @@ use super::types::{BaseType, UBaseType, TickType};
 use super::system::System;
 use crate::traits::{ToTick, QueueFn, SystemFn, QueueStreamedFn, BytesHasLen};
 #[cfg(not(feature = "serde"))]
-use crate::traits::{ToBytes, FromBytes};
-    
-#[cfg(not(feature = "serde"))]
-pub trait StructSerde : ToBytes + BytesHasLen + FromBytes {}
+use crate::traits::{Serialize, Deserialize};
 
 #[cfg(feature = "serde")]
 use osal_rs_serde::{Serialize, Deserialize, to_bytes};
 
-#[cfg(feature = "serde")]
 pub trait StructSerde : Serialize + BytesHasLen + Deserialize {}
 
 use crate::utils::{Result, Error};
@@ -323,19 +319,14 @@ impl Display for Queue {
 ///     }
 /// }).unwrap();
 /// ```
-#[cfg(not(feature = "serde"))]
-pub struct QueueStreamed<T: ToBytes + BytesHasLen + FromBytes> (Queue, PhantomData<T>);
+pub struct QueueStreamed<T: StructSerde> (Queue, PhantomData<T>);
 
-#[cfg(not(feature = "serde"))]
-unsafe impl<T: ToBytes + BytesHasLen + FromBytes> Send for QueueStreamed<T> {}
+unsafe impl<T: StructSerde> Send for QueueStreamed<T> {}
+unsafe impl<T: StructSerde> Sync for QueueStreamed<T> {}
 
-#[cfg(not(feature = "serde"))]
-unsafe impl<T: ToBytes + BytesHasLen + FromBytes> Sync for QueueStreamed<T> {}
-
-#[cfg(not(feature = "serde"))]
 impl<T> QueueStreamed<T> 
 where 
-    T: ToBytes + BytesHasLen + FromBytes {
+    T: StructSerde {
     /// Creates a new type-safe queue.
     ///
     /// # Parameters
@@ -366,7 +357,7 @@ where
 #[cfg(not(feature = "serde"))]
 impl<T> QueueStreamedFn<T> for QueueStreamed<T> 
 where 
-    T: ToBytes + BytesHasLen + FromBytes {
+    T: StructSerde {
 
     fn fetch(&self, buffer: &mut T, time: TickType) -> Result<()> {
         let mut buf_bytes = Vec::with_capacity(buffer.len());         
@@ -403,78 +394,6 @@ where
     #[inline]
     fn delete(&mut self) {
         self.0.delete()
-    }
-}
-
-#[cfg(not(feature = "serde"))]
-impl<T> Deref for QueueStreamed<T> 
-where 
-    T: ToBytes + BytesHasLen + FromBytes {
-    type Target = QueueHandle;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0.0
-    }   
-}
-
-#[cfg(not(feature = "serde"))]
-impl<T> Debug for QueueStreamed<T> 
-where 
-    T: ToBytes + BytesHasLen + FromBytes {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        f.debug_struct("QueueStreamed")
-            .field("handle", &self.0.0)
-            .finish()
-    }
-}
-
-#[cfg(not(feature = "serde"))]
-impl<T> Display for QueueStreamed<T> 
-where 
-    T: ToBytes + BytesHasLen + FromBytes {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        write!(f, "QueueStreamed {{ handle: {:?} }}", self.0.0)
-    }
-}
-
-
-#[cfg(feature = "serde")]
-pub struct QueueStreamed<T: StructSerde> (Queue, PhantomData<T>);
-
-#[cfg(feature = "serde")]
-unsafe impl<T: StructSerde> Send for QueueStreamed<T> {}
-
-#[cfg(feature = "serde")]
-unsafe impl<T: StructSerde> Sync for QueueStreamed<T> {}
-
-#[cfg(feature = "serde")]
-impl<T> QueueStreamed<T> 
-where 
-    T: StructSerde {
-    /// Creates a new type-safe queue.
-    ///
-    /// # Parameters
-    ///
-    /// * `size` - Maximum number of messages
-    /// * `message_size` - Size of each message (typically `size_of::<T>()`)
-    ///
-    /// # Returns
-    ///
-    /// * `Ok(Self)` - Successfully created queue
-    /// * `Err(Error)` - Creation failed
-    #[inline]
-    pub fn new (size: UBaseType, message_size: UBaseType) -> Result<Self> {
-        Ok(Self (Queue::new(size, message_size)?, PhantomData))
-    }
-
-    #[inline]
-    fn fetch_with_to_tick(&self, buffer: &mut T, time: impl ToTick) -> Result<()> {
-        self.fetch(buffer, time.to_ticks())
-    }
-
-    #[inline]
-    fn post_with_to_tick(&self, item: &T, time: impl ToTick) -> Result<()> {
-        self.post(item, time.to_ticks())
     }
 }
 
@@ -532,7 +451,6 @@ where
     }
 }
 
-#[cfg(feature = "serde")]
 impl<T> Deref for QueueStreamed<T> 
 where 
     T: StructSerde {
@@ -543,7 +461,6 @@ where
     }   
 }
 
-#[cfg(feature = "serde")]
 impl<T> Debug for QueueStreamed<T> 
 where 
     T: StructSerde {
@@ -554,7 +471,6 @@ where
     }
 }
 
-#[cfg(feature = "serde")]
 impl<T> Display for QueueStreamed<T> 
 where 
     T: StructSerde {
@@ -562,3 +478,4 @@ where
         write!(f, "QueueStreamed {{ handle: {:?} }}", self.0.0)
     }
 }
+

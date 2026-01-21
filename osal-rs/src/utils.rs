@@ -22,14 +22,21 @@
 //! This module contains common types, error definitions, and helper functions
 //! used throughout the library.
 
-use core::ffi::{CStr, c_char};
-use core::{ffi::c_void, str::from_utf8_mut};
+use core::ffi::{CStr, c_char, c_void};
+use core::str::from_utf8_mut;
 use core::fmt::{Debug, Display}; 
 use core::ops::{Deref, DerefMut};
 use core::time::Duration;
+
 use alloc::ffi::CString;
 use alloc::string::{String, ToString};
 use alloc::sync::Arc;
+
+#[cfg(not(feature = "serde"))]
+use crate::os::{Deserialize, Serialize};
+
+#[cfg(feature = "serde")]
+use osal_rs_serde::{Deserialize, Serialize};
 
 use crate::os::Mutex;
 
@@ -438,8 +445,14 @@ macro_rules! arcmux {
 /// let number = 42;
 /// let num_bytes = Bytes::<8>::new_by_string(&number);
 /// ```
+
+#[cfg(feature = "serde")]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub struct Bytes<const SIZE: usize = 0> (pub [u8; SIZE]);
+pub struct Bytes<const SIZE: usize> (pub [u8; SIZE]);
+
+#[cfg(not(feature = "serde"))]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct Bytes<const SIZE: usize> (pub [u8; SIZE]);
 
 impl<const SIZE: usize> Deref for Bytes<SIZE> {
     type Target = [u8; SIZE];
@@ -513,7 +526,7 @@ impl<const SIZE: usize> Display for Bytes<SIZE> {
     }
 }
 
-impl AsSyncStr for Bytes<> {
+impl<const SIZE: usize> AsSyncStr for Bytes<SIZE> {
     /// Returns a string slice reference.
     ///
     /// This method provides access to the underlying string data in a way
@@ -528,6 +541,107 @@ impl AsSyncStr for Bytes<> {
             .to_str()
             .unwrap_or("Conversion error")
         }
+    }
+}
+
+/// Serialization implementation for `Bytes<SIZE>` when the `serde` feature is enabled.
+///
+/// This implementation provides serialization by directly serializing each byte
+/// in the array using the osal-rs-serde serialization framework.
+#[cfg(feature = "serde")]
+impl<const SIZE: usize> Serialize for Bytes<SIZE> {
+    /// Serializes the `Bytes` instance using the given serializer.
+    ///
+    /// # Parameters
+    ///
+    /// * `serializer` - The serializer to use
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(())` - On successful serialization
+    /// * `Err(S::Error)` - If serialization fails
+    fn serialize<S: osal_rs_serde::Serializer>(&self, serializer: &mut S) -> core::result::Result<(), S::Error> {
+        for &byte in self.0.iter() {
+            serializer.serialize_u8(byte)?;
+        }
+        Ok(())
+    }
+}
+
+/// Deserialization implementation for `Bytes<SIZE>` when the `serde` feature is enabled.
+///
+/// This implementation provides deserialization by reading bytes from the deserializer
+/// into a fixed-size array using the osal-rs-serde deserialization framework.
+#[cfg(feature = "serde")]
+impl<const SIZE: usize> Deserialize for Bytes<SIZE> {
+    /// Deserializes a `Bytes` instance using the given deserializer.
+    ///
+    /// # Parameters
+    ///
+    /// * `deserializer` - The deserializer to use
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(Bytes<SIZE>)` - A new `Bytes` instance with deserialized data
+    /// * `Err(D::Error)` - If deserialization fails
+    fn deserialize<D: osal_rs_serde::Deserializer>(deserializer: &mut D) -> core::result::Result<Self, D::Error> {
+        let mut array = [0u8; SIZE];
+        for i in 0..SIZE {
+            array[i] = deserializer.deserialize_u8()?;
+        }
+        Ok(Self(array))
+    }
+}
+
+/// Serialization implementation for `Bytes<SIZE>` when the `serde` feature is disabled.
+///
+/// This implementation provides basic serialization by directly returning a reference
+/// to the underlying byte array. It's used when the library is compiled without the
+/// `serde` feature, providing a lightweight alternative serialization mechanism.
+#[cfg(not(feature = "serde"))]
+impl<const SIZE: usize> Serialize for Bytes<SIZE> {
+    /// Converts the `Bytes` instance to a byte slice.
+    ///
+    /// # Returns
+    ///
+    /// A reference to the internal byte array.
+    fn to_bytes(&self) -> &[u8] {
+        &self.0
+    }
+}
+
+/// Deserialization implementation for `Bytes<SIZE>` when the `serde` feature is disabled.
+///
+/// This implementation provides basic deserialization by copying bytes from a slice
+/// into a fixed-size array. If the source slice is shorter than `SIZE`, the remaining
+/// bytes are zero-filled. If longer, it's truncated to fit.
+#[cfg(not(feature = "serde"))]
+impl<const SIZE: usize> Deserialize for Bytes<SIZE> {
+    /// Creates a `Bytes` instance from a byte slice.
+    ///
+    /// # Parameters
+    ///
+    /// * `bytes` - The source byte slice to deserialize from
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(Bytes<SIZE>)` - A new `Bytes` instance with data copied from the slice
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// use osal_rs::utils::Bytes;
+    /// use osal_rs::os::Deserialize;
+    /// 
+    /// let data = b"Hello";
+    /// let bytes = Bytes::<16>::from_bytes(data).unwrap();
+    /// // Result: [b'H', b'e', b'l', b'l', b'o', 0, 0, 0, ...]
+    /// ```
+    fn from_bytes(bytes: &[u8]) -> Result<Self> {
+        let mut array = [0u8; SIZE];
+        let len = core::cmp::min(bytes.len(), SIZE);
+        array[..len].copy_from_slice(&bytes[..len]);
+        Ok(Self( array ))
     }
 }
 

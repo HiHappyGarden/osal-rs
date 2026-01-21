@@ -33,45 +33,205 @@
 //!
 //! ## Quick Start
 //!
-//! ### Using Traits Directly
+//! ### Using Derive Macros (Recommended)
+//!
+//! #### Basic Struct Example
 //!
 //! ```ignore
-//! use osal_rs_serde::{Serialize, Deserialize, ByteSerializer, ByteDeserializer};
+//! use osal_rs_serde::{Serialize, Deserialize, to_bytes, from_bytes};
 //!
+//! #[derive(Serialize, Deserialize)]
 //! struct SensorData {
 //!     temperature: i16,
 //!     humidity: u8,
 //!     pressure: u32,
 //! }
 //!
-//! impl Serialize for SensorData {
+//! fn main() {
+//!     let data = SensorData {
+//!         temperature: 25,
+//!         humidity: 60,
+//!         pressure: 1013,
+//!     };
+//!
+//!     // Serialize
+//!     let mut buffer = [0u8; 32];
+//!     let len = to_bytes(&data, &mut buffer).unwrap();
+//!     println!("Serialized {} bytes", len);
+//!
+//!     // Deserialize
+//!     let read_data: SensorData = from_bytes(&buffer[..len]).unwrap();
+//!     println!("Temperature: {}", read_data.temperature);
+//! }
+//! ```
+//!
+//! #### Struct with Optional Fields
+//!
+//! ```ignore
+//! use osal_rs_serde::{Serialize, Deserialize, to_bytes, from_bytes};
+//!
+//! #[derive(Serialize, Deserialize)]
+//! struct Config {
+//!     device_id: u32,
+//!     name: Option<u8>,      // Optional device name code
+//!     enabled: bool,
+//!     timeout: Option<u16>,  // Optional timeout in ms
+//! }
+//!
+//! fn main() {
+//!     let config = Config {
+//!         device_id: 100,
+//!         name: Some(42),
+//!         enabled: true,
+//!         timeout: None,
+//!     };
+//!
+//!     let mut buffer = [0u8; 64];
+//!     let len = to_bytes(&config, &mut buffer).unwrap();
+//!     let decoded: Config = from_bytes(&buffer[..len]).unwrap();
+//! }
+//! ```
+//!
+//! #### Struct with Arrays and Tuples
+//!
+//! ```ignore
+//! use osal_rs_serde::{Serialize, Deserialize, to_bytes, from_bytes};
+//!
+//! #[derive(Serialize, Deserialize)]
+//! struct TelemetryPacket {
+//!     timestamp: u64,
+//!     coordinates: (i32, i32, i32),  // x, y, z
+//!     samples: [u16; 8],              // 8 sensor readings
+//!     status: u8,
+//! }
+//!
+//! fn main() {
+//!     let packet = TelemetryPacket {
+//!         timestamp: 1642857600,
+//!         coordinates: (100, 200, 50),
+//!         samples: [10, 20, 30, 40, 50, 60, 70, 80],
+//!         status: 0xFF,
+//!     };
+//!
+//!     let mut buffer = [0u8; 128];
+//!     let len = to_bytes(&packet, &mut buffer).unwrap();
+//!     println!("Telemetry packet: {} bytes", len);
+//! }
+//! ```
+//!
+//! #### Nested Structs
+//!
+//! ```ignore
+//! use osal_rs_serde::{Serialize, Deserialize, to_bytes, from_bytes};
+//!
+//! #[derive(Serialize, Deserialize)]
+//! struct Location {
+//!     latitude: i32,
+//!     longitude: i32,
+//! }
+//!
+//! #[derive(Serialize, Deserialize)]
+//! struct Device {
+//!     id: u32,
+//!     battery: u8,
+//!     location: Location,
+//!     active: bool,
+//! }
+//!
+//! fn main() {
+//!     let device = Device {
+//!         id: 42,
+//!         battery: 85,
+//!         location: Location {
+//!             latitude: 45500000,
+//!             longitude: 9200000,
+//!         },
+//!         active: true,
+//!     };
+//!
+//!     let mut buffer = [0u8; 64];
+//!     let len = to_bytes(&device, &mut buffer).unwrap();
+//!     let decoded: Device = from_bytes(&buffer[..len]).unwrap();
+//!     println!("Device at {}, {}", 
+//!              decoded.location.latitude, 
+//!              decoded.location.longitude);
+//! }
+//! ```
+//!
+//! #### Complex Embedded System Example
+//!
+//! ```ignore
+//! use osal_rs_serde::{Serialize, Deserialize, to_bytes, from_bytes};
+//!
+//! #[derive(Serialize, Deserialize)]
+//! struct MotorControl {
+//!     motor_id: u8,
+//!     speed: i16,        // -1000 to 1000
+//!     direction: bool,   // true = forward, false = reverse
+//!     current: u16,      // mA
+//! }
+//!
+//! #[derive(Serialize, Deserialize)]
+//! struct RobotState {
+//!     timestamp: u64,
+//!     motors: [MotorControl; 4],  // 4 motors
+//!     battery_voltage: u16,        // mV
+//!     temperature: i8,             // °C
+//!     error_flags: u32,
+//! }
+//!
+//! fn main() {
+//!     let state = RobotState {
+//!         timestamp: 1000000,
+//!         motors: [
+//!             MotorControl { motor_id: 0, speed: 500, direction: true, current: 1200 },
+//!             MotorControl { motor_id: 1, speed: 500, direction: true, current: 1150 },
+//!             MotorControl { motor_id: 2, speed: -300, direction: false, current: 800 },
+//!             MotorControl { motor_id: 3, speed: -300, direction: false, current: 850 },
+//!         ],
+//!         battery_voltage: 12400,  // 12.4V
+//!         temperature: 35,
+//!         error_flags: 0,
+//!     };
+//!
+//!     let mut buffer = [0u8; 256];
+//!     let len = to_bytes(&state, &mut buffer).unwrap();
+//!     println!("Robot state serialized: {} bytes", len);
+//!     
+//!     // Deserialize and check
+//!     let decoded: RobotState = from_bytes(&buffer[..len]).unwrap();
+//!     println!("Battery: {}mV, Temp: {}°C", 
+//!              decoded.battery_voltage, 
+//!              decoded.temperature);
+//! }
+//! ```
+//!
+//! ### Manual Implementation (Using Traits Directly)
+//!
+//! ```ignore
+//! use osal_rs_serde::{Serialize, Deserialize, Serializer, Deserializer};
+//!
+//! struct Point {
+//!     x: i32,
+//!     y: i32,
+//! }
+//!
+//! impl Serialize for Point {
 //!     fn serialize<S: Serializer>(&self, serializer: &mut S) -> Result<(), S::Error> {
-//!         serializer.serialize_i16(self.temperature)?;
-//!         serializer.serialize_u8(self.humidity)?;
-//!         serializer.serialize_u32(self.pressure)?;
+//!         serializer.serialize_i32(self.x)?;
+//!         serializer.serialize_i32(self.y)?;
 //!         Ok(())
 //!     }
 //! }
 //!
-//! impl Deserialize for SensorData {
+//! impl Deserialize for Point {
 //!     fn deserialize<D: Deserializer>(deserializer: &mut D) -> Result<Self, D::Error> {
-//!         Ok(SensorData {
-//!             temperature: deserializer.deserialize_i16()?,
-//!             humidity: deserializer.deserialize_u8()?,
-//!             pressure: deserializer.deserialize_u32()?,
+//!         Ok(Point {
+//!             x: deserializer.deserialize_i32()?,
+//!             y: deserializer.deserialize_i32()?,
 //!         })
 //!     }
 //! }
-//!
-//! // Usage
-//! let data = SensorData { temperature: 25, humidity: 60, pressure: 1013 };
-//! let mut buffer = [0u8; 32];
-//! let mut serializer = ByteSerializer::new(&mut buffer);
-//! data.serialize(&mut serializer).unwrap();
-//!
-//! // Deserialize
-//! let mut deserializer = ByteDeserializer::new(&buffer);
-//! let read_data = SensorData::deserialize(&mut deserializer).unwrap();
 //! ```
 //!
 //! ## Supported Types

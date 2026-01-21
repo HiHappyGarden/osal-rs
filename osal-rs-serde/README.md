@@ -67,6 +67,8 @@ Everything is contained in a single package for ease of use.
 
 ### With Derive Macros (Recommended)
 
+#### Basic Struct Example
+
 ```rust
 use osal_rs_serde::{Serialize, Deserialize, to_bytes, from_bytes};
 
@@ -93,6 +95,147 @@ fn main() {
     // Deserialize
     let read_data: SensorData = from_bytes(&buffer[..len]).unwrap();
     println!("Temperature: {}", read_data.temperature);
+}
+```
+
+#### Struct with Optional Fields
+
+```rust
+use osal_rs_serde::{Serialize, Deserialize, to_bytes, from_bytes};
+
+#[derive(Serialize, Deserialize)]
+struct Config {
+    device_id: u32,
+    name: Option<u8>,  // Optional device name code
+    enabled: bool,
+    timeout: Option<u16>,  // Optional timeout in ms
+}
+
+fn main() {
+    let config = Config {
+        device_id: 100,
+        name: Some(42),
+        enabled: true,
+        timeout: None,
+    };
+
+    let mut buffer = [0u8; 64];
+    let len = to_bytes(&config, &mut buffer).unwrap();
+    let decoded: Config = from_bytes(&buffer[..len]).unwrap();
+}
+```
+
+#### Struct with Arrays and Tuples
+
+```rust
+use osal_rs_serde::{Serialize, Deserialize, to_bytes, from_bytes};
+
+#[derive(Serialize, Deserialize)]
+struct TelemetryPacket {
+    timestamp: u64,
+    coordinates: (i32, i32, i32),  // x, y, z
+    samples: [u16; 8],              // 8 sensor readings
+    status: u8,
+}
+
+fn main() {
+    let packet = TelemetryPacket {
+        timestamp: 1642857600,
+        coordinates: (100, 200, 50),
+        samples: [10, 20, 30, 40, 50, 60, 70, 80],
+        status: 0xFF,
+    };
+
+    let mut buffer = [0u8; 128];
+    let len = to_bytes(&packet, &mut buffer).unwrap();
+    println!("Telemetry packet: {} bytes", len);
+}
+```
+
+#### Nested Structs
+
+```rust
+use osal_rs_serde::{Serialize, Deserialize, to_bytes, from_bytes};
+
+#[derive(Serialize, Deserialize)]
+struct Location {
+    latitude: i32,
+    longitude: i32,
+}
+
+#[derive(Serialize, Deserialize)]
+struct Device {
+    id: u32,
+    battery: u8,
+    location: Location,
+    active: bool,
+}
+
+fn main() {
+    let device = Device {
+        id: 42,
+        battery: 85,
+        location: Location {
+            latitude: 45500000,
+            longitude: 9200000,
+        },
+        active: true,
+    };
+
+    let mut buffer = [0u8; 64];
+    let len = to_bytes(&device, &mut buffer).unwrap();
+    let decoded: Device = from_bytes(&buffer[..len]).unwrap();
+    println!("Device at {}, {}", 
+             decoded.location.latitude, 
+             decoded.location.longitude);
+}
+```
+
+#### Complex Embedded System Example
+
+```rust
+use osal_rs_serde::{Serialize, Deserialize, to_bytes, from_bytes};
+
+#[derive(Serialize, Deserialize)]
+struct MotorControl {
+    motor_id: u8,
+    speed: i16,        // -1000 to 1000
+    direction: bool,   // true = forward, false = reverse
+    current: u16,      // mA
+}
+
+#[derive(Serialize, Deserialize)]
+struct RobotState {
+    timestamp: u64,
+    motors: [MotorControl; 4],  // 4 motors
+    battery_voltage: u16,        // mV
+    temperature: i8,             // °C
+    error_flags: u32,
+}
+
+fn main() {
+    let state = RobotState {
+        timestamp: 1000000,
+        motors: [
+            MotorControl { motor_id: 0, speed: 500, direction: true, current: 1200 },
+            MotorControl { motor_id: 1, speed: 500, direction: true, current: 1150 },
+            MotorControl { motor_id: 2, speed: -300, direction: false, current: 800 },
+            MotorControl { motor_id: 3, speed: -300, direction: false, current: 850 },
+        ],
+        battery_voltage: 12400,  // 12.4V
+        temperature: 35,
+        error_flags: 0,
+    };
+
+    let mut buffer = [0u8; 256];
+    let len = to_bytes(&state, &mut buffer).unwrap();
+    println!("Robot state serialized: {} bytes", len);
+    
+    // Deserialize and check
+    let decoded: RobotState = from_bytes(&buffer[..len]).unwrap();
+    println!("Battery: {}mV, Temp: {}°C", 
+             decoded.battery_voltage, 
+             decoded.temperature);
 }
 ```
 

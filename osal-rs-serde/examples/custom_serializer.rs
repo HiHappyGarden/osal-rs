@@ -20,8 +20,7 @@
 //! Example showing how to create a custom serializer.
 //! This example implements a simple text-based serializer.
 
-use osal_rs_serde::{Serialize, Deserialize, Serializer, Deserializer, Error};
-use core::fmt::Write;
+use osal_rs_serde::{Serialize, Deserialize, Serializer, Error};
 
 /// A simple text-based serializer that writes values as comma-separated strings
 struct TextSerializer<'a> {
@@ -156,7 +155,7 @@ fn format_number(mut n: i64, buf: &mut [u8]) -> &str {
     let mut pos = buf.len();
     while n > 0 {
         pos -= 1;
-        buf[pos] = (b'0' + (n % 10) as u8);
+        buf[pos] = b'0' + (n % 10) as u8;
         n /= 10;
     }
 

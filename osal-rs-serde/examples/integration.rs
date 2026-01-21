@@ -45,10 +45,6 @@ struct TelemetryPacket {
     checksum: u32,
 }
 
-fn calculate_checksum(_packet: &TelemetryPacket) -> u32 {
-    // Simple checksum for demonstration
-    0xDEADBEEF
-}
 
 fn main() {
     println!("=== OSAL-RS-Serde Integration Example ===\n");

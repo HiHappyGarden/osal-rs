@@ -99,6 +99,7 @@ pub mod error;
 pub mod ser;
 pub mod de;
 
+use alloc::vec::Vec;
 pub use error::{Error, Result};
 pub use ser::{Serialize, Serializer, ByteSerializer};
 pub use de::{Deserialize, Deserializer, ByteDeserializer};
@@ -122,7 +123,32 @@ pub use osal_rs_serde_derive::{Serialize, Deserialize};
 /// assert_eq!(len, 4);
 /// ```
 pub fn to_bytes<T>(value: &T, buffer: &mut [u8]) -> Result<usize> 
-where T: Serialize
+where 
+    T: Serialize
+{
+    let mut serializer = ByteSerializer::new(buffer);
+    value.serialize(&mut serializer)?;
+    Ok(serializer.position())
+}
+
+/// Serialize a value to a dynamically sized byte vector.
+///
+/// This is a convenience function that handles serialization to a growable Vec<u8>.
+///
+/// # Examples
+///
+/// ```ignore
+/// use osal_rs_serde::to_dyn_bytes;
+/// use alloc::vec::Vec;
+///
+/// let value = 42u32;
+/// let mut buffer = Vec::new();
+/// let len = to_dyn_bytes(&value, &mut buffer).unwrap();
+/// assert_eq!(len, 4);
+/// ```
+pub fn to_dyn_bytes<T>(value: &T, buffer: &mut Vec<u8>) -> Result<usize> 
+where 
+    T: Serialize
 {
     let mut serializer = ByteSerializer::new(buffer);
     value.serialize(&mut serializer)?;
@@ -143,7 +169,8 @@ where T: Serialize
 /// assert_eq!(value, 42);
 /// ```
 pub fn from_bytes<T>(buffer: &[u8]) -> Result<T> 
-where T: Deserialize
+where 
+    T: Deserialize
 {
     let mut deserializer = ByteDeserializer::new(buffer);
     T::deserialize(&mut deserializer)

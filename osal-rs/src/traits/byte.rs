@@ -66,6 +66,7 @@ pub trait BytesHasLen {
 ///     }
 /// }
 /// ```
+#[cfg(not(feature = "serde"))]
 pub trait ToBytes {
     /// Converts this value to a byte slice.
     ///
@@ -79,6 +80,7 @@ pub trait ToBytes {
 ///
 /// This allows arrays of types implementing `ToBytes` to automatically
 /// report their size.
+#[cfg(not(feature = "serde"))]
 impl<T, const N: usize> BytesHasLen for [T; N] 
 where 
     T: ToBytes + Sized {
@@ -115,6 +117,7 @@ where
 ///     }
 /// }
 /// ```
+#[cfg(not(feature = "serde"))]
 pub trait FromBytes: Sized
 where
     Self: Sized {
@@ -130,7 +133,6 @@ where
     /// * `Err(Error)` - Deserialization failed (invalid data, wrong size, etc.)
     fn from_bytes(bytes: &[u8]) -> Result<Self>;
 }
-
 
 
 

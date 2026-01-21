@@ -300,6 +300,54 @@ cargo build --release --target thumbv7em-none-eabihf --features freertos
 cargo build --features posix,std
 ```
 
+## Cargo Features
+
+OSAL-RS provides several Cargo features to customize the build configuration for different platforms and use cases:
+
+### Available Features
+
+| Feature | Default | Description |
+|---------|---------|-------------|
+| `freertos` | ✅ | Enable FreeRTOS backend implementation. This is the default and fully implemented feature for embedded RTOS development. |
+| `posix` | ❌ | Enable POSIX backend implementation. Currently planned for future releases to support Linux/Unix-like systems. |
+| `std` | ❌ | Enable standard library support. Automatically enables `disable_panic`. Use this for native development and testing environments. |
+| `disable_panic` | ❌ | Disable custom panic handler. Enabled automatically when `std` feature is active. Useful when you want to use the default panic behavior. |
+| `serde` | ❌ | Enable serialization/deserialization support via `osal-rs-serde`. Includes derive macros for automatic implementation. |
+
+### Feature Combinations
+
+#### FreeRTOS Embedded Development (Default)
+```bash
+cargo build --target thumbv7em-none-eabihf --features freertos
+```
+
+#### FreeRTOS with Serialization Support
+```bash
+cargo build --target thumbv7em-none-eabihf --features freertos,serde
+```
+
+#### Native Development with Standard Library
+```bash
+cargo build --features posix,std
+```
+
+#### Native Development with Serialization
+```bash
+cargo build --features posix,std,serde
+```
+
+### Using Features in Cargo.toml
+
+To use OSAL-RS in your project with specific features:
+
+```toml
+[dependencies]
+osal-rs = { version = "0.3", features = ["freertos"] }
+
+# Or with serialization support
+osal-rs = { version = "0.3", features = ["freertos", "serde"] }
+```
+
 ## Project Structure
 
 ```

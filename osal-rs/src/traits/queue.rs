@@ -21,8 +21,12 @@
 //!
 //! Provides both raw byte-based queues and type-safe streamed queues
 //! for message passing between tasks.
+#[cfg(not(feature = "serde"))]
+use crate::os::Deserialize;
 
-use crate::os::ToBytes;
+#[cfg(feature = "serde")]
+use osal_rs_serde::Deserialize;
+
 use crate::os::types::{UBaseType, TickType};
 use crate::utils::Result;
 
@@ -152,10 +156,10 @@ pub trait Queue {
 /// let mut received = Message { id: 0, value: 0 };
 /// queue.fetch(&mut received, 100).unwrap();
 /// ```
+
 pub trait QueueStreamed<T> 
 where 
-    T: ToBytes + Sized {
-
+    T: Deserialize + Sized {
 
     /// Fetches a typed message from the queue (blocking).
     ///

@@ -22,6 +22,9 @@
 //! This module provides traits for converting types to and from byte arrays,
 //! enabling type-safe serialization for queue and communication operations.
 
+#[cfg(feature = "serde")]
+use osal_rs_serde::Serialize;
+
 use crate::utils::Result;
 
 /// Trait for types that have a known byte length.
@@ -45,6 +48,18 @@ pub trait BytesHasLen {
     fn len(&self) -> usize;
 }
 
+/// Automatic implementation of `BytesHasLen` for fixed-size arrays.
+///
+/// This allows arrays of types implementing `ToBytes` to automatically
+/// report their size.
+impl<T, const N: usize> BytesHasLen for [T; N] 
+where 
+    T: Serialize + Sized {
+    fn len(&self) -> usize {
+        N
+    }
+}
+
 /// Trait for converting types to byte slices.
 ///
 /// Enables serialization of structured data for transmission through
@@ -66,25 +81,14 @@ pub trait BytesHasLen {
 ///     }
 /// }
 /// ```
-pub trait ToBytes {
+#[cfg(not(feature = "serde"))]
+pub trait Serialize {
     /// Converts this value to a byte slice.
     ///
     /// # Returns
     ///
     /// A reference to the byte representation of this value
     fn to_bytes(&self) -> &[u8];
-}
-
-/// Automatic implementation of `BytesHasLen` for fixed-size arrays.
-///
-/// This allows arrays of types implementing `ToBytes` to automatically
-/// report their size.
-impl<T, const N: usize> BytesHasLen for [T; N] 
-where 
-    T: ToBytes + Sized {
-    fn len(&self) -> usize {
-        N
-    }
 }
 
 /// Trait for deserializing types from byte slices.
@@ -115,7 +119,8 @@ where
 ///     }
 /// }
 /// ```
-pub trait FromBytes: Sized
+#[cfg(not(feature = "serde"))]
+pub trait Deserialize: Sized
 where
     Self: Sized {
     /// Creates a new instance from a byte slice.
@@ -130,7 +135,6 @@ where
     /// * `Err(Error)` - Deserialization failed (invalid data, wrong size, etc.)
     fn from_bytes(bytes: &[u8]) -> Result<Self>;
 }
-
 
 
 

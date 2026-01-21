@@ -6,14 +6,23 @@ Operating System Abstraction Layer for Rust - A cross-platform compatibility lay
 
 OSAL-RS provides a unified API for developing multi-platform embedded applications in Rust. It abstracts operating system-specific functionality, allowing you to write portable code that can run on different platforms with minimal changes.
 
+### Workspace Components
+
+- **osal-rs**: Main Operating System Abstraction Layer
+- **osal-rs-build**: Build tools
+- **osal-rs-tests**: Test suite
+- **osal-rs-serde**: ✨ **NEW!** Extensible serialization/deserialization framework (includes derive macros)
+
 ## Current Implementation Status
 
 - ✅ **FreeRTOS**: Fully implemented
+- ✅ **Serialization**: osal-rs-serde with derive macros
 - 🚧 **POSIX**: Planned
 - 🚧 **Other RTOSes**: Future consideration
 
 ## Features
 
+### Core OSAL Features
 - **Thread Management**: Create, manage, and synchronize threads
 - **Synchronization Primitives**: Mutexes, semaphores, event groups
 - **Message Queues**: Inter-thread communication
@@ -21,6 +30,33 @@ OSAL-RS provides a unified API for developing multi-platform embedded applicatio
 - **Memory Allocation**: Custom allocator support
 - **Time Management**: Duration and tick handling
 - **No-std Support**: Suitable for bare-metal embedded systems
+
+### 🆕 osal-rs-serde Features
+- **No-std Compatible**: Perfect for embedded systems
+- **Derive Macros**: `#[derive(Serialize, Deserialize)]` for automatic serialization
+- **Extensible**: Create custom serializers for any format
+- **Reusable**: Can be used in projects outside of osal-rs
+- **Type-Safe**: Leverages Rust's type system
+
+#### Quick Example
+
+```rust
+use osal_rs_serde::{Serialize, Deserialize, to_bytes, from_bytes};
+
+#[derive(Serialize, Deserialize)]
+struct SensorData {
+    temperature: i16,
+    humidity: u8,
+    pressure: u32,
+}
+
+let data = SensorData { temperature: 25, humidity: 60, pressure: 1013 };
+let mut buffer = [0u8; 32];
+let len = to_bytes(&data, &mut buffer).unwrap();
+let restored: SensorData = from_bytes(&buffer[..len]).unwrap();
+```
+
+For more details, see [osal-rs-serde/README.md](osal-rs-serde/README.md).
 
 ## Prerequisites
 
@@ -289,6 +325,53 @@ OSAL-RS requires proper FreeRTOS configuration. Ensure your `FreeRTOSConfig.h` i
 #define configUSE_QUEUE_SETS             1
 #define configSUPPORT_DYNAMIC_ALLOCATION 1
 ```
+
+### Custom FreeRTOS Configuration Path
+
+By default, OSAL-RS looks for `FreeRTOSConfig.h` at `<workspace_root>/inc/FreeRTOSConfig.h`. You can override this path using the `FREERTOS_CONFIG_PATH` environment variable.
+
+#### Setting via CMake
+
+```cmake
+# Set custom path to FreeRTOSConfig.h
+set(FREERTOS_CONFIG_PATH "${CMAKE_SOURCE_DIR}/inc/hhg-config/pico/FreeRTOSConfig.h")
+
+# Pass to Cargo build via environment variable
+add_custom_command(
+    OUTPUT ${OSAL_RS_LIB}
+    COMMAND ${CMAKE_COMMAND} -E env FREERTOS_CONFIG_PATH=${FREERTOS_CONFIG_PATH}
+            cargo build --release --target ${RUST_TARGET} --features freertos
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/osal-rs
+    COMMENT "Building OSAL-RS library"
+)
+```
+
+#### Setting via Environment Variable
+
+```bash
+# Set environment variable before building
+export FREERTOS_CONFIG_PATH="/path/to/your/FreeRTOSConfig.h"
+cargo build --release --target thumbv7em-none-eabihf --features freertos
+```
+
+#### Using with Corrosion
+
+```cmake
+# Set environment variable for Corrosion
+set(FREERTOS_CONFIG_PATH "${CMAKE_SOURCE_DIR}/inc/custom/FreeRTOSConfig.h")
+
+corrosion_import_crate(
+    MANIFEST_PATH osal-rs/Cargo.toml
+    FEATURES freertos
+)
+
+# Set environment for the build
+corrosion_set_env_vars(osal-rs
+    FREERTOS_CONFIG_PATH=${FREERTOS_CONFIG_PATH}
+)
+```
+
+**Note**: The build system will automatically regenerate Rust type bindings from the specified `FreeRTOSConfig.h` during the build process.
 
 ## License
 

@@ -19,6 +19,9 @@
 
 //! Serialization trait and implementation.
 
+#[cfg(feature = "alloc")]
+use alloc::string::String;
+
 use crate::error::{Error, Result};
 
 /// Trait for types that can be serialized.
@@ -38,8 +41,8 @@ use crate::error::{Error, Result};
 ///
 /// impl Serialize for Point {
 ///     fn serialize<S: Serializer>(&self, serializer: &mut S) -> core::result::Result<(), S::Error> {
-///         serializer.serialize_i32(self.x)?;
-///         serializer.serialize_i32(self.y)?;
+///         serializer.serialize_i32("x", self.x)?;
+///         serializer.serialize_i32("y", self.y)?;
 ///         Ok(())
 ///     }
 /// }
@@ -57,47 +60,69 @@ pub trait Serializer: Sized {
     /// The error type that can be returned during serialization.
     type Error: From<Error>;
 
+    fn serialize_struct_start(&mut self, _name: &str, _len: usize) -> core::result::Result<(), Self::Error> {
+        Ok(())
+    }
+
     /// Serialize a `bool` value.
-    fn serialize_bool(&mut self, v: bool) -> core::result::Result<(), Self::Error>;
+    fn serialize_bool(&mut self, name: &str, v: bool) -> core::result::Result<(), Self::Error>;
 
     /// Serialize a `u8` value.
-    fn serialize_u8(&mut self, v: u8) -> core::result::Result<(), Self::Error>;
+    fn serialize_u8(&mut self, name: &str, v: u8) -> core::result::Result<(), Self::Error>;
 
     /// Serialize an `i8` value.
-    fn serialize_i8(&mut self, v: i8) -> core::result::Result<(), Self::Error>;
+    fn serialize_i8(&mut self, name: &str, v: i8) -> core::result::Result<(), Self::Error>;
 
     /// Serialize a `u16` value.
-    fn serialize_u16(&mut self, v: u16) -> core::result::Result<(), Self::Error>;
+    fn serialize_u16(&mut self, name: &str, v: u16) -> core::result::Result<(), Self::Error>;
 
     /// Serialize an `i16` value.
-    fn serialize_i16(&mut self, v: i16) -> core::result::Result<(), Self::Error>;
+    fn serialize_i16(&mut self, name: &str, v: i16) -> core::result::Result<(), Self::Error>;
 
     /// Serialize a `u32` value.
-    fn serialize_u32(&mut self, v: u32) -> core::result::Result<(), Self::Error>;
+    fn serialize_u32(&mut self, name: &str, v: u32) -> core::result::Result<(), Self::Error>;
 
     /// Serialize an `i32` value.
-    fn serialize_i32(&mut self, v: i32) -> core::result::Result<(), Self::Error>;
+    fn serialize_i32(&mut self, name: &str, v: i32) -> core::result::Result<(), Self::Error>;
 
     /// Serialize a `u64` value.
-    fn serialize_u64(&mut self, v: u64) -> core::result::Result<(), Self::Error>;
+    fn serialize_u64(&mut self, name: &str, v: u64) -> core::result::Result<(), Self::Error>;
 
     /// Serialize an `i64` value.
-    fn serialize_i64(&mut self, v: i64) -> core::result::Result<(), Self::Error>;
+    fn serialize_i64(&mut self, name: &str, v: i64) -> core::result::Result<(), Self::Error>;
 
     /// Serialize a `u128` value.
-    fn serialize_u128(&mut self, v: u128) -> core::result::Result<(), Self::Error>;
+    fn serialize_u128(&mut self, name: &str, v: u128) -> core::result::Result<(), Self::Error>;
 
     /// Serialize an `i128` value.
-    fn serialize_i128(&mut self, v: i128) -> core::result::Result<(), Self::Error>;
+    fn serialize_i128(&mut self, name: &str, v: i128) -> core::result::Result<(), Self::Error>;
 
     /// Serialize an `f32` value.
-    fn serialize_f32(&mut self, v: f32) -> core::result::Result<(), Self::Error>;
+    fn serialize_f32(&mut self, name: &str, v: f32) -> core::result::Result<(), Self::Error>;
 
     /// Serialize an `f64` value.
-    fn serialize_f64(&mut self, v: f64) -> core::result::Result<(), Self::Error>;
+    fn serialize_f64(&mut self, name: &str, v: f64) -> core::result::Result<(), Self::Error>;
 
     /// Serialize a byte slice.
-    fn serialize_bytes(&mut self, v: &[u8]) -> core::result::Result<(), Self::Error>;
+    fn serialize_bytes(&mut self, name: &str, v: &[u8]) -> core::result::Result<(), Self::Error>;
+
+    /// Begin serializing a struct with the given name and number of fields.
+    /// Default implementation does nothing (suitable for binary formats).
+    fn serialize_struct_start(&mut self, _name: &str, _len: usize) -> core::result::Result<(), Self::Error> {
+        Ok(())
+    }
+
+    /// Serialize a struct field with name and value.
+    /// Default implementation just serializes the value.
+    fn serialize_field<T: Serialize>(&mut self, _name: &str, value: &T) -> core::result::Result<(), Self::Error> {
+        value.serialize(self)
+    }
+
+    /// End serializing a struct.
+    /// Default implementation does nothing (suitable for binary formats).
+    fn serialize_struct_end(&mut self) -> core::result::Result<(), Self::Error> {
+        Ok(())
+    }
 }
 
 /// A serializer that writes data to a byte buffer in little-endian format.
@@ -149,61 +174,61 @@ impl<'a> ByteSerializer<'a> {
 impl<'a> Serializer for ByteSerializer<'a> {
     type Error = Error;
 
-    fn serialize_bool(&mut self, v: bool) -> Result<()> {
-        self.serialize_u8(if v { 1 } else { 0 })
+    fn serialize_bool(&mut self, _name: &str, v: bool) -> Result<()> {
+        self.serialize_u8("", if v { 1 } else { 0 })
     }
 
-    fn serialize_u8(&mut self, v: u8) -> Result<()> {
+    fn serialize_u8(&mut self, _name: &str, v: u8) -> Result<()> {
         self.write_bytes(&[v])
     }
 
-    fn serialize_i8(&mut self, v: i8) -> Result<()> {
+    fn serialize_i8(&mut self, _name: &str, v: i8) -> Result<()> {
         self.write_bytes(&v.to_le_bytes())
     }
 
-    fn serialize_u16(&mut self, v: u16) -> Result<()> {
+    fn serialize_u16(&mut self, _name: &str, v: u16) -> Result<()> {
         self.write_bytes(&v.to_le_bytes())
     }
 
-    fn serialize_i16(&mut self, v: i16) -> Result<()> {
+    fn serialize_i16(&mut self, _name: &str, v: i16) -> Result<()> {
         self.write_bytes(&v.to_le_bytes())
     }
 
-    fn serialize_u32(&mut self, v: u32) -> Result<()> {
+    fn serialize_u32(&mut self, _name: &str, v: u32) -> Result<()> {
         self.write_bytes(&v.to_le_bytes())
     }
 
-    fn serialize_i32(&mut self, v: i32) -> Result<()> {
+    fn serialize_i32(&mut self, _name: &str, v: i32) -> Result<()> {
         self.write_bytes(&v.to_le_bytes())
     }
 
-    fn serialize_u64(&mut self, v: u64) -> Result<()> {
+    fn serialize_u64(&mut self, _name: &str, v: u64) -> Result<()> {
         self.write_bytes(&v.to_le_bytes())
     }
 
-    fn serialize_i64(&mut self, v: i64) -> Result<()> {
+    fn serialize_i64(&mut self, _name: &str, v: i64) -> Result<()> {
         self.write_bytes(&v.to_le_bytes())
     }
 
-    fn serialize_u128(&mut self, v: u128) -> Result<()> {
+    fn serialize_u128(&mut self, _name: &str, v: u128) -> Result<()> {
         self.write_bytes(&v.to_le_bytes())
     }
 
-    fn serialize_i128(&mut self, v: i128) -> Result<()> {
+    fn serialize_i128(&mut self, _name: &str, v: i128) -> Result<()> {
         self.write_bytes(&v.to_le_bytes())
     }
 
-    fn serialize_f32(&mut self, v: f32) -> Result<()> {
+    fn serialize_f32(&mut self, _name: &str, v: f32) -> Result<()> {
         self.write_bytes(&v.to_le_bytes())
     }
 
-    fn serialize_f64(&mut self, v: f64) -> Result<()> {
+    fn serialize_f64(&mut self, _name: &str, v: f64) -> Result<()> {
         self.write_bytes(&v.to_le_bytes())
     }
 
-    fn serialize_bytes(&mut self, v: &[u8]) -> Result<()> {
+    fn serialize_bytes(&mut self, _name: &str, v: &[u8]) -> Result<()> {
         // First write the length as u32
-        self.serialize_u32(v.len() as u32)?;
+        self.serialize_u32("", v.len() as u32)?;
         self.write_bytes(v)
     }
 }
@@ -216,7 +241,7 @@ impl Serialize for bool {
         S: Serializer
     {
     
-        serializer.serialize_bool(*self)
+        serializer.serialize_bool("", *self)
     }
 }
 
@@ -225,7 +250,7 @@ impl Serialize for u8 {
     where
         S: Serializer,
     {
-        serializer.serialize_u8(*self)
+        serializer.serialize_u8("", *self)
     }
 }
 
@@ -234,7 +259,7 @@ impl Serialize for i8 {
     where
         S: Serializer,
     {
-        serializer.serialize_i8(*self)
+        serializer.serialize_i8("", *self)
     }
 }
 
@@ -243,7 +268,7 @@ impl Serialize for u16 {
     where
         S: Serializer,
     {
-        serializer.serialize_u16(*self)
+        serializer.serialize_u16("", *self)
     }
 }
 
@@ -252,7 +277,7 @@ impl Serialize for i16 {
     where
         S: Serializer,
     {
-        serializer.serialize_i16(*self)
+        serializer.serialize_i16("", *self)
     }
 }
 
@@ -261,7 +286,7 @@ impl Serialize for u32 {
     where
         S: Serializer,
     {
-        serializer.serialize_u32(*self)
+        serializer.serialize_u32("", *self)
     }
 }
 
@@ -270,7 +295,7 @@ impl Serialize for i32 {
     where
         S: Serializer,
     {
-        serializer.serialize_i32(*self)
+        serializer.serialize_i32("", *self)
     }
 }
 
@@ -279,7 +304,7 @@ impl Serialize for u64 {
     where
         S: Serializer,
     {
-        serializer.serialize_u64(*self)
+        serializer.serialize_u64("", *self)
     }
 }
 
@@ -288,7 +313,7 @@ impl Serialize for i64 {
     where
         S: Serializer,
     {
-        serializer.serialize_i64(*self)
+        serializer.serialize_i64("", *self)
     }
 }
 
@@ -297,7 +322,7 @@ impl Serialize for u128 {
     where
         S: Serializer,
     {
-        serializer.serialize_u128(*self)
+        serializer.serialize_u128("", *self)
     }
 }
 
@@ -306,7 +331,7 @@ impl Serialize for i128 {
     where
         S: Serializer,
     {
-        serializer.serialize_i128(*self)
+        serializer.serialize_i128("", *self)
     }
 }
 
@@ -315,7 +340,7 @@ impl Serialize for f32 {
     where
         S: Serializer,
     {
-        serializer.serialize_f32(*self)
+        serializer.serialize_f32("", *self)
     }
 }
 
@@ -324,7 +349,27 @@ impl Serialize for f64 {
     where
         S: Serializer,
     {
-        serializer.serialize_f64(*self)
+        serializer.serialize_f64("", *self)
+    }
+}
+
+// String implementations
+impl Serialize for &str {
+    fn serialize<S>(&self, serializer: &mut S) -> core::result::Result<(), S::Error> 
+    where
+        S: Serializer,
+    {
+        serializer.serialize_bytes("", self.as_bytes())
+    }
+}
+
+#[cfg(feature = "alloc")]
+impl Serialize for String {
+    fn serialize<S>(&self, serializer: &mut S) -> core::result::Result<(), S::Error> 
+    where
+        S: Serializer,
+    {
+        serializer.serialize_bytes("", self.as_bytes())
     }
 }
 
@@ -373,11 +418,11 @@ impl<T: Serialize> Serialize for Option<T> {
     {
         match self {
             Some(value) => {
-                serializer.serialize_u8(1)?;
+                serializer.serialize_u8("", 1)?;
                 value.serialize(serializer)?;
             }
             None => {
-                serializer.serialize_u8(0)?;
+                serializer.serialize_u8("", 0)?;
             }
         }
         Ok(())

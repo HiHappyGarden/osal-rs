@@ -29,8 +29,10 @@ use core::ops::{Deref, DerefMut};
 use core::time::Duration;
 
 use alloc::ffi::CString;
+use alloc::format;
 use alloc::string::{String, ToString};
 use alloc::sync::Arc;
+use alloc::vec::Vec;
 
 #[cfg(not(feature = "serde"))]
 use crate::os::{Deserialize, Serialize};
@@ -38,7 +40,7 @@ use crate::os::{Deserialize, Serialize};
 #[cfg(feature = "serde")]
 use osal_rs_serde::{Deserialize, Serialize};
 
-use crate::os::Mutex;
+use crate::os::{AsSyncStr, Mutex};
 
 /// Error types for OSAL-RS operations.
 ///
@@ -562,7 +564,7 @@ impl<const SIZE: usize> Serialize for Bytes<SIZE> {
     /// * `Err(S::Error)` - If serialization fails
     fn serialize<S: osal_rs_serde::Serializer>(&self, serializer: &mut S) -> core::result::Result<(), S::Error> {
         for &byte in self.0.iter() {
-            serializer.serialize_u8(byte)?;
+            serializer.serialize_u8("", byte)?;
         }
         Ok(())
     }
@@ -587,7 +589,7 @@ impl<const SIZE: usize> Deserialize for Bytes<SIZE> {
     fn deserialize<D: osal_rs_serde::Deserializer>(deserializer: &mut D) -> core::result::Result<Self, D::Error> {
         let mut array = [0u8; SIZE];
         for i in 0..SIZE {
-            array[i] = deserializer.deserialize_u8()?;
+            array[i] = deserializer.deserialize_u8("")?;
         }
         Ok(Self(array))
     }
@@ -873,67 +875,190 @@ impl<const SIZE: usize> Bytes<SIZE> {
     }
 }
 
-/// Trait for types that can provide a string reference in a thread-safe manner.
+/// Converts a byte slice to a hexadecimal string representation.
 ///
-/// This trait extends the basic string reference functionality with thread-safety
-/// guarantees by requiring both `Sync` and `Send` bounds. It's useful for types
-/// that need to provide string data across thread boundaries in a concurrent
-/// environment.
+/// Each byte is converted to its two-character hexadecimal representation
+/// in lowercase. This function allocates a new `String` on the heap.
 ///
-/// # Thread Safety
+/// # Parameters
 ///
-/// Implementors must be both `Sync` (safe to share references across threads) and
-/// `Send` (safe to transfer ownership across threads).
+/// * `bytes` - The byte slice to convert
+///
+/// # Returns
+///
+/// A `String` containing the hexadecimal representation of the bytes.
+/// Each byte is represented by exactly 2 hex characters (lowercase).
+///
+/// # Memory Allocation
+///
+/// This function allocates heap memory. In memory-constrained environments,
+/// consider using [`bytes_to_hex_into_slice`] instead.
 ///
 /// # Examples
 ///
 /// ```ignore
-/// use osal_rs::utils::AsSyncStr;
+/// use osal_rs::utils::bytes_to_hex;
 /// 
-/// struct ThreadSafeName {
-///     name: &'static str,
-/// }
+/// let data = &[0x01, 0x23, 0xAB, 0xFF];
+/// let hex = bytes_to_hex(data);
+/// assert_eq!(hex, "0123abff");
 /// 
-/// impl AsSyncStr for ThreadSafeName {
-///     fn as_str(&self) -> &str {
-///         self.name
-///     }
-/// }
-/// 
-/// // Can be safely shared across threads
-/// fn use_in_thread(item: &dyn AsSyncStr) {
-///     println!("Name: {}", item.as_str());
-/// }
+/// let empty = bytes_to_hex(&[]);
+/// assert_eq!(empty, "");
 /// ```
-pub trait AsSyncStr : Sync + Send { 
-    /// Returns a string slice reference.
-    ///
-    /// This method provides access to the underlying string data in a way
-    /// that is safe to use across thread boundaries.
-    ///
-    /// # Returns
-    ///
-    /// A reference to a string slice with lifetime tied to `self`.
-    fn as_str(&self) -> &str;
+pub fn bytes_to_hex<'a>(bytes: &'a [u8]) -> String {
+    bytes.iter()
+         .map(|b| format!("{:02x}", b))
+         .collect()
 }
 
-impl PartialEq for dyn AsSyncStr {
-    fn eq(&self, other: &Self) -> bool {
-        self.as_str() == other.as_str()
+/// Converts a byte slice to hexadecimal representation into a pre-allocated buffer.
+///
+/// This is a zero-allocation version of [`bytes_to_hex`] that writes the
+/// hexadecimal representation directly into a provided output buffer.
+/// Suitable for embedded systems and real-time applications.
+///
+/// # Parameters
+///
+/// * `bytes` - The source byte slice to convert
+/// * `output` - The destination buffer to write hex characters into
+///
+/// # Returns
+///
+/// The number of bytes written to the output buffer (always `bytes.len() * 2`).
+///
+/// # Panics
+///
+/// Panics if `output.len() < bytes.len() * 2`. The output buffer must be
+/// at least twice the size of the input to hold the hex representation.
+///
+/// # Examples
+///
+/// ```ignore
+/// use osal_rs::utils::bytes_to_hex_into_slice;
+/// 
+/// let data = &[0x01, 0xAB, 0xFF];
+/// let mut buffer = [0u8; 6];
+/// 
+/// let written = bytes_to_hex_into_slice(data, &mut buffer);
+/// assert_eq!(written, 6);
+/// assert_eq!(&buffer, b"01abff");
+/// 
+/// // Will panic - buffer too small
+/// // let mut small = [0u8; 4];
+/// // bytes_to_hex_into_slice(data, &mut small);
+/// ```
+pub fn bytes_to_hex_into_slice(bytes: &[u8], output: &mut [u8]) -> usize {
+    assert!(output.len() >= bytes.len() * 2, "Buffer too small for hex conversion");
+    let mut i = 0;
+    for &b in bytes {
+        let hex = format!("{:02x}", b);
+        output[i..i+2].copy_from_slice(hex.as_bytes());
+        i += 2;
     }
+    i 
 }
 
-impl Eq for dyn AsSyncStr {}
-
-impl Debug for dyn AsSyncStr {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        write!(f, "{}", self.as_str())
+/// Converts a hexadecimal string to a vector of bytes.
+///
+/// Parses a string of hexadecimal digits (case-insensitive) and converts
+/// them to their binary representation. Each pair of hex digits becomes
+/// one byte in the output.
+///
+/// # Parameters
+///
+/// * `hex` - A string slice containing hexadecimal digits (0-9, a-f, A-F)
+///
+/// # Returns
+///
+/// * `Ok(Vec<u8>)` - A vector containing the decoded bytes
+/// * `Err(Error::StringConversionError)` - If the string has odd length or contains invalid hex digits
+///
+/// # Memory Allocation
+///
+/// This function allocates a `Vec` on the heap. For no-alloc environments,
+/// use [`hex_to_bytes_into_slice`] instead.
+///
+/// # Examples
+///
+/// ```ignore
+/// use osal_rs::utils::hex_to_bytes;
+/// 
+/// // Lowercase hex
+/// let bytes = hex_to_bytes("0123abff").unwrap();
+/// assert_eq!(bytes, vec![0x01, 0x23, 0xAB, 0xFF]);
+/// 
+/// // Uppercase hex
+/// let bytes2 = hex_to_bytes("ABCD").unwrap();
+/// assert_eq!(bytes2, vec![0xAB, 0xCD]);
+/// 
+/// // Odd length - error
+/// assert!(hex_to_bytes("ABC").is_err());
+/// 
+/// // Invalid character - error
+/// assert!(hex_to_bytes("0G").is_err());
+/// ```
+pub fn hex_to_bytes(hex: &str) -> Result<Vec<u8>> {
+    if hex.len() % 2 != 0 {
+        return Err(Error::StringConversionError);
     }
+
+    let bytes_result: Result<Vec<u8>> = (0..hex.len())
+        .step_by(2)
+        .map(|i| {
+            u8::from_str_radix(&hex[i..i + 2], 16)
+                .map_err(|_| Error::StringConversionError)
+        })
+        .collect();
+
+    bytes_result
 }
 
-impl Display for dyn AsSyncStr {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        write!(f, "{}", self.as_str())
+/// Converts a hexadecimal string to bytes into a pre-allocated buffer.
+///
+/// This is a zero-allocation version of [`hex_to_bytes`] that writes decoded
+/// bytes directly into a provided output buffer. Suitable for embedded systems
+/// and real-time applications where heap allocation is not desired.
+///
+/// # Parameters
+///
+/// * `hex` - A string slice containing hexadecimal digits (0-9, a-f, A-F)
+/// * `output` - The destination buffer to write decoded bytes into
+///
+/// # Returns
+///
+/// * `Ok(usize)` - The number of bytes written to the output buffer (`hex.len() / 2`)
+/// * `Err(Error::StringConversionError)` - If:
+///   - The hex string has odd length
+///   - The output buffer is too small (`output.len() < hex.len() / 2`)
+///   - The hex string contains invalid characters
+///
+/// # Examples
+///
+/// ```ignore
+/// use osal_rs::utils::hex_to_bytes_into_slice;
+/// 
+/// let mut buffer = [0u8; 4];
+/// let written = hex_to_bytes_into_slice("0123abff", &mut buffer).unwrap();
+/// assert_eq!(written, 4);
+/// assert_eq!(buffer, [0x01, 0x23, 0xAB, 0xFF]);
+/// 
+/// // Buffer too small
+/// let mut small = [0u8; 2];
+/// assert!(hex_to_bytes_into_slice("0123abff", &mut small).is_err());
+/// 
+/// // Odd length string
+/// assert!(hex_to_bytes_into_slice("ABC", &mut buffer).is_err());
+/// ```
+pub fn hex_to_bytes_into_slice(hex: &str, output: &mut [u8]) -> Result<usize> {
+    if hex.len() % 2 != 0 || output.len() < hex.len() / 2 {
+        return Err(Error::StringConversionError);
     }
-}
 
+    for i in 0..(hex.len() / 2) {
+        output[i] = u8::from_str_radix(&hex[2 * i..2 * i + 2], 16)
+            .map_err(|_| Error::StringConversionError)?;
+    }
+
+    Ok(hex.len() / 2)
+}

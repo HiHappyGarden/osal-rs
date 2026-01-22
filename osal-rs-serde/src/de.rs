@@ -19,6 +19,9 @@
 
 //! Deserialization trait and implementation.
 
+#[cfg(feature = "alloc")]
+use alloc::string::String;
+
 use crate::error::{Error, Result};
 
 /// Trait for types that can be deserialized.
@@ -59,46 +62,64 @@ pub trait Deserializer: Sized {
     type Error: From<Error>;
 
     /// Deserialize a `bool` value.
-    fn deserialize_bool(&mut self) -> core::result::Result<bool, Self::Error>;
+    fn deserialize_bool(&mut self, name: &str) -> core::result::Result<bool, Self::Error>;
 
     /// Deserialize a `u8` value.
-    fn deserialize_u8(&mut self) -> core::result::Result<u8, Self::Error>;
+    fn deserialize_u8(&mut self, name: &str) -> core::result::Result<u8, Self::Error>;
 
     /// Deserialize an `i8` value.
-    fn deserialize_i8(&mut self) -> core::result::Result<i8, Self::Error>;
+    fn deserialize_i8(&mut self, name: &str) -> core::result::Result<i8, Self::Error>;
 
     /// Deserialize a `u16` value.
-    fn deserialize_u16(&mut self) -> core::result::Result<u16, Self::Error>;
+    fn deserialize_u16(&mut self, name: &str) -> core::result::Result<u16, Self::Error>;
 
     /// Deserialize an `i16` value.
-    fn deserialize_i16(&mut self) -> core::result::Result<i16, Self::Error>;
+    fn deserialize_i16(&mut self, name: &str) -> core::result::Result<i16, Self::Error>;
 
     /// Deserialize a `u32` value.
-    fn deserialize_u32(&mut self) -> core::result::Result<u32, Self::Error>;
+    fn deserialize_u32(&mut self, name: &str) -> core::result::Result<u32, Self::Error>;
 
     /// Deserialize an `i32` value.
-    fn deserialize_i32(&mut self) -> core::result::Result<i32, Self::Error>;
+    fn deserialize_i32(&mut self, name: &str) -> core::result::Result<i32, Self::Error>;
 
     /// Deserialize a `u64` value.
-    fn deserialize_u64(&mut self) -> core::result::Result<u64, Self::Error>;
+    fn deserialize_u64(&mut self, name: &str) -> core::result::Result<u64, Self::Error>;
 
     /// Deserialize an `i64` value.
-    fn deserialize_i64(&mut self) -> core::result::Result<i64, Self::Error>;
+    fn deserialize_i64(&mut self, name: &str) -> core::result::Result<i64, Self::Error>;
 
     /// Deserialize a `u128` value.
-    fn deserialize_u128(&mut self) -> core::result::Result<u128, Self::Error>;
+    fn deserialize_u128(&mut self, name: &str) -> core::result::Result<u128, Self::Error>;
 
     /// Deserialize an `i128` value.
-    fn deserialize_i128(&mut self) -> core::result::Result<i128, Self::Error>;
+    fn deserialize_i128(&mut self, name: &str) -> core::result::Result<i128, Self::Error>;
 
     /// Deserialize an `f32` value.
-    fn deserialize_f32(&mut self) -> core::result::Result<f32, Self::Error>;
+    fn deserialize_f32(&mut self, name: &str) -> core::result::Result<f32, Self::Error>;
 
     /// Deserialize an `f64` value.
-    fn deserialize_f64(&mut self) -> core::result::Result<f64, Self::Error>;
+    fn deserialize_f64(&mut self, name: &str) -> core::result::Result<f64, Self::Error>;
 
     /// Deserialize bytes into a buffer. Returns the number of bytes read.
-    fn deserialize_bytes(&mut self, buffer: &mut [u8]) -> core::result::Result<usize, Self::Error>;
+    fn deserialize_bytes(&mut self, name: &str, buffer: &mut [u8]) -> core::result::Result<usize, Self::Error>;
+
+    /// Begin deserializing a struct with the given name.
+    /// Default implementation does nothing (suitable for binary formats).
+    fn deserialize_struct_start(&mut self, _name: &str) -> core::result::Result<(), Self::Error> {
+        Ok(())
+    }
+
+    /// Deserialize a struct field with name.
+    /// Default implementation just deserializes the value.
+    fn deserialize_field<T: Deserialize>(&mut self, _name: &str) -> core::result::Result<T, Self::Error> {
+        T::deserialize(self)
+    }
+
+    /// End deserializing a struct.
+    /// Default implementation does nothing (suitable for binary formats).
+    fn deserialize_struct_end(&mut self) -> core::result::Result<(), Self::Error> {
+        Ok(())
+    }
 }
 
 /// A deserializer that reads data from a byte buffer in little-endian format.
@@ -152,93 +173,93 @@ impl<'a> ByteDeserializer<'a> {
 impl<'a> Deserializer for ByteDeserializer<'a> {
     type Error = Error;
 
-    fn deserialize_bool(&mut self) -> Result<bool> {
-        Ok(self.deserialize_u8()? != 0)
+    fn deserialize_bool(&mut self, _name: &str) -> Result<bool> {
+        Ok(self.deserialize_u8("")? != 0)
     }
 
-    fn deserialize_u8(&mut self) -> Result<u8> {
+    fn deserialize_u8(&mut self, _name: &str) -> Result<u8> {
         let bytes = self.read_bytes(1)?;
         Ok(bytes[0])
     }
 
-    fn deserialize_i8(&mut self) -> Result<i8> {
+    fn deserialize_i8(&mut self, _name: &str) -> Result<i8> {
         let bytes = self.read_bytes(1)?;
         Ok(i8::from_le_bytes([bytes[0]]))
     }
 
-    fn deserialize_u16(&mut self) -> Result<u16> {
+    fn deserialize_u16(&mut self, _name: &str) -> Result<u16> {
         let bytes = self.read_bytes(2)?;
         let mut buf = [0u8; 2];
         buf.copy_from_slice(bytes);
         Ok(u16::from_le_bytes(buf))
     }
 
-    fn deserialize_i16(&mut self) -> Result<i16> {
+    fn deserialize_i16(&mut self, _name: &str) -> Result<i16> {
         let bytes = self.read_bytes(2)?;
         let mut buf = [0u8; 2];
         buf.copy_from_slice(bytes);
         Ok(i16::from_le_bytes(buf))
     }
 
-    fn deserialize_u32(&mut self) -> Result<u32> {
+    fn deserialize_u32(&mut self, _name: &str) -> Result<u32> {
         let bytes = self.read_bytes(4)?;
         let mut buf = [0u8; 4];
         buf.copy_from_slice(bytes);
         Ok(u32::from_le_bytes(buf))
     }
 
-    fn deserialize_i32(&mut self) -> Result<i32> {
+    fn deserialize_i32(&mut self, _name: &str) -> Result<i32> {
         let bytes = self.read_bytes(4)?;
         let mut buf = [0u8; 4];
         buf.copy_from_slice(bytes);
         Ok(i32::from_le_bytes(buf))
     }
 
-    fn deserialize_u64(&mut self) -> Result<u64> {
+    fn deserialize_u64(&mut self, _name: &str) -> Result<u64> {
         let bytes = self.read_bytes(8)?;
         let mut buf = [0u8; 8];
         buf.copy_from_slice(bytes);
         Ok(u64::from_le_bytes(buf))
     }
 
-    fn deserialize_i64(&mut self) -> Result<i64> {
+    fn deserialize_i64(&mut self, _name: &str) -> Result<i64> {
         let bytes = self.read_bytes(8)?;
         let mut buf = [0u8; 8];
         buf.copy_from_slice(bytes);
         Ok(i64::from_le_bytes(buf))
     }
 
-    fn deserialize_u128(&mut self) -> Result<u128> {
+    fn deserialize_u128(&mut self, _name: &str) -> Result<u128> {
         let bytes = self.read_bytes(16)?;
         let mut buf = [0u8; 16];
         buf.copy_from_slice(bytes);
         Ok(u128::from_le_bytes(buf))
     }
 
-    fn deserialize_i128(&mut self) -> Result<i128> {
+    fn deserialize_i128(&mut self, _name: &str) -> Result<i128> {
         let bytes = self.read_bytes(16)?;
         let mut buf = [0u8; 16];
         buf.copy_from_slice(bytes);
         Ok(i128::from_le_bytes(buf))
     }
 
-    fn deserialize_f32(&mut self) -> Result<f32> {
+    fn deserialize_f32(&mut self, _name: &str) -> Result<f32> {
         let bytes = self.read_bytes(4)?;
         let mut buf = [0u8; 4];
         buf.copy_from_slice(bytes);
         Ok(f32::from_le_bytes(buf))
     }
 
-    fn deserialize_f64(&mut self) -> Result<f64> {
+    fn deserialize_f64(&mut self, _name: &str) -> Result<f64> {
         let bytes = self.read_bytes(8)?;
         let mut buf = [0u8; 8];
         buf.copy_from_slice(bytes);
         Ok(f64::from_le_bytes(buf))
     }
 
-    fn deserialize_bytes(&mut self, buffer: &mut [u8]) -> Result<usize> {
+    fn deserialize_bytes(&mut self, _name: &str, buffer: &mut [u8]) -> Result<usize> {
         // First read the length
-        let len = self.deserialize_u32()? as usize;
+        let len = self.deserialize_u32("")? as usize;
         if len > buffer.len() {
             return Err(Error::BufferTooSmall);
         }
@@ -252,79 +273,105 @@ impl<'a> Deserializer for ByteDeserializer<'a> {
 
 impl Deserialize for bool {
     fn deserialize<D: Deserializer>(deserializer: &mut D) -> core::result::Result<Self, D::Error> {
-        deserializer.deserialize_bool()
+        deserializer.deserialize_bool("")
     }
 }
 
 impl Deserialize for u8 {
     fn deserialize<D: Deserializer>(deserializer: &mut D) -> core::result::Result<Self, D::Error> {
-        deserializer.deserialize_u8()
+        deserializer.deserialize_u8("")
     }
 }
 
 impl Deserialize for i8 {
     fn deserialize<D: Deserializer>(deserializer: &mut D) -> core::result::Result<Self, D::Error> {
-        deserializer.deserialize_i8()
+        deserializer.deserialize_i8("")
     }
 }
 
 impl Deserialize for u16 {
     fn deserialize<D: Deserializer>(deserializer: &mut D) -> core::result::Result<Self, D::Error> {
-        deserializer.deserialize_u16()
+        deserializer.deserialize_u16("")
     }
 }
 
 impl Deserialize for i16 {
     fn deserialize<D: Deserializer>(deserializer: &mut D) -> core::result::Result<Self, D::Error> {
-        deserializer.deserialize_i16()
+        deserializer.deserialize_i16("")
     }
 }
 
 impl Deserialize for u32 {
     fn deserialize<D: Deserializer>(deserializer: &mut D) -> core::result::Result<Self, D::Error> {
-        deserializer.deserialize_u32()
+        deserializer.deserialize_u32("")
     }
 }
 
 impl Deserialize for i32 {
     fn deserialize<D: Deserializer>(deserializer: &mut D) -> core::result::Result<Self, D::Error> {
-        deserializer.deserialize_i32()
+        deserializer.deserialize_i32("")
     }
 }
 
 impl Deserialize for u64 {
     fn deserialize<D: Deserializer>(deserializer: &mut D) -> core::result::Result<Self, D::Error> {
-        deserializer.deserialize_u64()
+        deserializer.deserialize_u64("")
     }
 }
 
 impl Deserialize for i64 {
     fn deserialize<D: Deserializer>(deserializer: &mut D) -> core::result::Result<Self, D::Error> {
-        deserializer.deserialize_i64()
+        deserializer.deserialize_i64("")
     }
 }
 
 impl Deserialize for u128 {
     fn deserialize<D: Deserializer>(deserializer: &mut D) -> core::result::Result<Self, D::Error> {
-        deserializer.deserialize_u128()
+        deserializer.deserialize_u128("")
     }
 }
 
 impl Deserialize for i128 {
     fn deserialize<D: Deserializer>(deserializer: &mut D) -> core::result::Result<Self, D::Error> {
-        deserializer.deserialize_i128()
+        deserializer.deserialize_i128("")
     }
 }
 
 impl Deserialize for f32 {
     fn deserialize<D: Deserializer>(deserializer: &mut D) -> core::result::Result<Self, D::Error> {
-        deserializer.deserialize_f32()
+        deserializer.deserialize_f32("")
     }
 }
 
 impl Deserialize for f64 {
     fn deserialize<D: Deserializer>(deserializer: &mut D) -> core::result::Result<Self, D::Error> {
-        deserializer.deserialize_f64()
+        deserializer.deserialize_f64("")
+    }
+}
+
+// String implementations
+impl Deserialize for &str {
+    fn deserialize<D: Deserializer>(_deserializer: &mut D) -> core::result::Result<Self, D::Error> {
+        // Cannot deserialize into &str directly - use String instead
+        Err(Error::InvalidData.into())
+    }
+}
+
+#[cfg(feature = "alloc")]
+impl Deserialize for String {
+    fn deserialize<D: Deserializer>(deserializer: &mut D) -> core::result::Result<Self, D::Error> {
+        // Read length first (u32)
+        let len = deserializer.deserialize_u32("")? as usize;
+        
+        // Allocate buffer and read bytes
+        let mut buffer = alloc::vec![0u8; len];
+        for i in 0..len {
+            buffer[i] = deserializer.deserialize_u8("")?;
+        }
+        
+        // Convert to String
+        String::from_utf8(buffer)
+            .map_err(|_| Error::InvalidData.into())
     }
 }
 
@@ -381,7 +428,7 @@ impl<T> Deserialize for Option<T>
 where T: Deserialize
 {
     fn deserialize<D: Deserializer>(deserializer: &mut D) -> core::result::Result<Self, D::Error> {
-        let tag = deserializer.deserialize_u8()?;
+        let tag = deserializer.deserialize_u8("")?;
         match tag {
             0 => Ok(None),
             1 => Ok(Some(T::deserialize(deserializer)?)),

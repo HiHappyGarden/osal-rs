@@ -35,6 +35,7 @@
 //! }
 //! ```
 
+
 use proc_macro::TokenStream;
 use quote::quote;
 use syn::{parse_macro_input, Data, DeriveInput, Fields};
@@ -56,21 +57,27 @@ use syn::{parse_macro_input, Data, DeriveInput, Fields};
 pub fn derive_serialize(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
     let name = &input.ident;
+    let name_string = name.to_string();
+
 
     let serialize_impl = match &input.data {
         Data::Struct(data_struct) => match &data_struct.fields {
             Fields::Named(fields) => {
+                let field_count = fields.named.len();
                 let field_serializations = fields.named.iter().map(|f| {
                     let field_name = &f.ident;
+                    let field_name_str = field_name.as_ref().unwrap().to_string();
                     quote! {
-                        self.#field_name.serialize(serializer)?;
+                        serializer.serialize_field(#field_name_str, &self.#field_name)?;
                     }
                 });
 
                 quote! {
                     impl osal_rs_serde::Serialize for #name {
-                        fn serialize<S: osal_rs_serde::Serializer>(&self, serializer: &mut S) -> core::result::Result<(), S::Error> {
+                        fn serialize<S: osal_rs_serde::Serializer>(&self, serializer: &mut S) -> Result<(), S::Error> {
+                            serializer.serialize_struct_start(#name_string, #field_count)?;
                             #(#field_serializations)*
+                            serializer.serialize_struct_end()?;
                             Ok(())
                         }
                     }
@@ -80,13 +87,13 @@ pub fn derive_serialize(input: TokenStream) -> TokenStream {
                 let field_serializations = (0..fields.unnamed.len()).map(|i| {
                     let index = syn::Index::from(i);
                     quote! {
-                        self.#index.serialize(serializer)?;
+                        osal_rs_serde::Serialize::serialize(&self.#index, serializer)?;
                     }
                 });
 
                 quote! {
                     impl osal_rs_serde::Serialize for #name {
-                        fn serialize<S: osal_rs_serde::Serializer>(&self, serializer: &mut S) -> core::result::Result<(), S::Error> {
+                        fn serialize<S: osal_rs_serde::Serializer>(&self, serializer: &mut S) -> Result<(), S::Error> {
                             #(#field_serializations)*
                             Ok(())
                         }
@@ -96,7 +103,7 @@ pub fn derive_serialize(input: TokenStream) -> TokenStream {
             Fields::Unit => {
                 quote! {
                     impl osal_rs_serde::Serialize for #name {
-                        fn serialize<S: osal_rs_serde::Serializer>(&self, _serializer: &mut S) -> core::result::Result<(), S::Error> {
+                        fn serialize<S: osal_rs_serde::Serializer>(&self, _serializer: &mut S) -> Result<(), S::Error> {
                             Ok(())
                         }
                     }
@@ -142,18 +149,29 @@ pub fn derive_deserialize(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
     let name = &input.ident;
 
+    let name_string = name.to_string();
+
     let deserialize_impl = match &input.data {
         Data::Struct(data_struct) => match &data_struct.fields {
             Fields::Named(fields) => {
-                let field_names = fields.named.iter().map(|f| &f.ident);
-                let field_types = fields.named.iter().map(|f| &f.ty);
+                let field_deserializations = fields.named.iter().map(|f| {
+                    let field_name = &f.ident;
+                    let field_name_str = field_name.as_ref().unwrap().to_string();
+                    let field_type = &f.ty;
+                    quote! {
+                        #field_name: deserializer.deserialize_field::<#field_type>(#field_name_str)?
+                    }
+                });
 
                 quote! {
                     impl osal_rs_serde::Deserialize for #name {
-                        fn deserialize<D: osal_rs_serde::Deserializer>(deserializer: &mut D) -> core::result::Result<Self, D::Error> {
-                            Ok(Self {
-                                #(#field_names: <#field_types as osal_rs_serde::Deserialize>::deserialize(deserializer)?,)*
-                            })
+                        fn deserialize<D: osal_rs_serde::Deserializer>(deserializer: &mut D) -> Result<Self, D::Error> {
+                            deserializer.deserialize_struct_start(#name_string)?;
+                            let result = Self {
+                                #(#field_deserializations,)*
+                            };
+                            deserializer.deserialize_struct_end()?;
+                            Ok(result)
                         }
                     }
                 }
@@ -163,7 +181,7 @@ pub fn derive_deserialize(input: TokenStream) -> TokenStream {
 
                 quote! {
                     impl osal_rs_serde::Deserialize for #name {
-                        fn deserialize<D: osal_rs_serde::Deserializer>(deserializer: &mut D) -> core::result::Result<Self, D::Error> {
+                        fn deserialize<D: osal_rs_serde::Deserializer>(deserializer: &mut D) -> Result<Self, D::Error> {
                             Ok(Self(
                                 #(<#field_types as osal_rs_serde::Deserialize>::deserialize(deserializer)?,)*
                             ))
@@ -174,7 +192,7 @@ pub fn derive_deserialize(input: TokenStream) -> TokenStream {
             Fields::Unit => {
                 quote! {
                     impl osal_rs_serde::Deserialize for #name {
-                        fn deserialize<D: osal_rs_serde::Deserializer>(_deserializer: &mut D) -> core::result::Result<Self, D::Error> {
+                        fn deserialize<D: osal_rs_serde::Deserializer>(_deserializer: &mut D) -> Result<Self, D::Error> {
                             Ok(Self)
                         }
                     }

@@ -17,7 +17,65 @@
  *
  ***************************************************************************/
 
-//! Deserialization trait and implementation.
+//! Deserialization traits and implementations.
+//!
+//! This module provides the core deserialization functionality for osal-rs-serde.
+//! It defines the [`Deserialize`] trait for types that can be deserialized and the
+//! [`Deserializer`] trait for implementing custom deserialization formats.
+//!
+//! # Overview
+//!
+//! - [`Deserialize`]: Trait implemented by types that can be deserialized
+//! - [`Deserializer`]: Trait for implementing custom deserialization formats  
+//! - [`ByteDeserializer`]: Concrete implementation that reads little-endian binary data
+//!
+//! # Usage with Derive Macro
+//!
+//! The easiest way to implement deserialization is using the derive macro:
+//!
+//! ```ignore
+//! use osal_rs_serde::Deserialize;
+//!
+//! #[derive(Deserialize)]
+//! struct SensorData {
+//!     temperature: i16,
+//!     humidity: u8,
+//!     pressure: u32,
+//! }
+//! ```
+//!
+//! # Manual Implementation
+//!
+//! For custom deserialization logic, implement the trait manually:
+//!
+//! ```ignore
+//! use osal_rs_serde::{Deserialize, Deserializer};
+//!
+//! struct Point {
+//!     x: i32,
+//!     y: i32,
+//! }
+//!
+//! impl Deserialize for Point {
+//!     fn deserialize<D: Deserializer>(deserializer: &mut D, _name: &str) -> Result<Self, D::Error> {
+//!         Ok(Point {
+//!             x: deserializer.deserialize_i32("x")?,
+//!             y: deserializer.deserialize_i32("y")?,
+//!         })
+//!     }
+//! }
+//! ```
+//!
+//! # Supported Types
+//!
+//! The deserialization framework supports:
+//! - All primitive types (bool, integers, floats)
+//! - Arrays `[T; N]` where T: Deserialize
+//! - Tuples (up to 3 elements)
+//! - `Option<T>` where T: Deserialize
+//! - `Vec<T>` where T: Deserialize (requires `alloc`)
+//! - `String` (requires `alloc`)
+//! - Custom types implementing `Deserialize`
 
 #[cfg(feature = "alloc")]
 use alloc::string::String;
@@ -26,10 +84,27 @@ use crate::error::{Error, Result};
 
 /// Trait for types that can be deserialized.
 ///
-/// This trait should be implemented for any type that needs to be deserialized.
+/// This trait should be implemented (or derived) for any type that needs to be deserialized.
 /// The implementation defines how the type should be read from a deserializer.
 ///
-/// # Examples
+/// # Derive Macro
+///
+/// The easiest way to implement this trait is using the derive macro (requires `derive` feature):
+///
+/// ```ignore
+/// use osal_rs_serde::Deserialize;
+///
+/// #[derive(Deserialize)]
+/// struct Config {
+///     id: u32,
+///     enabled: bool,
+///     timeout: Option<u16>,
+/// }
+/// ```
+///
+/// # Manual Implementation
+///
+/// For custom deserialization logic or types not supported by the derive macro:
 ///
 /// ```ignore
 /// use osal_rs_serde::{Deserialize, Deserializer};
@@ -40,7 +115,7 @@ use crate::error::{Error, Result};
 /// }
 ///
 /// impl Deserialize for Point {
-///     fn deserialize<D: Deserializer>(deserializer: &mut D, name: &str) -> core::result::Result<Self, D::Error> {
+///     fn deserialize<D: Deserializer>(deserializer: &mut D, _name: &str) -> core::result::Result<Self, D::Error> {
 ///         Ok(Point {
 ///             x: deserializer.deserialize_i32("x")?,
 ///             y: deserializer.deserialize_i32("y")?,
@@ -48,6 +123,16 @@ use crate::error::{Error, Result};
 ///     }
 /// }
 /// ```
+///
+/// # Built-in Implementations
+///
+/// This trait is already implemented for:
+/// - All primitive types (bool, u8-u128, i8-i128, f32, f64)
+/// - Arrays `[T; N]` where T: Deserialize
+/// - Tuples (T1, T2) and (T1, T2, T3) where all T: Deserialize
+/// - `Option<T>` where T: Deserialize
+/// - `Vec<T>` where T: Deserialize (requires `alloc`)
+/// - `String` (requires `alloc`)
 pub trait Deserialize: Sized {
     /// Deserialize this value using the given deserializer.
     /// The `name` parameter contains the field name or struct name for context.
@@ -166,20 +251,69 @@ pub trait Deserializer: Sized {
 /// A deserializer that reads data from a byte buffer in little-endian format.
 ///
 /// This is a concrete implementation of the `Deserializer` trait that reads
-/// binary data in a compact, little-endian format.
+/// binary data in a compact, little-endian format. This is the default deserializer
+/// used by the [`crate::from_bytes`] convenience function.
+///
+/// # Format
+///
+/// This deserializer expects data in the same format as [`crate::ser::ByteSerializer`]:
+/// - All integers in little-endian byte order
+/// - Floating-point numbers in IEEE 754 representation
+/// - `bool` as a single byte (0 or 1)
+/// - `Option<T>`: 1 byte tag (0=None, 1=Some) followed by T if Some
+/// - Arrays: Elements deserialized sequentially (no length prefix expected)
+/// - Tuples: Elements deserialized sequentially
+/// - Strings/Vec: u32 length prefix followed by data
 ///
 /// # Examples
+///
+/// ## Basic Usage
 ///
 /// ```ignore
 /// use osal_rs_serde::{ByteDeserializer, Deserializer};
 ///
-/// let buffer = [42u8, 0, 0, 0, 100, 0, 0, 0];
+/// let buffer = [42u8, 0, 0, 0, 1, 156, 255];
 /// let mut deserializer = ByteDeserializer::new(&buffer);
 ///
-/// let value1 = deserializer.deserialize_u32().unwrap();
-/// let value2 = deserializer.deserialize_u32().unwrap();
+/// let value1 = deserializer.deserialize_u32("").unwrap();
+/// let value2 = deserializer.deserialize_bool("").unwrap();
+/// let value3 = deserializer.deserialize_i16("").unwrap();
+///
 /// assert_eq!(value1, 42);
-/// assert_eq!(value2, 100);
+/// assert_eq!(value2, true);
+/// assert_eq!(value3, -100);
+/// ```
+///
+/// ## With Structs
+///
+/// ```ignore
+/// use osal_rs_serde::{ByteDeserializer, Deserialize, from_bytes};
+///
+/// #[derive(Deserialize)]
+/// struct Message {
+///     id: u32,
+///     value: i16,
+/// }
+///
+/// let buffer = [100, 0, 0, 0, 206, 255]; // id=100, value=-50 in little-endian
+/// let msg: Message = from_bytes(&buffer).unwrap();
+///
+/// assert_eq!(msg.id, 100);
+/// assert_eq!(msg.value, -50);
+/// ```
+///
+/// # Error Handling
+///
+/// Returns [`Error::UnexpectedEof`](crate::error::Error::UnexpectedEof) if the buffer
+/// doesn't contain enough data for the requested type.
+///
+/// # Memory Layout
+///
+/// The deserializer reads data sequentially without expecting padding or alignment:
+///
+/// ```text
+/// struct Data { a: u16, b: u32 }
+/// Memory: [a_lo, a_hi, b0, b1, b2, b3]
 /// ```
 pub struct ByteDeserializer<'a> {
     buffer: &'a [u8],

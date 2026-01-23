@@ -1,46 +1,56 @@
 # OSAL-RS-Serde
 
-An extensible serialization/deserialization framework for Rust, inspired by Serde but optimized for embedded systems and no-std environments.
+An extensible, lightweight serialization/deserialization framework for Rust, inspired by Serde but optimized for embedded systems and no-std environments.
 
 ## Features
 
-- ✅ **No-std compatible**: Works perfectly in bare-metal environments
-- ✅ **Memory-efficient**: Optimized for resource-constrained systems
-- ✅ **Extensible**: Easy to create custom serializers for any format
-- ✅ **Derive Macro**: Support for `#[derive(Serialize, Deserialize)]`
-- ✅ **Type-safe**: Leverages Rust's type system
+- ✅ **No-std compatible**: Works perfectly in bare-metal embedded environments
+- ✅ **Memory-efficient**: Optimized for resource-constrained systems with predictable memory usage
+- ✅ **Extensible**: Easy to create custom serializers for any format (binary, JSON, MessagePack, etc.)
+- ✅ **Derive Macro**: Full support for `#[derive(Serialize, Deserialize)]`
+- ✅ **Type-safe**: Leverages Rust's type system for compile-time guarantees
+- ✅ **Zero-copy**: Direct buffer reads/writes without intermediate allocations
 - ✅ **Reusable**: Can be used in any project, not just with osal-rs
 
 
 ### Supported Types
 
 #### Primitives
-- Integers: `u8`, `i8`, `u16`, `i16`, `u32`, `i32`, `u64`, `i64`, `u128`, `i128`
-- Floats: `f32`, `f64`
-- Boolean: `bool`
+- **Integers**: `u8`, `i8`, `u16`, `i16`, `u32`, `i32`, `u64`, `i64`, `u128`, `i128`
+- **Floats**: `f32`, `f64`
+- **Boolean**: `bool`
 
-#### Compound
-- Arrays: `[T; N]`
-- Tuples: `(T1, T2)`, `(T1, T2, T3)`
-- Option: `Option<T>`
+#### Compound Types
+- **Arrays**: `[T; N]` for any serializable type T
+- **Tuples**: `(T1, T2)`, `(T1, T2, T3)` up to 3 elements
+- **Option**: `Option<T>` for optional fields
 
-#### Custom
+#### Collections (with `alloc` feature)
+- **Vec**: `Vec<T>` for dynamic arrays
+- **String**: `String` and `&str`
+
+#### Custom Types
 - Any struct with `#[derive(Serialize, Deserialize)]`
+- Nested struct composition fully supported
 
-### Memory Sizes
+### Binary Format & Memory Sizes
+
+The default `ByteSerializer` uses little-endian binary format with no padding:
 
 ```
-bool:       1 byte
+bool:       1 byte (0 or 1)
 u8/i8:      1 byte
 u16/i16:    2 bytes
 u32/i32:    4 bytes
 u64/i64:    8 bytes
 u128/i128:  16 bytes
-f32:        4 bytes
-f64:        8 bytes
-Option<T>:  1 byte (tag) + sizeof(T) if Some, 1 byte if None
-Array[T;N]: sizeof(T) * N
+f32:        4 bytes (IEEE 754)
+f64:        8 bytes (IEEE 754)
+Option<T>:  1 byte tag + sizeof(T) if Some, 1 byte if None
+Array[T;N]: sizeof(T) * N (no length prefix)
 Tuple:      sum(sizeof each field)
+Vec<T>:     4 bytes (u32 length) + sizeof(T) * length
+String:     4 bytes (u32 length) + UTF-8 bytes
 ```
 
 ## Installation
@@ -53,14 +63,22 @@ osal-rs-serde = { version = "0.3", features = ["derive"] }
 ```
 
 Available features:
-- `alloc`: Enables dynamic allocation support (included in `default`)
-- `std`: Enables standard library support
-- `derive`: Enables `#[derive(Serialize, Deserialize)]` macros
+- `default`: Includes `alloc` feature for Vec and String support
+- `alloc`: Enables dynamic allocation support (Vec, String)
+- `std`: Enables standard library support (error traits, etc.)
+- `derive`: Enables `#[derive(Serialize, Deserialize)]` macros (**recommended**)
+
+For no-std environments without allocation:
+```toml
+[dependencies]
+osal-rs-serde = { version = "0.3", default-features = false, features = ["derive"] }
+```
+
 ## Project Structure
 
-The `osal-rs-serde` crate includes:
-- **Core library**: Traits and implementations for serialization/deserialization
-- **Derive macros** (optional): Procedural macros for automatic derivation (in `derive/`)
+The `osal-rs-serde` workspace includes:
+- **osal-rs-serde**: Core library with traits and implementations
+- **osal-rs-serde/derive**: Procedural macros for automatic derivation (optional, enabled via `derive` feature)
 
 Everything is contained in a single package for ease of use.
 ## Usage
@@ -269,91 +287,244 @@ impl Deserialize for Point {
 
 ### Usage with OSAL-RS Queue
 
+Perfect for inter-task communication in RTOS environments:
+
 ```rust
 use osal_rs::os::{Queue, QueueFn};
 use osal_rs_serde::{Serialize, Deserialize, to_bytes, from_bytes};
 
 #[derive(Serialize, Deserialize)]
-struct Message {
+struct Command {
     id: u32,
-    value: i16,
+    action: u8,
+    params: [u16; 4],
 }
 
-fn main() {
-    let queue = Queue::new(10, 32).unwrap();
+fn sender_task(queue: &Queue) {
+    let cmd = Command { 
+        id: 42, 
+        action: 0x10,
+        params: [100, 200, 300, 400],
+    };
     
-    // Send message
-    let msg = Message { id: 42, value: 100 };
     let mut buffer = [0u8; 32];
-    let len = to_bytes(&msg, &mut buffer).unwrap();
+    let len = to_bytes(&cmd, &mut buffer).unwrap();
     queue.post(&buffer[..len], 100).unwrap();
-    
-    // Receive message
-    let mut recv_buffer = [0u8; 32];
-    queue.fetch(&mut recv_buffer, 100).unwrap();
-    let received: Message = from_bytes(&recv_buffer).unwrap();
+}
+
+fn receiver_task(queue: &Queue) {
+    let mut buffer = [0u8; 32];
+    queue.fetch(&mut buffer, 100).unwrap();
+    let cmd: Command = from_bytes(&buffer).unwrap();
+    println!("Received command: id={}, action=0x{:02X}", cmd.id, cmd.action);
 }
 ```
 
 ## Supported Types
 
-The framework automatically supports:
+The framework automatically supports serialization/deserialization for:
 
-- Primitive types: `bool`, `u8`, `i8`, `u16`, `i16`, `u32`, `i32`, `u64`, `i64`, `u128`, `i128`
-- Floating point: `f32`, `f64`
-- Arrays: `[T; N]`
-- Tuples: `(T1, T2)`, `(T1, T2, T3)`
-- Option: `Option<T>`
-- Any custom type that implements `Serialize`/`Deserialize`
+- **Primitives**: `bool`, `u8`, `i8`, `u16`, `i16`, `u32`, `i32`, `u64`, `i64`, `u128`, `i128`, `f32`, `f64`
+- **Compound**: Arrays `[T; N]`, tuples `(T1, T2)` and `(T1, T2, T3)`, `Option<T>`
+- **Collections** (with `alloc`): `Vec<T>`, `String`, `&str`
+- **Custom**: Any struct implementing `Serialize`/`Deserialize` (or using derive)
+- **Nested**: Full support for nested struct composition
 
 ## Custom Serializers
 
-You can create custom serializers to support different formats:
+You can create custom serializers to support different formats (JSON, MessagePack, CBOR, etc.):
 
 ```rust
-use osal_rs_serde::{Serializer, Error};
+use osal_rs_serde::{Serializer, Deserializer, Error};
 
-struct JsonSerializer {
-    // ... fields to handle JSON
+struct JsonSerializer<'a> {
+    buffer: &'a mut [u8],
+    position: usize,
 }
 
-impl Serializer for JsonSerializer {
+impl<'a> Serializer for JsonSerializer<'a> {
     type Error = Error;
     
-    fn serialize_u32(&mut self, v: u32) -> Result<(), Self::Error> {
-        // JSON implementation
-        // ...
+    fn serialize_u32(&mut self, name: &str, v: u32) -> Result<(), Self::Error> {
+        // Write JSON format: "name": value
+        // Your implementation here...
         Ok(())
     }
     
-    // Implement other methods...
+    fn serialize_bool(&mut self, name: &str, v: bool) -> Result<(), Self::Error> {
+        // Write JSON format: "name": true/false
+        // Your implementation here...
+        Ok(())
+    }
+    
+    // Implement other serialize_* methods...
 }
+
+// Similarly implement Deserializer trait for deserialization
 ```
+
+See `examples/custom_serializer.rs` for a complete text-based serializer implementation.
+
+## Performance Considerations
+
+### Buffer Size Calculation
+
+For fixed-size types, calculate buffer size at compile time:
+
+```rust
+#[derive(Serialize, Deserialize)]
+struct Packet {
+    id: u32,        // 4 bytes
+    value: i16,     // 2 bytes
+    flags: u8,      // 1 byte
+}
+// Total: 7 bytes
+
+const BUFFER_SIZE: usize = 7;
+let mut buffer = [0u8; BUFFER_SIZE];
+```
+
+### Zero-Copy Operation
+
+The serializer writes directly to your buffer with no intermediate allocations:
+
+```rust
+// Stack-allocated buffer - no heap allocation
+let mut buffer = [0u8; 64];
+let len = to_bytes(&data, &mut buffer)?;
+
+// Use only the filled portion
+send_to_uart(&buffer[..len]);
+```
+
+### Compile-Time Guarantees
+
+The type system ensures correctness:
+- Cannot deserialize wrong type from buffer
+- Compile-time checks for trait implementations
+- No runtime type checks needed
 
 ## Examples
 
-See the `examples/` folder for complete examples:
+The `examples/` directory contains complete working examples demonstrating various features:
+
+### Running Examples
 
 ```bash
-# Basic example
-cargo run --example basic
+# Basic struct serialization
+cargo run --example basic --features derive
 
-# With derive macros
+# Using derive macros (recommended approach)
 cargo run --example with_derive --features derive
 
+# Arrays and tuples
+cargo run --example arrays_tuples --features derive
+
+# Nested struct composition
+cargo run --example nested_structs --features derive
+
+# Optional fields with Option<T>
+cargo run --example optional_fields --features derive
+
+# Complex embedded system (robot control)
+cargo run --example robot_control --features derive
+
+# Custom serializer implementation
+cargo run --example custom_serializer
+
 # Integration with OSAL-RS
-cargo run --example with_queue
+cargo run --example integration --features derive
+```
+
+### Example Descriptions
+
+- **`basic.rs`**: Simple manual implementation without derive macros
+- **`with_derive.rs`**: Same example using `#[derive]` macros
+- **`arrays_tuples.rs`**: Working with arrays and tuples in structs
+- **`nested_structs.rs`**: Nested struct composition patterns
+- **`optional_fields.rs`**: Using `Option<T>` for optional data
+- **`robot_control.rs`**: Complex real-world embedded system example with motor control
+- **`custom_serializer.rs`**: Creating a custom text-based serializer
+- **`integration.rs`**: Integration with OSAL-RS queues for inter-task communication
+
+## Best Practices
+
+### 1. Use Derive Macros
+
+Always prefer derive macros for standard serialization:
+
+```rust
+#[derive(Serialize, Deserialize)]
+struct MyStruct {
+    // fields...
+}
+```
+
+### 2. Calculate Buffer Sizes
+
+Pre-calculate buffer sizes for better performance:
+
+```rust
+const fn calculate_size() -> usize {
+    size_of::<u32>() + size_of::<i16>() + size_of::<bool>()
+}
+
+let mut buffer = [0u8; calculate_size()];
+```
+
+### 3. Error Handling
+
+Always handle serialization errors appropriately:
+
+```rust
+match to_bytes(&data, &mut buffer) {
+    Ok(len) => send_data(&buffer[..len]),
+    Err(Error::BufferTooSmall) => {
+        // Handle buffer overflow
+    }
+    Err(e) => {
+        // Handle other errors
+    }
+}
+```
+
+### 4. Versioning
+
+Consider adding version fields for forward compatibility:
+
+```rust
+#[derive(Serialize, Deserialize)]
+struct Message {
+    version: u8,
+    // other fields...
+}
 ```
 
 ## Comparison with Serde
 
 | Feature | osal-rs-serde | serde |
 |---------|---------------|-------|
-| No-std | ✅ | ✅ |
-| Derive macro | ✅ | ✅ |
-| Binary size | Small | Medium/Large |
-| Supported formats | Customizable | Many built-in |
-| Target | Embedded/RTOS | General purpose |
+| No-std support | ✅ Native | ✅ Via feature |
+| Derive macros | ✅ Built-in | ✅ Separate crate |
+| Binary size | **Very small** | Medium/Large |
+| Supported formats | Custom (extendable) | Many built-in |
+| Target use case | **Embedded/RTOS** | General purpose |
+| Zero-copy | ✅ Always | Depends on format |
+| Compile time | **Fast** | Slower |
+| Learning curve | **Gentle** | Moderate |
+
+**Choose osal-rs-serde when:**
+- Working in embedded/no-std environments
+- Need predictable memory usage
+- Want minimal binary size
+- Require simple, fast compilation
+- Building RTOS applications
+
+**Choose serde when:**
+- Need many pre-built format implementations
+- Working primarily with std
+- Require advanced features (flatten, rename, etc.)
+- Ecosystem integration is important
 
 ## License
 

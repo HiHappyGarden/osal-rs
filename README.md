@@ -8,55 +8,105 @@ OSAL-RS provides a unified API for developing multi-platform embedded applicatio
 
 ### Workspace Components
 
-- **osal-rs**: Main Operating System Abstraction Layer
-- **osal-rs-build**: Build tools
-- **osal-rs-tests**: Test suite
-- **osal-rs-serde**: ✨ **NEW!** Extensible serialization/deserialization framework (includes derive macros)
+- **osal-rs**: Main Operating System Abstraction Layer with FreeRTOS support
+- **osal-rs-build**: Build configuration tools and helpers
+- **osal-rs-porting**: C FFI bridge layer for FreeRTOS integration
+- **osal-rs-tests**: Comprehensive test suite for all components
+- **osal-rs-serde**: ✨ Extensible serialization/deserialization framework with derive macros
 
 ## Current Implementation Status
 
-- ✅ **FreeRTOS**: Fully implemented
-- ✅ **Serialization**: osal-rs-serde with derive macros
-- 🚧 **POSIX**: Planned
-- 🚧 **Other RTOSes**: Future consideration
+- ✅ **FreeRTOS**: Fully implemented and tested
+- ✅ **Serialization**: Complete osal-rs-serde implementation with derive macros
+- 🚧 **POSIX**: Planned for future releases
+- 🚧 **Other RTOSes**: Under consideration
 
 ## Features
 
 ### Core OSAL Features
-- **Thread Management**: Create, manage, and synchronize threads
-- **Synchronization Primitives**: Mutexes, semaphores, event groups
-- **Message Queues**: Inter-thread communication
-- **Timers**: Software timers for periodic and one-shot operations
-- **Memory Allocation**: Custom allocator support
-- **Time Management**: Duration and tick handling
-- **No-std Support**: Suitable for bare-metal embedded systems
+- **Thread Management**: Create, manage, and synchronize threads with priorities
+- **Synchronization Primitives**: Mutexes (recursive & non-recursive), binary & counting semaphores, event groups
+- **Message Queues**: Type-safe inter-thread communication with blocking/non-blocking operations
+- **Software Timers**: Periodic and one-shot timers with callbacks
+- **Memory Allocation**: Custom allocator integration for heap management
+- **Time Management**: Duration handling and tick-based timing
+- **System Control**: Scheduler control, task notifications, and system information
+- **No-std Support**: Fully compatible with bare-metal embedded systems
 
 ### 🆕 osal-rs-serde Features
-- **No-std Compatible**: Perfect for embedded systems
-- **Derive Macros**: `#[derive(Serialize, Deserialize)]` for automatic serialization
-- **Extensible**: Create custom serializers for any format
-- **Reusable**: Can be used in projects outside of osal-rs
-- **Type-Safe**: Leverages Rust's type system
 
-#### Quick Example
+A complete serialization framework designed specifically for embedded systems:
+
+- **No-std Compatible**: Works in bare-metal environments without standard library
+- **Zero-Copy**: Direct buffer operations with no intermediate allocations
+- **Derive Macros**: Automatic `#[derive(Serialize, Deserialize)]` implementation
+- **Rich Type Support**: Primitives, arrays, tuples, Option<T>, Vec<T>, nested structs
+- **Extensible Architecture**: Create custom serializers for any format (JSON, MessagePack, CBOR, etc.)
+- **Memory Efficient**: Little-endian binary format with predictable sizes
+- **Compile-Time Guarantees**: Type-safe serialization with static checks
+- **Standalone**: Can be used independently in any Rust project
+
+#### osal-rs-serde Quick Example
 
 ```rust
 use osal_rs_serde::{Serialize, Deserialize, to_bytes, from_bytes};
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug, PartialEq)]
 struct SensorData {
     temperature: i16,
     humidity: u8,
     pressure: u32,
+    status: Option<u8>,
 }
 
-let data = SensorData { temperature: 25, humidity: 60, pressure: 1013 };
+let data = SensorData { 
+    temperature: 25, 
+    humidity: 60, 
+    pressure: 1013,
+    status: Some(0xFF),
+};
+
+// Serialize to stack buffer
 let mut buffer = [0u8; 32];
 let len = to_bytes(&data, &mut buffer).unwrap();
+
+// Deserialize from buffer
 let restored: SensorData = from_bytes(&buffer[..len]).unwrap();
+assert_eq!(data, restored);
 ```
 
-For more details, see [osal-rs-serde/README.md](osal-rs-serde/README.md).
+#### Integration with OSAL Queues
+
+Perfect for inter-task communication:
+
+```rust
+use osal_rs::os::{Queue, QueueFn};
+use osal_rs_serde::{Serialize, Deserialize, to_bytes, from_bytes};
+
+#[derive(Serialize, Deserialize)]
+struct Command {
+    id: u32,
+    params: [u16; 4],
+}
+
+fn sender_task(queue: &Queue) {
+    let cmd = Command { id: 42, params: [1, 2, 3, 4] };
+    let mut buffer = [0u8; 32];
+    let len = to_bytes(&cmd, &mut buffer).unwrap();
+    queue.post(&buffer[..len], 100).unwrap();
+}
+
+fn receiver_task(queue: &Queue) {
+    let mut buffer = [0u8; 32];
+    queue.fetch(&mut buffer, 100).unwrap();
+    let cmd: Command = from_bytes(&buffer).unwrap();
+}
+```
+
+For comprehensive documentation, examples, and advanced features, see:
+- [osal-rs-serde README](osal-rs-serde/README.md) - Complete feature documentation
+- [osal-rs-serde/derive README](osal-rs-serde/derive/README.md) - Derive macro guide
+- `osal-rs-serde/examples/` - Working code examples
 
 ## Prerequisites
 

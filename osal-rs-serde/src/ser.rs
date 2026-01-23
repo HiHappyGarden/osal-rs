@@ -60,10 +60,6 @@ pub trait Serializer: Sized {
     /// The error type that can be returned during serialization.
     type Error: From<Error>;
 
-    fn serialize_struct_start(&mut self, _name: &str, _len: usize) -> core::result::Result<(), Self::Error> {
-        Ok(())
-    }
-
     /// Serialize a `bool` value.
     fn serialize_bool(&mut self, name: &str, v: bool) -> core::result::Result<(), Self::Error>;
 
@@ -105,6 +101,18 @@ pub trait Serializer: Sized {
 
     /// Serialize a byte slice.
     fn serialize_bytes(&mut self, name: &str, v: &[u8]) -> core::result::Result<(), Self::Error>;
+
+    /// Serialize a string.
+    fn serialize_string(&mut self, name: &str, v: &String) -> core::result::Result<(), Self::Error>;
+
+    /// Serialize a string slice.
+    fn serialize_str(&mut self, name: &str, v: &str) -> core::result::Result<(), Self::Error>;
+
+    /// Serialize a vector of serializable items.
+    fn serialize_vec<T: Serialize>(&mut self, name: &str, v: &alloc::vec::Vec<T>) -> core::result::Result<(), Self::Error>;
+
+    /// Serialize an array of serializable items.
+    fn serialize_array<T: Serialize>(&mut self, name: &str, v: &[T]) -> core::result::Result<(), Self::Error>;
 
     /// Begin serializing a struct with the given name and number of fields.
     /// Default implementation does nothing (suitable for binary formats).
@@ -231,6 +239,32 @@ impl<'a> Serializer for ByteSerializer<'a> {
         self.serialize_u32("", v.len() as u32)?;
         self.write_bytes(v)
     }
+
+    fn serialize_string(&mut self, name: &str, v: &String) -> core::result::Result<(), Self::Error> {
+        self.serialize_str(name, v.as_str())
+    }
+
+    fn serialize_str(&mut self, name: &str, v: &str) -> core::result::Result<(), Self::Error> {
+        self.serialize_bytes(name, v.as_bytes())
+    }
+
+    fn serialize_vec<T: Serialize>(&mut self, name: &str, v: &alloc::vec::Vec<T>) -> core::result::Result<(), Self::Error> {
+        // First write the length as u32
+        self.serialize_u32(name, v.len() as u32)?;
+        for item in v.iter() {
+            item.serialize(self)?;
+        }
+        Ok(())
+    }
+
+    /// Serialize an array of serializable items.
+    fn serialize_array<T: Serialize>(&mut self, _name: &str, v: &[T]) -> core::result::Result<(), Self::Error> {
+        for item in v.iter() {
+            item.serialize(self)?;
+        }
+        Ok(())
+    }
+
 }
 
 // Implementations for primitive types
@@ -359,7 +393,7 @@ impl Serialize for &str {
     where
         S: Serializer,
     {
-        serializer.serialize_bytes("", self.as_bytes())
+        serializer.serialize_str("", self)
     }
 }
 
@@ -369,7 +403,7 @@ impl Serialize for String {
     where
         S: Serializer,
     {
-        serializer.serialize_bytes("", self.as_bytes())
+        serializer.serialize_string("", self)
     }
 }
 

@@ -333,7 +333,7 @@ where
     T: Deserialize
 {
     let mut deserializer = ByteDeserializer::new(buffer);
-    T::deserialize(&mut deserializer)
+    T::deserialize(&mut deserializer, "")
 }
 
 #[cfg(test)]

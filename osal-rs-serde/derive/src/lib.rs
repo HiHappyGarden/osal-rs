@@ -38,6 +38,7 @@
 
 use proc_macro::TokenStream;
 use quote::quote;
+use proc_macro2::Literal;
 use syn::{parse_macro_input, Data, DeriveInput, Fields};
 
 /// Derive macro for the `Serialize` trait.
@@ -57,7 +58,6 @@ use syn::{parse_macro_input, Data, DeriveInput, Fields};
 pub fn derive_serialize(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
     let name = &input.ident;
-    let name_string = name.to_string();
 
 
     let serialize_impl = match &input.data {
@@ -74,8 +74,8 @@ pub fn derive_serialize(input: TokenStream) -> TokenStream {
 
                 quote! {
                     impl osal_rs_serde::Serialize for #name {
-                        fn serialize<S: osal_rs_serde::Serializer>(&self, serializer: &mut S) -> Result<(), S::Error> {
-                            serializer.serialize_struct_start(#name_string, #field_count)?;
+                        fn serialize<S: osal_rs_serde::Serializer>(&self, name: &str, serializer: &mut S) -> Result<(), S::Error> {
+                            serializer.serialize_struct_start(name, #field_count)?;
                             #(#field_serializations)*
                             serializer.serialize_struct_end()?;
                             Ok(())
@@ -84,17 +84,21 @@ pub fn derive_serialize(input: TokenStream) -> TokenStream {
                 }
             }
             Fields::Unnamed(fields) => {
+                let field_count = fields.unnamed.len();
                 let field_serializations = (0..fields.unnamed.len()).map(|i| {
                     let index = syn::Index::from(i);
+                    let name_lit = Literal::string(&i.to_string());
                     quote! {
-                        osal_rs_serde::Serialize::serialize(&self.#index, serializer)?;
+                        serializer.serialize_field(#name_lit, &self.#index)?;
                     }
                 });
 
                 quote! {
                     impl osal_rs_serde::Serialize for #name {
-                        fn serialize<S: osal_rs_serde::Serializer>(&self, serializer: &mut S) -> Result<(), S::Error> {
+                        fn serialize<S: osal_rs_serde::Serializer>(&self, name: &str, serializer: &mut S) -> Result<(), S::Error> {
+                            serializer.serialize_struct_start(name, #field_count)?;
                             #(#field_serializations)*
+                            serializer.serialize_struct_end()?;
                             Ok(())
                         }
                     }
@@ -103,7 +107,7 @@ pub fn derive_serialize(input: TokenStream) -> TokenStream {
             Fields::Unit => {
                 quote! {
                     impl osal_rs_serde::Serialize for #name {
-                        fn serialize<S: osal_rs_serde::Serializer>(&self, _serializer: &mut S) -> Result<(), S::Error> {
+                        fn serialize<S: osal_rs_serde::Serializer>(&self, _name: &str, _serializer: &mut S) -> Result<(), S::Error> {
                             Ok(())
                         }
                     }

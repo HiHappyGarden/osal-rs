@@ -562,9 +562,9 @@ impl<const SIZE: usize> Serialize for Bytes<SIZE> {
     ///
     /// * `Ok(())` - On successful serialization
     /// * `Err(S::Error)` - If serialization fails
-    fn serialize<S: osal_rs_serde::Serializer>(&self, serializer: &mut S) -> core::result::Result<(), S::Error> {
+    fn serialize<S: osal_rs_serde::Serializer>(&self, name: &str, serializer: &mut S) -> core::result::Result<(), S::Error> {
         for &byte in self.0.iter() {
-            serializer.serialize_u8("", byte)?;
+            serializer.serialize_u8(name, byte)?;
         }
         Ok(())
     }

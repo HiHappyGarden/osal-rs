@@ -586,10 +586,10 @@ impl<const SIZE: usize> Deserialize for Bytes<SIZE> {
     ///
     /// * `Ok(Bytes<SIZE>)` - A new `Bytes` instance with deserialized data
     /// * `Err(D::Error)` - If deserialization fails
-    fn deserialize<D: osal_rs_serde::Deserializer>(deserializer: &mut D) -> core::result::Result<Self, D::Error> {
+    fn deserialize<D: osal_rs_serde::Deserializer>(deserializer: &mut D, name: &str) -> core::result::Result<Self, D::Error> {
         let mut array = [0u8; SIZE];
         for i in 0..SIZE {
-            array[i] = deserializer.deserialize_u8("")?;
+            array[i] = deserializer.deserialize_u8(name)?;
         }
         Ok(Self(array))
     }

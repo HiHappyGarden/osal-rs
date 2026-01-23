@@ -149,8 +149,6 @@ pub fn derive_deserialize(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
     let name = &input.ident;
 
-    let name_string = name.to_string();
-
     let deserialize_impl = match &input.data {
         Data::Struct(data_struct) => match &data_struct.fields {
             Fields::Named(fields) => {
@@ -165,8 +163,8 @@ pub fn derive_deserialize(input: TokenStream) -> TokenStream {
 
                 quote! {
                     impl osal_rs_serde::Deserialize for #name {
-                        fn deserialize<D: osal_rs_serde::Deserializer>(deserializer: &mut D) -> Result<Self, D::Error> {
-                            deserializer.deserialize_struct_start(#name_string)?;
+                        fn deserialize<D: osal_rs_serde::Deserializer>(deserializer: &mut D, name: &str) -> Result<Self, D::Error> {
+                            deserializer.deserialize_struct_start(name)?;
                             let result = Self {
                                 #(#field_deserializations,)*
                             };
@@ -181,9 +179,9 @@ pub fn derive_deserialize(input: TokenStream) -> TokenStream {
 
                 quote! {
                     impl osal_rs_serde::Deserialize for #name {
-                        fn deserialize<D: osal_rs_serde::Deserializer>(deserializer: &mut D) -> Result<Self, D::Error> {
+                        fn deserialize<D: osal_rs_serde::Deserializer>(deserializer: &mut D, name: &str) -> Result<Self, D::Error> {
                             Ok(Self(
-                                #(<#field_types as osal_rs_serde::Deserialize>::deserialize(deserializer)?,)*
+                                #(<#field_types as osal_rs_serde::Deserialize>::deserialize(deserializer, name)?,)*
                             ))
                         }
                     }
@@ -192,7 +190,7 @@ pub fn derive_deserialize(input: TokenStream) -> TokenStream {
             Fields::Unit => {
                 quote! {
                     impl osal_rs_serde::Deserialize for #name {
-                        fn deserialize<D: osal_rs_serde::Deserializer>(_deserializer: &mut D) -> Result<Self, D::Error> {
+                        fn deserialize<D: osal_rs_serde::Deserializer>(_deserializer: &mut D, _name: &str) -> Result<Self, D::Error> {
                             Ok(Self)
                         }
                     }

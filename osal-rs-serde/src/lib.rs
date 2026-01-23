@@ -381,7 +381,7 @@ where
     T: Serialize
 {
     let mut serializer = ByteSerializer::new(buffer);
-    value.serialize(&mut serializer)?;
+    value.serialize("", &mut serializer)?;
     Ok(serializer.position())
 }
 
@@ -405,7 +405,7 @@ where
     T: Serialize
 {
     let mut serializer = ByteSerializer::new(buffer);
-    value.serialize(&mut serializer)?;
+    value.serialize("", &mut serializer)?;
     Ok(serializer.position())
 }
 

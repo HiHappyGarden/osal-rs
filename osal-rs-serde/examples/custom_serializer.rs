@@ -58,84 +58,100 @@ impl<'a> TextSerializer<'a> {
 impl<'a> Serializer for TextSerializer<'a> {
     type Error = Error;
 
-    fn serialize_bool(&mut self, v: bool) -> Result<(), Error> {
+    fn serialize_bool(&mut self, _name: &str, v: bool) -> Result<(), Error> {
         self.write_str(if v { "true" } else { "false" })?;
         self.write_separator()
     }
 
-    fn serialize_u8(&mut self, v: u8) -> Result<(), Error> {
+    fn serialize_u8(&mut self, _name: &str, v: u8) -> Result<(), Error> {
         let mut buf = [0u8; 20];
         let s = format_number(v as i64, &mut buf);
         self.write_str(s)?;
         self.write_separator()
     }
 
-    fn serialize_i8(&mut self, v: i8) -> Result<(), Error> {
+    fn serialize_i8(&mut self, _name: &str, v: i8) -> Result<(), Error> {
         let mut buf = [0u8; 20];
         let s = format_number(v as i64, &mut buf);
         self.write_str(s)?;
         self.write_separator()
     }
 
-    fn serialize_u16(&mut self, v: u16) -> Result<(), Error> {
+    fn serialize_u16(&mut self, _name: &str, v: u16) -> Result<(), Error> {
         let mut buf = [0u8; 20];
         let s = format_number(v as i64, &mut buf);
         self.write_str(s)?;
         self.write_separator()
     }
 
-    fn serialize_i16(&mut self, v: i16) -> Result<(), Error> {
+    fn serialize_i16(&mut self, _name: &str, v: i16) -> Result<(), Error> {
         let mut buf = [0u8; 20];
         let s = format_number(v as i64, &mut buf);
         self.write_str(s)?;
         self.write_separator()
     }
 
-    fn serialize_u32(&mut self, v: u32) -> Result<(), Error> {
+    fn serialize_u32(&mut self, _name: &str, v: u32) -> Result<(), Error> {
         let mut buf = [0u8; 20];
         let s = format_number(v as i64, &mut buf);
         self.write_str(s)?;
         self.write_separator()
     }
 
-    fn serialize_i32(&mut self, v: i32) -> Result<(), Error> {
+    fn serialize_i32(&mut self, _name: &str, v: i32) -> Result<(), Error> {
         let mut buf = [0u8; 20];
         let s = format_number(v as i64, &mut buf);
         self.write_str(s)?;
         self.write_separator()
     }
 
-    fn serialize_u64(&mut self, v: u64) -> Result<(), Error> {
+    fn serialize_u64(&mut self, _name: &str, v: u64) -> Result<(), Error> {
         let mut buf = [0u8; 20];
         let s = format_number(v as i64, &mut buf);
         self.write_str(s)?;
         self.write_separator()
     }
 
-    fn serialize_i64(&mut self, v: i64) -> Result<(), Error> {
+    fn serialize_i64(&mut self, _name: &str, v: i64) -> Result<(), Error> {
         let mut buf = [0u8; 20];
         let s = format_number(v, &mut buf);
         self.write_str(s)?;
         self.write_separator()
     }
 
-    fn serialize_u128(&mut self, _v: u128) -> Result<(), Error> {
+    fn serialize_u128(&mut self, _name: &str, _v: u128) -> Result<(), Error> {
         Err(Error::Unsupported)
     }
 
-    fn serialize_i128(&mut self, _v: i128) -> Result<(), Error> {
+    fn serialize_i128(&mut self, _name: &str, _v: i128) -> Result<(), Error> {
         Err(Error::Unsupported)
     }
 
-    fn serialize_f32(&mut self, _v: f32) -> Result<(), Error> {
+    fn serialize_f32(&mut self, _name: &str, _v: f32) -> Result<(), Error> {
         Err(Error::Unsupported)
     }
 
-    fn serialize_f64(&mut self, _v: f64) -> Result<(), Error> {
+    fn serialize_f64(&mut self, _name: &str, _v: f64) -> Result<(), Error> {
         Err(Error::Unsupported)
     }
 
-    fn serialize_bytes(&mut self, _v: &[u8]) -> Result<(), Error> {
+    fn serialize_bytes(&mut self, _name: &str, _v: &[u8]) -> Result<(), Error> {
+        Err(Error::Unsupported)
+    }
+
+    fn serialize_string(&mut self, _name: &str, _v: &String) -> Result<(), Error> {
+        Err(Error::Unsupported)
+    }
+
+    fn serialize_str(&mut self, _name: &str, _v: &str) -> Result<(), Error> {
+        Err(Error::Unsupported)
+    }
+
+    fn serialize_vec<T: osal_rs_serde::Serialize>(&mut self, _name: &str, _v: &Vec<T>) -> Result<(), Error> {
+        Err(Error::Unsupported)
+    }
+
+    fn serialize_array<T: osal_rs_serde::Serialize>(&mut self, _name: &str, _v: &[T]) -> Result<(), Error> {
         Err(Error::Unsupported)
     }
 }

@@ -17,7 +17,64 @@
  *
  ***************************************************************************/
 
-//! Serialization trait and implementation.
+//! Serialization traits and implementations.
+//!
+//! This module provides the core serialization functionality for osal-rs-serde.
+//! It defines the [`Serialize`] trait for types that can be serialized and the
+//! [`Serializer`] trait for implementing custom serialization formats.
+//!
+//! # Overview
+//!
+//! - [`Serialize`]: Trait implemented by types that can be serialized
+//! - [`Serializer`]: Trait for implementing custom serialization formats  
+//! - [`ByteSerializer`]: Concrete implementation that writes little-endian binary data
+//!
+//! # Usage with Derive Macro
+//!
+//! The easiest way to implement serialization is using the derive macro:
+//!
+//! ```ignore
+//! use osal_rs_serde::Serialize;
+//!
+//! #[derive(Serialize)]
+//! struct SensorData {
+//!     temperature: i16,
+//!     humidity: u8,
+//!     pressure: u32,
+//! }
+//! ```
+//!
+//! # Manual Implementation
+//!
+//! For custom serialization logic, implement the trait manually:
+//!
+//! ```ignore
+//! use osal_rs_serde::{Serialize, Serializer};
+//!
+//! struct Point {
+//!     x: i32,
+//!     y: i32,
+//! }
+//!
+//! impl Serialize for Point {
+//!     fn serialize<S: Serializer>(&self, serializer: &mut S) -> Result<(), S::Error> {
+//!         serializer.serialize_i32("x", self.x)?;
+//!         serializer.serialize_i32("y", self.y)?;
+//!         Ok(())
+//!     }
+//! }
+//! ```
+//!
+//! # Supported Types
+//!
+//! The serialization framework supports:
+//! - All primitive types (bool, integers, floats)
+//! - Arrays `[T; N]` where T: Serialize
+//! - Tuples (up to 3 elements)
+//! - `Option<T>` where T: Serialize
+//! - `Vec<T>` where T: Serialize (requires `alloc`)
+//! - `String` and `&str` (requires `alloc` for String)
+//! - Custom types implementing `Serialize`
 
 #[cfg(feature = "alloc")]
 use alloc::string::String;
@@ -26,10 +83,27 @@ use crate::error::{Error, Result};
 
 /// Trait for types that can be serialized.
 ///
-/// This trait should be implemented for any type that needs to be serialized.
+/// This trait should be implemented (or derived) for any type that needs to be serialized.
 /// The implementation defines how the type should be written to a serializer.
 ///
-/// # Examples
+/// # Derive Macro
+///
+/// The easiest way to implement this trait is using the derive macro (requires `derive` feature):
+///
+/// ```ignore
+/// use osal_rs_serde::Serialize;
+///
+/// #[derive(Serialize)]
+/// struct Config {
+///     id: u32,
+///     enabled: bool,
+///     timeout: Option<u16>,
+/// }
+/// ```
+///
+/// # Manual Implementation
+///
+/// For custom serialization logic or types not supported by the derive macro:
 ///
 /// ```ignore
 /// use osal_rs_serde::{Serialize, Serializer};
@@ -47,6 +121,16 @@ use crate::error::{Error, Result};
 ///     }
 /// }
 /// ```
+///
+/// # Built-in Implementations
+///
+/// This trait is already implemented for:
+/// - All primitive types (bool, u8-u128, i8-i128, f32, f64)
+/// - Arrays `[T; N]` where T: Serialize
+/// - Tuples (T1, T2) and (T1, T2, T3) where all T: Serialize
+/// - `Option<T>` where T: Serialize
+/// - `Vec<T>` where T: Serialize (requires `alloc`)
+/// - `String` and `&str` (requires `alloc` for String)
 pub trait Serialize {
     /// Serialize this value using the given serializer.
     fn serialize<S: Serializer>(&self, serializer: &mut S) -> core::result::Result<(), S::Error>;
@@ -136,18 +220,61 @@ pub trait Serializer: Sized {
 /// A serializer that writes data to a byte buffer in little-endian format.
 ///
 /// This is a concrete implementation of the `Serializer` trait that writes
-/// binary data in a compact, little-endian format.
+/// binary data in a compact, little-endian format. This is the default serializer
+/// used by the [`crate::to_bytes`] convenience function.
+///
+/// # Format
+///
+/// - All integers are written in little-endian byte order
+/// - Floating-point numbers use IEEE 754 representation
+/// - `bool` is written as a single byte (0 or 1)
+/// - `Option<T>`: 1 byte tag (0=None, 1=Some) followed by T if Some
+/// - Arrays: Elements serialized sequentially (no length prefix)
+/// - Tuples: Elements serialized sequentially
+/// - Strings/Vec: u32 length prefix followed by data
 ///
 /// # Examples
 ///
-/// ```ignore
-/// use osal_rs_serde::{ByteSerializer, Serializer};
+/// ## Basic Usage
 ///
-/// let mut buffer = [0u8; 8];
+/// ```ignore
+/// use osal_rs_serde::{ByteSerializer, Serializer, Serialize};
+///
+/// let mut buffer = [0u8; 16];
 /// let mut serializer = ByteSerializer::new(&mut buffer);
 ///
-/// serializer.serialize_u32(42).unwrap();
-/// serializer.serialize_u32(100).unwrap();
+/// serializer.serialize_u32("", 42).unwrap();
+/// serializer.serialize_bool("", true).unwrap();
+/// serializer.serialize_i16("", -100).unwrap();
+///
+/// let len = serializer.position();
+/// println!("Serialized {} bytes", len);
+/// ```
+///
+/// ## With Structs
+///
+/// ```ignore
+/// use osal_rs_serde::{ByteSerializer, Serialize};
+///
+/// #[derive(Serialize)]
+/// struct Message {
+///     id: u32,
+///     value: i16,
+/// }
+///
+/// let msg = Message { id: 100, value: -50 };
+/// let mut buffer = [0u8; 32];
+/// let mut serializer = ByteSerializer::new(&mut buffer);
+/// msg.serialize(&mut serializer).unwrap();
+/// ```
+///
+/// # Memory Layout
+///
+/// The serializer writes data sequentially without padding or alignment:
+///
+/// ```text
+/// struct Data { a: u16, b: u32 }
+/// Memory: [a_lo, a_hi, b0, b1, b2, b3]
 /// ```
 pub struct ByteSerializer<'a> {
     buffer: &'a mut [u8],

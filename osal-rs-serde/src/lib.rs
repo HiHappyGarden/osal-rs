@@ -25,11 +25,30 @@
 //! ## Overview
 //!
 //! This library provides a flexible serialization/deserialization framework that:
-//! - Works in no-std environments
-//! - Is memory-efficient
-//! - Supports custom serialization formats
-//! - Is extensible for any data type
-//! - Can be used standalone in other projects
+//! - **No-std compatible**: Works perfectly in bare-metal embedded environments
+//! - **Memory-efficient**: Optimized for resource-constrained systems  
+//! - **Derive macro support**: `#[derive(Serialize, Deserialize)]` for automatic implementation
+//! - **Extensible**: Create custom serializers for any format (binary, JSON, MessagePack, etc.)
+//! - **Type-safe**: Leverages Rust's type system for compile-time guarantees
+//! - **Standalone**: Can be used in any project, not just with osal-rs
+//!
+//! ## Supported Types
+//!
+//! - **Primitives**: `bool`, `u8`, `i8`, `u16`, `i16`, `u32`, `i32`, `u64`, `i64`, `u128`, `i128`, `f32`, `f64`
+//! - **Compound types**: Arrays `[T; N]`, tuples `(T1, T2, T3)` (up to 3 elements), `Option<T>`
+//! - **Collections**: `Vec<T>`, byte slices, strings (with `alloc` feature)
+//! - **Custom types**: Any struct implementing `Serialize`/`Deserialize`
+//! - **Nested structs**: Full support for struct composition
+//!
+//! ## Memory Layout
+//!
+//! The default `ByteSerializer` uses little-endian binary format:
+//! - Primitives: Native sizes (1, 2, 4, 8, or 16 bytes)
+//! - `bool`: 1 byte (0 or 1)
+//! - `Option<T>`: 1 byte tag + sizeof(T) if Some, 1 byte if None
+//! - Arrays `[T; N]`: sizeof(T) * N (no length prefix)
+//! - Tuples: concatenation of all elements
+//! - Structs: concatenation of all fields in declaration order
 //!
 //! ## Quick Start
 //!
@@ -163,7 +182,7 @@
 //! ```ignore
 //! use osal_rs_serde::{Serialize, Deserialize, to_bytes, from_bytes};
 //!
-//! #[derive(Serialize, Deserialize)]
+//! #[derive(Serialize, Deserialize, Debug, PartialEq)]
 //! struct MotorControl {
 //!     motor_id: u8,
 //!     speed: i16,        // -1000 to 1000
@@ -171,7 +190,7 @@
 //!     current: u16,      // mA
 //! }
 //!
-//! #[derive(Serialize, Deserialize)]
+//! #[derive(Serialize, Deserialize, Debug, PartialEq)]
 //! struct RobotState {
 //!     timestamp: u64,
 //!     motors: [MotorControl; 4],  // 4 motors
@@ -200,13 +219,14 @@
 //!     
 //!     // Deserialize and check
 //!     let decoded: RobotState = from_bytes(&buffer[..len]).unwrap();
+//!     assert_eq!(state, decoded);
 //!     println!("Battery: {}mV, Temp: {}°C", 
 //!              decoded.battery_voltage, 
 //!              decoded.temperature);
 //! }
 //! ```
 //!
-//! ### Manual Implementation (Using Traits Directly)
+//! ### Manual Implementation (For Custom Behavior)
 //!
 //! ```ignore
 //! use osal_rs_serde::{Serialize, Deserialize, Serializer, Deserializer};
@@ -218,36 +238,110 @@
 //!
 //! impl Serialize for Point {
 //!     fn serialize<S: Serializer>(&self, serializer: &mut S) -> Result<(), S::Error> {
-//!         serializer.serialize_i32(self.x)?;
-//!         serializer.serialize_i32(self.y)?;
+//!         serializer.serialize_i32("x", self.x)?;
+//!         serializer.serialize_i32("y", self.y)?;
 //!         Ok(())
 //!     }
 //! }
 //!
 //! impl Deserialize for Point {
-//!     fn deserialize<D: Deserializer>(deserializer: &mut D) -> Result<Self, D::Error> {
+//!     fn deserialize<D: Deserializer>(deserializer: &mut D, _name: &str) -> Result<Self, D::Error> {
 //!         Ok(Point {
-//!             x: deserializer.deserialize_i32()?,
-//!             y: deserializer.deserialize_i32()?,
+//!             x: deserializer.deserialize_i32("x")?,
+//!             y: deserializer.deserialize_i32("y")?,
 //!         })
 //!     }
 //! }
 //! ```
 //!
+//! ## Integration with OSAL-RS
+//!
+//! Perfect for inter-task communication using queues:
+//!
+//! ```ignore
+//! use osal_rs::os::{Queue, QueueFn};
+//! use osal_rs_serde::{Serialize, Deserialize, to_bytes, from_bytes};
+//!
+//! #[derive(Serialize, Deserialize)]
+//! struct Message {
+//!     command: u8,
+//!     data: [u16; 4],
+//! }
+//!
+//! fn sender(queue: &Queue) {
+//!     let msg = Message { command: 0x42, data: [1, 2, 3, 4] };
+//!     let mut buffer = [0u8; 32];
+//!     let len = to_bytes(&msg, &mut buffer).unwrap();
+//!     queue.post(&buffer[..len], 100).unwrap();
+//! }
+//!
+//! fn receiver(queue: &Queue) {
+//!     let mut buffer = [0u8; 32];
+//!     queue.fetch(&mut buffer, 100).unwrap();
+//!     let msg: Message = from_bytes(&buffer).unwrap();
+//! }
+//! ```
+//!
 //! ## Supported Types
 //!
-//! - All primitive integer types (u8, i8, u16, i16, u32, i32, u64, i64, u128, i128)
-//! - Floating point types (f32, f64)
-//! - bool
-//! - Arrays and slices
-//! - Tuples
-//! - Optional types (Option<T>)
-//! - Result types
+//! - **Primitives**: All integer types (u8-u128, i8-i128), f32, f64, bool
+//! - **Compound**: Arrays `[T; N]`, tuples (up to 3 elements), `Option<T>`
+//! - **Collections**: `Vec<T>`, `String` (requires `alloc` feature)
+//! - **Custom**: Any type implementing `Serialize`/`Deserialize`
+//! - **Nested**: Full support for nested structs
 //!
-//! ## Custom Serializers
+//! ## Creating Custom Serializers
 //!
-//! You can create custom serializers for different formats (JSON, MessagePack, etc.)
-//! by implementing the `Serializer` and `Deserializer` traits.
+//! You can create custom serializers for different formats (JSON, MessagePack, CBOR, etc.)
+//! by implementing the `Serializer` and `Deserializer` traits:
+//!
+//! ```ignore
+//! use osal_rs_serde::{Serializer, Error};
+//!
+//! struct JsonSerializer<'a> {
+//!     buffer: &'a mut [u8],
+//!     position: usize,
+//! }
+//!
+//! impl<'a> Serializer for JsonSerializer<'a> {
+//!     type Error = Error;
+//!     
+//!     fn serialize_u32(&mut self, name: &str, v: u32) -> Result<(), Self::Error> {
+//!         // Write JSON format: "name": value
+//!         // Implementation here...
+//!         Ok(())
+//!     }
+//!     
+//!     // Implement other serialize_* methods...
+//! }
+//! ```
+//!
+//! See `examples/custom_serializer.rs` for a complete implementation example.
+//!
+//! ## Performance & Binary Size
+//!
+//! - **Zero-copy**: Reads/writes directly to/from buffers
+//! - **No allocations**: Works entirely with stack buffers (or Vec with `alloc`)
+//! - **Predictable**: Buffer size calculable at compile time
+//! - **Small code size**: Minimal overhead, optimized for embedded targets
+//!
+//! ## Features
+//!
+//! - `default`: Includes `alloc` feature
+//! - `alloc`: Enables Vec, String support
+//! - `std`: Enables standard library (error traits, etc.)
+//! - `derive`: Enables `#[derive(Serialize, Deserialize)]` macros (**recommended**)
+//!
+//! ## Examples
+//!
+//! The `examples/` directory contains complete working examples:
+//! - `basic.rs` - Simple struct serialization
+//! - `with_derive.rs` - Using derive macros
+//! - `arrays_tuples.rs` - Arrays and tuples
+//! - `nested_structs.rs` - Nested structures
+//! - `optional_fields.rs` - Optional fields with Option<T>
+//! - `robot_control.rs` - Complex embedded system
+//! - `custom_serializer.rs` - Custom serializer implementation
 
 #![cfg_attr(not(feature = "std"), no_std)]
 #![warn(missing_docs)]

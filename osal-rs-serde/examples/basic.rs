@@ -30,18 +30,18 @@ struct Point {
 /// Manual implementation of Serialize
 impl Serialize for Point {
     fn serialize<S: Serializer>(&self, serializer: &mut S) -> Result<(), S::Error> {
-        serializer.serialize_i32(self.x)?;
-        serializer.serialize_i32(self.y)?;
+        serializer.serialize_i32("x", self.x)?;
+        serializer.serialize_i32("y", self.y)?;
         Ok(())
     }
 }
 
 /// Manual implementation of Deserialize
 impl Deserialize for Point {
-    fn deserialize<D: Deserializer>(deserializer: &mut D) -> Result<Self, D::Error> {
+    fn deserialize<D: Deserializer>(deserializer: &mut D, _name: &str) -> Result<Self, D::Error> {
         Ok(Point {
-            x: deserializer.deserialize_i32()?,
-            y: deserializer.deserialize_i32()?,
+            x: deserializer.deserialize_i32("x")?,
+            y: deserializer.deserialize_i32("y")?,
         })
     }
 }

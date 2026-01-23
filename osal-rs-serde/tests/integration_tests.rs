@@ -17,7 +17,7 @@
  *
  ***************************************************************************/
 
-use osal_rs_serde::{to_bytes, from_bytes, Serialize, Deserialize, ByteDeserializer, Serializer, Deserializer};
+use osal_rs_serde::{to_bytes, from_bytes, ByteDeserializer, Serializer, Deserializer, Serialize, Deserialize};
 
 #[test]
 fn test_u8_serialization() {
@@ -129,17 +129,17 @@ fn test_manual_serialize() {
 
     impl Serialize for Point {
         fn serialize<S: Serializer>(&self, serializer: &mut S) -> Result<(), S::Error> {
-            serializer.serialize_i32(self.x)?;
-            serializer.serialize_i32(self.y)?;
+            serializer.serialize_i32("x", self.x)?;
+            serializer.serialize_i32("y", self.y)?;
             Ok(())
         }
     }
 
     impl Deserialize for Point {
-        fn deserialize<D: Deserializer>(deserializer: &mut D) -> Result<Self, D::Error> {
+        fn deserialize<D: Deserializer>(deserializer: &mut D, _name: &str) -> Result<Self, D::Error> {
             Ok(Point {
-                x: deserializer.deserialize_i32()?,
-                y: deserializer.deserialize_i32()?,
+                x: deserializer.deserialize_i32("x")?,
+                y: deserializer.deserialize_i32("y")?,
             })
         }
     }
@@ -160,10 +160,10 @@ fn test_unexpected_eof() {
     let mut deserializer = ByteDeserializer::new(&buffer);
     
     // Try to read u8 - should succeed
-    let _value = deserializer.deserialize_u8().unwrap();
+    let _value = deserializer.deserialize_u8("").unwrap();
     
     // Try to read u32 - should fail with UnexpectedEof
-    let result = deserializer.deserialize_u32();
+    let result = deserializer.deserialize_u32("");
     assert!(result.is_err());
 }
 

@@ -45,3 +45,7 @@ required-features = ["derive"]
 [[example]]
 name = "integration"
 required-features = ["derive"]
+
+[[test]]
+name = "integration_tests"
+required-features = ["derive"]

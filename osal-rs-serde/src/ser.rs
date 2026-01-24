@@ -133,7 +133,9 @@ use crate::error::{Error, Result};
 /// - `String` and `&str` (requires `alloc` for String)
 pub trait Serialize {
     /// Serialize this value using the given serializer.
-    fn serialize<S: Serializer>(&self, name: &str, serializer: &mut S) -> core::result::Result<(), S::Error>;
+    fn serialize<S>(&self, name: &str, serializer: &mut S) -> core::result::Result<(), S::Error>
+    where
+        S: Serializer;
 }
 
 /// Trait that defines how to serialize various types.
@@ -193,10 +195,14 @@ pub trait Serializer: Sized {
     fn serialize_str(&mut self, name: &str, v: &str) -> core::result::Result<(), Self::Error>;
 
     /// Serialize a vector of serializable items.
-    fn serialize_vec<T: Serialize>(&mut self, name: &str, v: &alloc::vec::Vec<T>) -> core::result::Result<(), Self::Error>;
+    fn serialize_vec<T>(&mut self, name: &str, v: &alloc::vec::Vec<T>) -> core::result::Result<(), Self::Error>
+    where
+        T: Serialize;
 
     /// Serialize an array of serializable items.
-    fn serialize_array<T: Serialize>(&mut self, name: &str, v: &[T]) -> core::result::Result<(), Self::Error>;
+    fn serialize_array<T>(&mut self, name: &str, v: &[T]) -> core::result::Result<(), Self::Error>
+    where
+        T: Serialize;
 
     /// Begin serializing a struct with the given name and number of fields.
     /// Default implementation does nothing (suitable for binary formats).
@@ -206,7 +212,10 @@ pub trait Serializer: Sized {
 
     /// Serialize a struct field with name and value.
     /// Default implementation just serializes the value.
-    fn serialize_field<T: Serialize>(&mut self, name: &str, value: &T) -> core::result::Result<(), Self::Error> {
+    fn serialize_field<T>(&mut self, name: &str, value: &T) -> core::result::Result<(), Self::Error>
+    where
+        T: Serialize,
+    {
         value.serialize(name, self)
     }
 
@@ -375,7 +384,9 @@ impl<'a> Serializer for ByteSerializer<'a> {
         self.serialize_bytes(name, v.as_bytes())
     }
 
-    fn serialize_vec<T: Serialize>(&mut self, name: &str, v: &alloc::vec::Vec<T>) -> core::result::Result<(), Self::Error> {
+    fn serialize_vec<T>(&mut self, name: &str, v: &alloc::vec::Vec<T>) -> core::result::Result<(), Self::Error> 
+    where
+        T: Serialize {
         // First write the length as u32
         self.serialize_u32(name, v.len() as u32)?;
         for item in v.iter() {
@@ -385,7 +396,9 @@ impl<'a> Serializer for ByteSerializer<'a> {
     }
 
     /// Serialize an array of serializable items.
-    fn serialize_array<T: Serialize>(&mut self, name: &str, v: &[T]) -> core::result::Result<(), Self::Error> {
+    fn serialize_array<T>(&mut self, name: &str, v: &[T]) -> core::result::Result<(), Self::Error> 
+    where
+        T: Serialize {
         for item in v.iter() {
             item.serialize(name, self)?;
         }

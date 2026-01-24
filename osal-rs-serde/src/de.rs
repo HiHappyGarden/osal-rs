@@ -80,6 +80,9 @@
 #[cfg(feature = "alloc")]
 use alloc::string::String;
 
+#[cfg(feature = "alloc")]
+use alloc::vec::Vec;
+
 use crate::error::{Error, Result};
 
 /// Trait for types that can be deserialized.
@@ -136,7 +139,9 @@ use crate::error::{Error, Result};
 pub trait Deserialize: Sized {
     /// Deserialize this value using the given deserializer.
     /// The `name` parameter contains the field name or struct name for context.
-    fn deserialize<D: Deserializer>(deserializer: &mut D, name: &str) -> core::result::Result<Self, D::Error>;
+    fn deserialize<D>(deserializer: &mut D, name: &str) -> core::result::Result<Self, D::Error>
+    where
+        D: Deserializer;
 }
 
 /// Trait that defines how to deserialize various types.
@@ -190,59 +195,33 @@ pub trait Deserializer: Sized {
     fn deserialize_bytes(&mut self, name: &str, buffer: &mut [u8]) -> core::result::Result<usize, Self::Error>;
 
     /// Deserialize a string.
-    /// Default implementation reads length and bytes.
     #[cfg(feature = "alloc")]
-    fn deserialize_string(&mut self, name: &str) -> core::result::Result<alloc::string::String, Self::Error> {
-        let len = self.deserialize_u32(name)? as usize;
-        let mut buffer = alloc::vec![0u8; len];
-        for i in 0..len {
-            buffer[i] = self.deserialize_u8("")?;
-        }
-        alloc::string::String::from_utf8(buffer)
-            .map_err(|_| Error::InvalidData.into())
-    }
+    fn deserialize_string(&mut self, name: &str) -> core::result::Result<String, Self::Error>;
 
     /// Deserialize a vector of deserializable items.
-    /// Default implementation reads length then deserializes each item.
     #[cfg(feature = "alloc")]
-    fn deserialize_vec<T: Deserialize>(&mut self, name: &str) -> core::result::Result<alloc::vec::Vec<T>, Self::Error> {
-        let len = self.deserialize_u32(name)? as usize;
-        let mut vec = alloc::vec::Vec::with_capacity(len);
-        for _ in 0..len {
-            vec.push(T::deserialize(self, "")?);
-        }
-        Ok(vec)
-    }
+    fn deserialize_vec<T>(&mut self, name: &str) -> core::result::Result<Vec<T>, Self::Error>
+    where 
+        T: Deserialize;
 
     /// Deserialize an array of deserializable items.
-    /// Default implementation deserializes each item in sequence.
-    fn deserialize_array<T: Deserialize, const N: usize>(&mut self, name: &str) -> core::result::Result<[T; N], Self::Error> {
-        let mut result = core::mem::MaybeUninit::<[T; N]>::uninit();
-        let result_ptr = result.as_mut_ptr() as *mut T;
-        
-        for i in 0..N {
-            unsafe {
-                result_ptr.add(i).write(T::deserialize(self, name)?);
-            }
-        }
-        
-        Ok(unsafe { result.assume_init() })
-    }
+    fn deserialize_array<T, const N: usize>(&mut self, name: &str) -> core::result::Result<[T; N], Self::Error>
+    where 
+        T: Deserialize;
 
     /// Begin deserializing a struct with the given name.
-    /// Default implementation does nothing (suitable for binary formats).
     fn deserialize_struct_start(&mut self, _name: &str) -> core::result::Result<(), Self::Error> {
         Ok(())
     }
 
     /// Deserialize a struct field with name.
-    /// Default implementation just deserializes the value.
-    fn deserialize_field<T: Deserialize>(&mut self, name: &str) -> core::result::Result<T, Self::Error> {
+    fn deserialize_field<T>(&mut self, name: &str) -> core::result::Result<T, Self::Error> 
+    where
+        T: Deserialize {
         T::deserialize(self, name)
     }
 
     /// End deserializing a struct.
-    /// Default implementation does nothing (suitable for binary formats).
     fn deserialize_struct_end(&mut self) -> core::result::Result<(), Self::Error> {
         Ok(())
     }
@@ -452,16 +431,20 @@ impl<'a> Deserializer for ByteDeserializer<'a> {
     }
 
     #[cfg(feature = "alloc")]
-    fn deserialize_vec<T: Deserialize>(&mut self, _name: &str) -> Result<alloc::vec::Vec<T>> {
+    fn deserialize_vec<T>(&mut self, _name: &str) -> Result<Vec<T>> 
+    where 
+        T: Deserialize {
         let len = self.deserialize_u32("")? as usize;
-        let mut vec = alloc::vec::Vec::with_capacity(len);
+        let mut vec = Vec::with_capacity(len);
         for _ in 0..len {
             vec.push(T::deserialize(self, "")?);
         }
         Ok(vec)
     }
 
-    fn deserialize_array<T: Deserialize, const N: usize>(&mut self, _name: &str) -> Result<[T; N]> {
+    fn deserialize_array<T, const N: usize>(&mut self, _name: &str) -> Result<[T; N]> 
+    where
+        T: Deserialize {
         let mut result = core::mem::MaybeUninit::<[T; N]>::uninit();
         let result_ptr = result.as_mut_ptr() as *mut T;
         
@@ -582,7 +565,7 @@ where
 
 // Vec implementation
 #[cfg(feature = "alloc")]
-impl<T> Deserialize for alloc::vec::Vec<T>
+impl<T> Deserialize for Vec<T>
 where
     T: Deserialize
 {

@@ -575,7 +575,7 @@ impl<const SIZE: usize> Serialize for Bytes<SIZE> {
 /// This implementation provides deserialization by reading bytes from the deserializer
 /// into a fixed-size array using the osal-rs-serde deserialization framework.
 #[cfg(feature = "serde")]
-impl<const SIZE: usize> Deserialize for Bytes<SIZE> {
+impl<'de, const SIZE: usize> Deserialize<'de> for Bytes<SIZE> {
     /// Deserializes a `Bytes` instance using the given deserializer.
     ///
     /// # Parameters
@@ -586,7 +586,7 @@ impl<const SIZE: usize> Deserialize for Bytes<SIZE> {
     ///
     /// * `Ok(Bytes<SIZE>)` - A new `Bytes` instance with deserialized data
     /// * `Err(D::Error)` - If deserialization fails
-    fn deserialize<D: osal_rs_serde::Deserializer>(deserializer: &mut D, name: &str) -> core::result::Result<Self, D::Error> {
+    fn deserialize<D: osal_rs_serde::Deserializer<'de>>(deserializer: &mut D, name: &str) -> core::result::Result<Self, D::Error> {
         let mut array = [0u8; SIZE];
         for i in 0..SIZE {
             array[i] = deserializer.deserialize_u8(name)?;

@@ -39,7 +39,11 @@ use crate::traits::{Serialize, Deserialize};
 #[cfg(feature = "serde")]
 use osal_rs_serde::{Serialize, Deserialize, to_bytes};
 
+#[cfg(not(feature = "serde"))]
 pub trait StructSerde : Serialize + BytesHasLen + Deserialize {}
+
+#[cfg(feature = "serde")]
+pub trait StructSerde : Serialize + BytesHasLen + for<'de> Deserialize<'de> {}
 
 use crate::utils::{Result, Error};
 use crate::{xQueueSendToBack, xQueueSendToBackFromISR};

@@ -136,19 +136,19 @@ use crate::error::{Error, Result};
 /// - `Option<T>` where T: Deserialize
 /// - `Vec<T>` where T: Deserialize (requires `alloc`)
 /// - `String` (requires `alloc`)
-pub trait Deserialize: Sized {
+pub trait Deserialize<'de>: Sized {
     /// Deserialize this value using the given deserializer.
     /// The `name` parameter contains the field name or struct name for context.
     fn deserialize<D>(deserializer: &mut D, name: &str) -> core::result::Result<Self, D::Error>
     where
-        D: Deserializer;
+        D: Deserializer<'de>;
 }
 
 /// Trait that defines how to deserialize various types.
 ///
 /// Implementations of this trait determine how to read data from a specific format.
 /// For example, `ByteDeserializer` reads data in little-endian binary format.
-pub trait Deserializer: Sized {
+pub trait Deserializer<'de>: Sized {
     /// The error type that can be returned during deserialization.
     type Error: From<Error>;
 
@@ -198,16 +198,20 @@ pub trait Deserializer: Sized {
     #[cfg(feature = "alloc")]
     fn deserialize_string(&mut self, name: &str) -> core::result::Result<String, Self::Error>;
 
+    /// Deserialize a string slice from the buffer.
+    /// This returns a reference to the data in the buffer with the deserializer's lifetime.
+    fn deserialize_str(&mut self, name: &str) -> core::result::Result<&'de str, Self::Error>;
+
     /// Deserialize a vector of deserializable items.
     #[cfg(feature = "alloc")]
     fn deserialize_vec<T>(&mut self, name: &str) -> core::result::Result<Vec<T>, Self::Error>
     where 
-        T: Deserialize;
+        T: Deserialize<'de>;
 
     /// Deserialize an array of deserializable items.
     fn deserialize_array<T, const N: usize>(&mut self, name: &str) -> core::result::Result<[T; N], Self::Error>
     where 
-        T: Deserialize;
+        T: Deserialize<'de>;
 
     /// Begin deserializing a struct with the given name.
     fn deserialize_struct_start(&mut self, _name: &str) -> core::result::Result<(), Self::Error> {
@@ -217,7 +221,7 @@ pub trait Deserializer: Sized {
     /// Deserialize a struct field with name.
     fn deserialize_field<T>(&mut self, name: &str) -> core::result::Result<T, Self::Error> 
     where
-        T: Deserialize {
+        T: Deserialize<'de> {
         T::deserialize(self, name)
     }
 
@@ -314,7 +318,7 @@ impl<'a> ByteDeserializer<'a> {
     }
 
     /// Read bytes from the buffer.
-    fn read_bytes(&mut self, len: usize) -> Result<&[u8]> {
+    fn read_bytes(&mut self, len: usize) -> Result<&'a [u8]> {
         if self.position + len > self.buffer.len() {
             return Err(Error::UnexpectedEof);
         }
@@ -324,7 +328,7 @@ impl<'a> ByteDeserializer<'a> {
     }
 }
 
-impl<'a> Deserializer for ByteDeserializer<'a> {
+impl<'a> Deserializer<'a> for ByteDeserializer<'a> {
     type Error = Error;
 
     fn deserialize_bool(&mut self, _name: &str) -> Result<bool> {
@@ -430,10 +434,17 @@ impl<'a> Deserializer for ByteDeserializer<'a> {
             .map_err(|_| Error::InvalidData)
     }
 
+    fn deserialize_str(&mut self, _name: &str) -> Result<&'a str> {
+        let len = self.deserialize_u32("")? as usize;
+        let bytes = self.read_bytes(len)?;
+        core::str::from_utf8(bytes)
+            .map_err(|_| Error::InvalidData)
+    }
+
     #[cfg(feature = "alloc")]
     fn deserialize_vec<T>(&mut self, _name: &str) -> Result<Vec<T>> 
     where 
-        T: Deserialize {
+        T: Deserialize<'a> {
         let len = self.deserialize_u32("")? as usize;
         let mut vec = Vec::with_capacity(len);
         for _ in 0..len {
@@ -444,7 +455,7 @@ impl<'a> Deserializer for ByteDeserializer<'a> {
 
     fn deserialize_array<T, const N: usize>(&mut self, _name: &str) -> Result<[T; N]> 
     where
-        T: Deserialize {
+        T: Deserialize<'a> {
         let mut result = core::mem::MaybeUninit::<[T; N]>::uninit();
         let result_ptr = result.as_mut_ptr() as *mut T;
         
@@ -460,127 +471,126 @@ impl<'a> Deserializer for ByteDeserializer<'a> {
 
 // Implementations for primitive types
 
-impl Deserialize for bool {
-    fn deserialize<D: Deserializer>(deserializer: &mut D, name: &str) -> core::result::Result<Self, D::Error> {
+impl<'de> Deserialize<'de> for bool {
+    fn deserialize<D: Deserializer<'de>>(deserializer: &mut D, name: &str) -> core::result::Result<Self, D::Error> {
         deserializer.deserialize_bool(name)
     }
 }
 
-impl Deserialize for u8 {
-    fn deserialize<D: Deserializer>(deserializer: &mut D, name: &str) -> core::result::Result<Self, D::Error> {
+impl<'de> Deserialize<'de> for u8 {
+    fn deserialize<D: Deserializer<'de>>(deserializer: &mut D, name: &str) -> core::result::Result<Self, D::Error> {
         deserializer.deserialize_u8(name)
     }
 }
 
-impl Deserialize for i8 {
-    fn deserialize<D: Deserializer>(deserializer: &mut D, name: &str) -> core::result::Result<Self, D::Error> {
+impl<'de> Deserialize<'de> for i8 {
+    fn deserialize<D: Deserializer<'de>>(deserializer: &mut D, name: &str) -> core::result::Result<Self, D::Error> {
         deserializer.deserialize_i8(name)
     }
 }
 
-impl Deserialize for u16 {
-    fn deserialize<D: Deserializer>(deserializer: &mut D, name: &str) -> core::result::Result<Self, D::Error> {
+impl<'de> Deserialize<'de> for u16 {
+    fn deserialize<D: Deserializer<'de>>(deserializer: &mut D, name: &str) -> core::result::Result<Self, D::Error> {
         deserializer.deserialize_u16(name)
     }
 }
 
-impl Deserialize for i16 {
-    fn deserialize<D: Deserializer>(deserializer: &mut D, name: &str) -> core::result::Result<Self, D::Error> {
+impl<'de> Deserialize<'de> for i16 {
+    fn deserialize<D: Deserializer<'de>>(deserializer: &mut D, name: &str) -> core::result::Result<Self, D::Error> {
         deserializer.deserialize_i16(name)
     }
 }
 
-impl Deserialize for u32 {
-    fn deserialize<D: Deserializer>(deserializer: &mut D, name: &str) -> core::result::Result<Self, D::Error> {
+impl<'de> Deserialize<'de> for u32 {
+    fn deserialize<D: Deserializer<'de>>(deserializer: &mut D, name: &str) -> core::result::Result<Self, D::Error> {
         deserializer.deserialize_u32(name)
     }
 }
 
-impl Deserialize for i32 {
-    fn deserialize<D: Deserializer>(deserializer: &mut D, name: &str) -> core::result::Result<Self, D::Error> {
+impl<'de> Deserialize<'de> for i32 {
+    fn deserialize<D: Deserializer<'de>>(deserializer: &mut D, name: &str) -> core::result::Result<Self, D::Error> {
         deserializer.deserialize_i32(name)
     }
 }
 
-impl Deserialize for u64 {
-    fn deserialize<D: Deserializer>(deserializer: &mut D, name: &str) -> core::result::Result<Self, D::Error> {
+impl<'de> Deserialize<'de> for u64 {
+    fn deserialize<D: Deserializer<'de>>(deserializer: &mut D, name: &str) -> core::result::Result<Self, D::Error> {
         deserializer.deserialize_u64(name)
     }
 }
 
-impl Deserialize for i64 {
-    fn deserialize<D: Deserializer>(deserializer: &mut D, name: &str) -> core::result::Result<Self, D::Error> {
+impl<'de> Deserialize<'de> for i64 {
+    fn deserialize<D: Deserializer<'de>>(deserializer: &mut D, name: &str) -> core::result::Result<Self, D::Error> {
         deserializer.deserialize_i64(name)
     }
 }
 
-impl Deserialize for u128 {
-    fn deserialize<D: Deserializer>(deserializer: &mut D, name: &str) -> core::result::Result<Self, D::Error> {
+impl<'de> Deserialize<'de> for u128 {
+    fn deserialize<D: Deserializer<'de>>(deserializer: &mut D, name: &str) -> core::result::Result<Self, D::Error> {
         deserializer.deserialize_u128(name)
     }
 }
 
-impl Deserialize for i128 {
-    fn deserialize<D: Deserializer>(deserializer: &mut D, name: &str) -> core::result::Result<Self, D::Error> {
+impl<'de> Deserialize<'de> for i128 {
+    fn deserialize<D: Deserializer<'de>>(deserializer: &mut D, name: &str) -> core::result::Result<Self, D::Error> {
         deserializer.deserialize_i128(name)
     }
 }
 
-impl Deserialize for f32 {
-    fn deserialize<D: Deserializer>(deserializer: &mut D, name: &str) -> core::result::Result<Self, D::Error> {
+impl<'de> Deserialize<'de> for f32 {
+    fn deserialize<D: Deserializer<'de>>(deserializer: &mut D, name: &str) -> core::result::Result<Self, D::Error> {
         deserializer.deserialize_f32(name)
     }
 }
 
-impl Deserialize for f64 {
-    fn deserialize<D: Deserializer>(deserializer: &mut D, name: &str) -> core::result::Result<Self, D::Error> {
+impl<'de> Deserialize<'de> for f64 {
+    fn deserialize<D: Deserializer<'de>>(deserializer: &mut D, name: &str) -> core::result::Result<Self, D::Error> {
         deserializer.deserialize_f64(name)
     }
 }
 
 // String implementations
-impl Deserialize for &str {
-    fn deserialize<D: Deserializer>(_deserializer: &mut D, _name: &str) -> core::result::Result<Self, D::Error> {
-        // Cannot deserialize into &str directly - use String instead
-        Err(Error::InvalidData.into())
+impl<'de> Deserialize<'de> for &'de str {
+    fn deserialize<D: Deserializer<'de>>(deserializer: &mut D, name: &str) -> core::result::Result<Self, D::Error> {
+        deserializer.deserialize_str(name)
     }
 }
 
 #[cfg(feature = "alloc")]
-impl Deserialize for String {
-    fn deserialize<D: Deserializer>(deserializer: &mut D, name: &str) -> core::result::Result<Self, D::Error> {
+impl<'de> Deserialize<'de> for String {
+    fn deserialize<D: Deserializer<'de>>(deserializer: &mut D, name: &str) -> core::result::Result<Self, D::Error> {
         deserializer.deserialize_string(name)
     }
 }
 
 // Array implementation
-impl<T, const N: usize> Deserialize for [T; N] 
+impl<'de, T, const N: usize> Deserialize<'de> for [T; N] 
 where 
-    T: Deserialize 
+    T: Deserialize<'de>
 {
-    fn deserialize<D: Deserializer>(deserializer: &mut D, name: &str) -> core::result::Result<Self, D::Error> {
+    fn deserialize<D: Deserializer<'de>>(deserializer: &mut D, name: &str) -> core::result::Result<Self, D::Error> {
         deserializer.deserialize_array::<T, N>(name)
     }
 }
 
 // Vec implementation
 #[cfg(feature = "alloc")]
-impl<T> Deserialize for Vec<T>
+impl<'de, T> Deserialize<'de> for Vec<T>
 where
-    T: Deserialize
+    T: Deserialize<'de>
 {
-    fn deserialize<D: Deserializer>(deserializer: &mut D, name: &str) -> core::result::Result<Self, D::Error> {
+    fn deserialize<D: Deserializer<'de>>(deserializer: &mut D, name: &str) -> core::result::Result<Self, D::Error> {
         deserializer.deserialize_vec::<T>(name)
     }
 }
 
 // Tuple implementations
-impl<T1: Deserialize, T2: Deserialize> Deserialize for (T1, T2) 
+impl<'de, T1, T2> Deserialize<'de> for (T1, T2) 
 where
-    T1: Deserialize,
-    T2: Deserialize
+    T1: Deserialize<'de>,
+    T2: Deserialize<'de>
 {
-    fn deserialize<D: Deserializer>(deserializer: &mut D, name: &str) -> core::result::Result<Self, D::Error> {
+    fn deserialize<D: Deserializer<'de>>(deserializer: &mut D, name: &str) -> core::result::Result<Self, D::Error> {
         Ok((
             T1::deserialize(deserializer, name)?,
             T2::deserialize(deserializer, name)?,
@@ -588,13 +598,13 @@ where
     }
 }
 
-impl<T1: Deserialize, T2: Deserialize, T3: Deserialize> Deserialize for (T1, T2, T3)
+impl<'de, T1, T2, T3> Deserialize<'de> for (T1, T2, T3)
 where
-    T1: Deserialize,
-    T2: Deserialize,
-    T3: Deserialize,
+    T1: Deserialize<'de>,
+    T2: Deserialize<'de>,
+    T3: Deserialize<'de>,
 {
-    fn deserialize<D: Deserializer>(deserializer: &mut D, name: &str) -> core::result::Result<Self, D::Error> {
+    fn deserialize<D: Deserializer<'de>>(deserializer: &mut D, name: &str) -> core::result::Result<Self, D::Error> {
         Ok((
             T1::deserialize(deserializer, name)?,
             T2::deserialize(deserializer, name)?,
@@ -604,10 +614,10 @@ where
 }
 
 // Option implementation
-impl<T> Deserialize for Option<T> 
-where T: Deserialize
+impl<'de, T> Deserialize<'de> for Option<T> 
+where T: Deserialize<'de>
 {
-    fn deserialize<D: Deserializer>(deserializer: &mut D, name: &str) -> core::result::Result<Self, D::Error> {
+    fn deserialize<D: Deserializer<'de>>(deserializer: &mut D, name: &str) -> core::result::Result<Self, D::Error> {
         let tag = deserializer.deserialize_u8(name)?;
         match tag {
             0 => Ok(None),

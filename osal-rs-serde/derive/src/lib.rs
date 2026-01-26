@@ -166,8 +166,8 @@ pub fn derive_deserialize(input: TokenStream) -> TokenStream {
                 });
 
                 quote! {
-                    impl osal_rs_serde::Deserialize for #name {
-                        fn deserialize<D: osal_rs_serde::Deserializer>(deserializer: &mut D, name: &str) -> Result<Self, D::Error> {
+                    impl<'de> osal_rs_serde::Deserialize<'de> for #name {
+                        fn deserialize<D: osal_rs_serde::Deserializer<'de>>(deserializer: &mut D, name: &str) -> Result<Self, D::Error> {
                             deserializer.deserialize_struct_start(name)?;
                             let result = Self {
                                 #(#field_deserializations,)*
@@ -182,8 +182,8 @@ pub fn derive_deserialize(input: TokenStream) -> TokenStream {
                 let field_types = fields.unnamed.iter().map(|f| &f.ty);
 
                 quote! {
-                    impl osal_rs_serde::Deserialize for #name {
-                        fn deserialize<D: osal_rs_serde::Deserializer>(deserializer: &mut D, name: &str) -> Result<Self, D::Error> {
+                    impl<'de> osal_rs_serde::Deserialize<'de> for #name {
+                        fn deserialize<D: osal_rs_serde::Deserializer<'de>>(deserializer: &mut D, name: &str) -> Result<Self, D::Error> {
                             Ok(Self(
                                 #(<#field_types as osal_rs_serde::Deserialize>::deserialize(deserializer, name)?,)*
                             ))
@@ -193,8 +193,8 @@ pub fn derive_deserialize(input: TokenStream) -> TokenStream {
             }
             Fields::Unit => {
                 quote! {
-                    impl osal_rs_serde::Deserialize for #name {
-                        fn deserialize<D: osal_rs_serde::Deserializer>(_deserializer: &mut D, _name: &str) -> Result<Self, D::Error> {
+                    impl<'de> osal_rs_serde::Deserialize<'de> for #name {
+                        fn deserialize<D: osal_rs_serde::Deserializer<'de>>(_deserializer: &mut D, _name: &str) -> Result<Self, D::Error> {
                             Ok(Self)
                         }
                     }

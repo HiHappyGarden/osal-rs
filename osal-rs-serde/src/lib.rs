@@ -417,14 +417,13 @@ where
 ///
 /// ```ignore
 /// use osal_rs_serde::from_bytes;
-///
 /// let buffer = [42u8, 0, 0, 0];
 /// let value: u32 = from_bytes(&buffer).unwrap();
 /// assert_eq!(value, 42);
 /// ```
-pub fn from_bytes<T>(buffer: &[u8]) -> Result<T> 
+pub fn from_bytes<'a, T>(buffer: &'a [u8]) -> Result<T> 
 where 
-    T: Deserialize
+    T: Deserialize<'a>
 {
     let mut deserializer = ByteDeserializer::new(buffer);
     T::deserialize(&mut deserializer, "")

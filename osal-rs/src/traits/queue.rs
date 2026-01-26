@@ -157,9 +157,69 @@ pub trait Queue {
 /// queue.fetch(&mut received, 100).unwrap();
 /// ```
 
+#[cfg(not(feature = "serde"))]
 pub trait QueueStreamed<T> 
 where 
     T: Deserialize + Sized {
+
+    /// Fetches a typed message from the queue (blocking).
+    ///
+    /// # Parameters
+    ///
+    /// * `buffer` - Mutable reference to receive the message
+    /// * `time` - Maximum ticks to wait
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(())` - Message received
+    /// * `Err(Error)` - Timeout or error
+    fn fetch(&self, buffer: &mut T, time: TickType) -> Result<()>;
+
+    /// Fetches a message from an ISR (non-blocking).
+    ///
+    /// # Parameters
+    ///
+    /// * `buffer` - Mutable reference to receive the message
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(())` - Message received
+    /// * `Err(Error)` - Queue empty or error
+    fn fetch_from_isr(&self, buffer: &mut T) -> Result<()>;
+
+    /// Posts a typed message to the queue (blocking).
+    ///
+    /// # Parameters
+    ///
+    /// * `item` - Reference to the message to send
+    /// * `time` - Maximum ticks to wait
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(())` - Message posted
+    /// * `Err(Error)` - Timeout or error
+    fn post(&self, item: &T, time: TickType) -> Result<()>;
+
+    /// Posts a message from an ISR (non-blocking).
+    ///
+    /// # Parameters
+    ///
+    /// * `item` - Reference to the message to send
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(())` - Message posted
+    /// * `Err(Error)` - Queue full or error
+    fn post_from_isr(&self, item: &T) -> Result<()>;
+
+    /// Deletes the queue, freeing resources.
+    fn delete(&mut self);
+}
+
+#[cfg(feature = "serde")]
+pub trait QueueStreamed<T> 
+where 
+    T: for<'de> Deserialize<'de> + Sized {
 
     /// Fetches a typed message from the queue (blocking).
     ///

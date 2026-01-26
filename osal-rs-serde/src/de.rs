@@ -538,14 +538,6 @@ impl Deserialize for f64 {
     }
 }
 
-// String implementations
-impl Deserialize for &str {
-    fn deserialize<D: Deserializer>(_deserializer: &mut D, _name: &str) -> core::result::Result<Self, D::Error> {
-        // Cannot deserialize into &str directly - use String instead
-        Err(Error::InvalidData.into())
-    }
-}
-
 #[cfg(feature = "alloc")]
 impl Deserialize for String {
     fn deserialize<D: Deserializer>(deserializer: &mut D, name: &str) -> core::result::Result<Self, D::Error> {

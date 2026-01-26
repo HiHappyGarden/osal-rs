@@ -52,6 +52,7 @@ Tuple:      sum(sizeof each field)
 Vec<T>:     4 bytes (u32 length) + sizeof(T) * length
 String:     4 bytes (u32 length) + UTF-8 bytes
 ```
+__NOTE__ Due to the lack of ownership of the type &str it is only handled in serialization and not in deserialization
 
 ## Installation
 

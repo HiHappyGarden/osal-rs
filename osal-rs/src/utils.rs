@@ -102,6 +102,35 @@ pub enum Error {
     Unhandled(&'static str)
 }
 
+impl Display for Error {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        use Error::*;
+
+        match self {
+            OutOfMemory => write!(f, "Out of memory"),
+            QueueSendTimeout => write!(f, "Queue send timeout"),
+            QueueReceiveTimeout => write!(f, "Queue receive timeout"),
+            MutexTimeout => write!(f, "Mutex timeout"),
+            MutexLockFailed => write!(f, "Mutex lock failed"),
+            Timeout => write!(f, "Operation timeout"),
+            QueueFull => write!(f, "Queue full"),
+            StringConversionError => write!(f, "String conversion error"),
+            TaskNotFound => write!(f, "Task not found"),
+            InvalidQueueSize => write!(f, "Invalid queue size"),
+            NullPtr => write!(f, "Null pointer encountered"),
+            NotFound => write!(f, "Item not found"),
+            OutOfIndex => write!(f, "Index out of bounds"),
+            InvalidType => write!(f, "Invalid type for operation"),
+            Empty => write!(f, "No data available"),
+            WriteError => write!(f, "Write error occurred"),
+            ReadError => write!(f, "Read error occurred"),
+            ReturnWithCode(code) => write!(f, "Return with code: {}", code),
+            Unhandled(desc) => write!(f, "Unhandled error: {}", desc),
+        }
+    }
+}
+
+
 /// CPU register size enumeration.
 ///
 /// Identifies whether the target CPU uses 32-bit or 64-bit registers.

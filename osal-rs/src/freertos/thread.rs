@@ -40,6 +40,8 @@ use crate::traits::{ThreadFn, ThreadParam, ThreadFnPtr, ThreadNotification, ToTi
 use crate::utils::{Bytes, DoublePtr, Error, Result};
 use crate::{from_c_str, max_task_name_len, xTaskNotify, xTaskNotifyFromISR, xTaskNotifyWait};
 
+const MAX_TASK_NAME_LEN: usize = 16;
+
 /// Represents the possible states of a FreeRTOS task/thread.
 ///
 /// # Examples
@@ -97,7 +99,7 @@ pub struct ThreadMetadata {
     /// FreeRTOS task handle
     pub thread: ThreadHandle,
     /// Thread name
-    pub name: Bytes<16>,
+    pub name: Bytes<MAX_TASK_NAME_LEN>,
     /// Original stack depth allocated for this thread
     pub stack_depth: StackType,
     /// Thread priority
@@ -213,7 +215,7 @@ impl Default for ThreadMetadata {
 #[derive(Clone)]
 pub struct Thread {
     handle: ThreadHandle,
-    name: Bytes<16>,
+    name: Bytes<MAX_TASK_NAME_LEN>,
     stack_depth: StackType,
     priority: UBaseType,
     callback: Option<Arc<ThreadFnPtr>>,

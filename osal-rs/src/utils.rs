@@ -754,6 +754,25 @@ impl<const SIZE: usize> Bytes<SIZE> {
         Self( array )
     }
 
+    pub fn new_by_ptr(str: *const c_char) -> Self {
+        if str.is_null() {
+            return Self::new();
+        }
+
+        let mut array = [0u8; SIZE];
+
+        let mut i = 0usize ;
+        for byte in unsafe { CStr::from_ptr(str) }.to_bytes() {
+            if i > SIZE - 1{
+                break;
+            }
+            array[i] = *byte;
+            i += 1;
+        }
+
+        Self( array )
+    }
+
     /// Creates a new `Bytes` instance from any type implementing `ToString`.
     ///
     /// This is a convenience wrapper around [`new_by_str`](Self::new_by_str)

@@ -24,7 +24,7 @@
 
 use core::cell::UnsafeCell;
 use core::ffi::{CStr, c_char, c_void};
-use core::str::from_utf8_mut;
+use core::str::{from_utf8_mut, FromStr};
 use core::fmt::{Debug, Display}; 
 use core::ops::{Deref, DerefMut};
 use core::time::Duration;
@@ -558,6 +558,15 @@ impl<const SIZE: usize> Display for Bytes<SIZE> {
     }
 }
 
+impl<const SIZE: usize> FromStr for Bytes<{SIZE}> {
+    type Err = Error;
+
+    #[inline]
+    fn from_str(s: &str) -> core::result::Result<Self, Self::Err> {
+        Ok(Self::new_by_str(s))
+    }
+}
+
 impl<const SIZE: usize> AsSyncStr for Bytes<SIZE> {
     /// Returns a string slice reference.
     ///
@@ -719,20 +728,20 @@ impl<const SIZE: usize> Bytes<SIZE> {
     ///
     /// ```ignore
     /// use osal_rs::utils::Bytes;
-    /// 
+    ///
     /// let short = Bytes::<16>::new_by_str("Hi");
     /// // Internal array: [b'H', b'i', 0, 0, 0, ...]
-    /// 
+    ///
     /// let exact = Bytes::<5>::new_by_str("Hello");
     /// // Internal array: [b'H', b'e', b'l', b'l', b'o']
-    /// 
+    ///
     /// let long = Bytes::<3>::new_by_str("Hello");
     /// // Internal array: [b'H', b'e', b'l'] (truncated)
     /// ```
     pub fn new_by_str(str: &str) -> Self {
 
         let mut array = [0u8; SIZE];
-        
+
         let mut i = 0usize ;
         for byte in str.as_bytes() {
             if i > SIZE - 1{
@@ -740,7 +749,7 @@ impl<const SIZE: usize> Bytes<SIZE> {
             }
             array[i] = *byte;
             i += 1;
-        }  
+        }
 
         Self( array )
     }
@@ -936,7 +945,7 @@ impl<const SIZE: usize> Bytes<SIZE> {
 /// let empty = bytes_to_hex(&[]);
 /// assert_eq!(empty, "");
 /// ```
-pub fn bytes_to_hex<'a>(bytes: &'a [u8]) -> String {
+pub fn bytes_to_hex(bytes: &[u8]) -> String {
     bytes.iter()
          .map(|b| format!("{:02x}", b))
          .collect()

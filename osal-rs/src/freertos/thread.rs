@@ -97,7 +97,7 @@ pub struct ThreadMetadata {
     /// FreeRTOS task handle
     pub thread: ThreadHandle,
     /// Thread name
-    pub name: String,
+    pub name: Bytes<16>,
     /// Original stack depth allocated for this thread
     pub stack_depth: StackType,
     /// Thread priority
@@ -132,7 +132,7 @@ impl From<(ThreadHandle,TaskStatus)> for ThreadMetadata {
 
         ThreadMetadata {
             thread: status.0,
-            name: from_c_str!(status.1.pcTaskName),
+            name: Bytes::new_by_ptr(status.1.pcTaskName),
             // Avoid dereferencing pxStackBase, which may be null or otherwise invalid.
             // Use 0 as a safe default for unknown stack depth.
             stack_depth: 0,
@@ -151,7 +151,7 @@ impl Default for ThreadMetadata {
     fn default() -> Self {
         ThreadMetadata {
             thread: null_mut(),
-            name: String::new(),
+            name: Bytes::new(),
             stack_depth: 0,
             priority: 0,
             thread_number: 0,
@@ -657,7 +657,7 @@ impl ThreadFn for Thread {
         let metadata = Self::get_metadata_from_handle(handle);
         Self {
             handle,
-            name: Bytes::new_by_str(&metadata.name),
+            name: metadata.name.clone(),
             stack_depth: metadata.stack_depth,
             priority: metadata.priority,
             callback: None,

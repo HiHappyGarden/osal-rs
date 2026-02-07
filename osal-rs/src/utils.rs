@@ -754,6 +754,48 @@ impl<const SIZE: usize> Bytes<SIZE> {
         Self( array )
     }
 
+    /// Creates a new `Bytes` instance from a C string pointer.
+    ///
+    /// Safely converts a null-terminated C string pointer into a `Bytes` instance.
+    /// If the pointer is null, returns a zero-initialized `Bytes`. The function
+    /// copies bytes from the C string into the fixed-size array, truncating if
+    /// the source is longer than `SIZE`.
+    ///
+    /// # Parameters
+    ///
+    /// * `str` - A pointer to a null-terminated C string (`*const c_char`)
+    ///
+    /// # Safety
+    ///
+    /// While this function is not marked unsafe, it internally uses `unsafe` code
+    /// to dereference the pointer. The caller must ensure that:
+    /// - If not null, the pointer points to a valid null-terminated C string
+    /// - The memory the pointer references remains valid for the duration of the call
+    ///
+    /// # Returns
+    ///
+    /// A `Bytes` instance containing the C string data, or zero-initialized if the pointer is null.
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// use osal_rs::utils::Bytes;
+    /// use core::ffi::c_char;
+    /// use alloc::ffi::CString;
+    ///
+    /// // From a CString
+    /// let c_string = CString::new("Hello").unwrap();
+    /// let bytes = Bytes::<16>::new_by_ptr(c_string.as_ptr());
+    ///
+    /// // From a null pointer
+    /// let null_bytes = Bytes::<16>::new_by_ptr(core::ptr::null());
+    /// // Returns zero-initialized Bytes
+    ///
+    /// // Truncation example
+    /// let long_string = CString::new("This is a very long string").unwrap();
+    /// let short_bytes = Bytes::<8>::new_by_ptr(long_string.as_ptr());
+    /// // Only first 8 bytes are copied
+    /// ```
     pub fn new_by_ptr(str: *const c_char) -> Self {
         if str.is_null() {
             return Self::new();
@@ -929,6 +971,181 @@ impl<const SIZE: usize> Bytes<SIZE> {
     pub fn as_cstring(&self) -> CString {
         unsafe {
             CString::from_vec_unchecked(self.0.to_vec())
+        }
+    }
+
+    /// Appends a string slice to the existing content in the `Bytes` buffer.
+    ///
+    /// This method finds the current end of the content (first null byte) and appends
+    /// the provided string starting from that position. If the buffer is already full
+    /// or if the appended content would exceed the buffer size, the content is truncated
+    /// to fit within the `SIZE` limit.
+    ///
+    /// # Parameters
+    ///
+    /// * `str` - The string slice to append
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use osal_rs::utils::Bytes;
+    ///
+    /// let mut bytes = Bytes::<16>::new_by_str("Hello");
+    /// bytes.append_str(" World");
+    /// assert_eq!(bytes.as_str(), "Hello World");
+    ///
+    /// // Truncation when exceeding buffer size
+    /// let mut small_bytes = Bytes::<8>::new_by_str("Hi");
+    /// small_bytes.append_str(" there friend");
+    /// assert_eq!(small_bytes.as_str(), "Hi ther");
+    /// ```
+    pub fn append_str(&mut self, str: &str) {
+        let current_len = self.0.iter().position(|&b| b == 0).unwrap_or(SIZE);
+        let mut i = current_len;
+        for byte in str.as_bytes() {
+            if i > SIZE - 1{
+                break;
+            }
+            self.0[i] = *byte;
+            i += 1;
+        }
+    }
+
+    /// Appends a `String` reference to the existing content in the `Bytes` buffer.
+    ///
+    /// This is a convenience wrapper around [`append_str`](Self::append_str) that
+    /// converts the `String` reference to a string slice before appending.
+    ///
+    /// # Parameters
+    ///
+    /// * `str` - The `String` reference to append
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use osal_rs::utils::Bytes;
+    ///
+    /// let mut bytes = Bytes::<16>::new_by_str("Hello");
+    /// let world = String::from(" World");
+    /// bytes.append_string(&world);
+    /// assert_eq!(bytes.as_str(), "Hello World");
+    /// ```
+    #[inline]
+    pub fn append_string(&mut self, str: &String) {
+        self.append_str(str.as_str());
+    }
+
+    /// Appends content from any type implementing `AsSyncStr` to the buffer.
+    ///
+    /// This method accepts any type that implements the `AsSyncStr` trait, converts
+    /// it to a string slice, and appends it to the existing content. If the buffer
+    /// is already full or if the appended content would exceed the buffer size,
+    /// the content is truncated to fit within the `SIZE` limit.
+    ///
+    /// # Parameters
+    ///
+    /// * `c_str` - A reference to any type implementing `AsSyncStr`
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// use osal_rs::utils::Bytes;
+    ///
+    /// let mut bytes = Bytes::<16>::new_by_str("Hello");
+    /// let other_bytes = Bytes::<8>::new_by_str(" World");
+    /// bytes.append_as_sync_str(&other_bytes);
+    /// assert_eq!(bytes.as_str(), "Hello World");
+    /// ```
+    pub fn append_as_sync_str(&mut self, c_str: & impl AsSyncStr) {
+        let current_len = self.0.iter().position(|&b| b == 0).unwrap_or(SIZE);
+        let mut i = current_len;
+        for byte in c_str.as_str().as_bytes() {
+            if i > SIZE - 1{
+                break;
+            }
+            self.0[i] = *byte;
+            i += 1;
+        }
+    }
+
+    /// Appends raw bytes to the existing content in the `Bytes` buffer.
+    ///
+    /// This method finds the current end of the content (first null byte) and appends
+    /// the provided byte slice starting from that position. If the buffer is already
+    /// full or if the appended content would exceed the buffer size, the content is
+    /// truncated to fit within the `SIZE` limit.
+    ///
+    /// # Parameters
+    ///
+    /// * `bytes` - The byte slice to append
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use osal_rs::utils::Bytes;
+    ///
+    /// let mut bytes = Bytes::<16>::new_by_str("Hello");
+    /// bytes.append_bytes(b" World");
+    /// assert_eq!(bytes.as_str(), "Hello World");
+    ///
+    /// // Appending arbitrary bytes
+    /// let mut data = Bytes::<16>::new_by_str("Data: ");
+    /// data.append_bytes(&[0x41, 0x42, 0x43]);
+    /// assert_eq!(data.as_str(), "Data: ABC");
+    /// ```
+    pub fn append_bytes(&mut self, bytes: &[u8]) {
+        let current_len = self.0.iter().position(|&b| b == 0).unwrap_or(SIZE);
+        let mut i = current_len;
+        for byte in bytes {
+            if i > SIZE - 1{
+                break;
+            }
+            self.0[i] = *byte;
+            i += 1;
+        }
+    }
+
+    /// Appends the content of another `Bytes` instance to this buffer.
+    ///
+    /// This method allows appending content from a `Bytes` instance of a different
+    /// size (specified by the generic parameter `OHTER_SIZE`). The method finds the
+    /// current end of the content (first null byte) and appends the content from the
+    /// other `Bytes` instance. If the buffer is already full or if the appended content
+    /// would exceed the buffer size, the content is truncated to fit within the `SIZE` limit.
+    ///
+    /// # Type Parameters
+    ///
+    /// * `OHTER_SIZE` - The size of the source `Bytes` buffer (can be different from `SIZE`)
+    ///
+    /// # Parameters
+    ///
+    /// * `other` - A reference to the `Bytes` instance to append
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use osal_rs::utils::Bytes;
+    ///
+    /// let mut bytes = Bytes::<16>::new_by_str("Hello");
+    /// let other = Bytes::<8>::new_by_str(" World");
+    /// bytes.append(&other);
+    /// assert_eq!(bytes.as_str(), "Hello World");
+    ///
+    /// // Appending from a larger buffer
+    /// let mut small = Bytes::<8>::new_by_str("Hi");
+    /// let large = Bytes::<32>::new_by_str(" there friend");
+    /// small.append(&large);
+    /// assert_eq!(small.as_str(), "Hi ther");
+    /// ```
+    pub fn append<const OHTER_SIZE: usize>(&mut self, other: &Bytes<OHTER_SIZE>) {
+        let current_len = self.0.iter().position(|&b| b == 0).unwrap_or(SIZE);
+        let mut i = current_len;
+        for &byte in other.0.iter() {
+            if i > SIZE - 1{
+                break;
+            }
+            self.0[i] = byte;
+            i += 1;
         }
     }
 }

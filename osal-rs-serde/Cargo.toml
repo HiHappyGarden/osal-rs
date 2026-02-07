@@ -24,12 +24,6 @@ derive = ["osal-rs-serde-derive"]
 [dependencies]
 osal-rs-serde-derive = { version = "0.3", path = "derive", optional = true }
 
-[profile.dev]
-panic = "abort"
-
-[profile.release]
-panic = "abort"
-
 [[example]]
 name = "basic"
 required-features = []
@@ -44,6 +38,22 @@ required-features = ["derive"]
 
 [[example]]
 name = "integration"
+required-features = ["derive"]
+
+[[example]]
+name = "arrays_tuples"
+required-features = ["derive"]
+
+[[example]]
+name = "nested_structs"
+required-features = ["derive"]
+
+[[example]]
+name = "optional_fields"
+required-features = ["derive"]
+
+[[example]]
+name = "robot_control"
 required-features = ["derive"]
 
 [[test]]

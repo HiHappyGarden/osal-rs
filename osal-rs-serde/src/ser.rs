@@ -57,7 +57,7 @@
 //! }
 //!
 //! impl Serialize for Point {
-//!     fn serialize<S: Serializer>(&self, serializer: &mut S) -> Result<(), S::Error> {
+//!     fn serialize<S: Serializer>(&self, _name: &str, serializer: &mut S) -> Result<(), S::Error> {
 //!         serializer.serialize_i32("x", self.x)?;
 //!         serializer.serialize_i32("y", self.y)?;
 //!         Ok(())

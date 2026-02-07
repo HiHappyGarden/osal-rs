@@ -832,14 +832,14 @@ impl<const SIZE: usize> Bytes<SIZE> {
     ///
     /// ```ignore
     /// use osal_rs::utils::Bytes;
-    /// 
+    ///
     /// // From integer
     /// let num_bytes = Bytes::<8>::new_by_string(&42);
-    /// 
+    ///
     /// // From String
     /// let string = String::from("Task");
     /// let str_bytes = Bytes::<16>::new_by_string(&string);
-    /// 
+    ///
     /// // From custom type with ToString
     /// #[derive(Debug)]
     /// struct TaskId(u32);
@@ -850,8 +850,15 @@ impl<const SIZE: usize> Bytes<SIZE> {
     /// }
     /// let task_bytes = Bytes::<16>::new_by_string(&TaskId(5));
     /// ```
-    pub fn new_by_string(str: &impl ToString) -> Self {
+    pub fn new_by_as_sync_str(str: &impl ToString) -> Self {
         Self::new_by_str(&str.to_string())
+    }
+
+    pub fn new_by_bytes(bytes: &[u8]) -> Self {
+        let mut array = [0u8; SIZE];
+        let len = core::cmp::min(bytes.len(), SIZE);
+        array[..len].copy_from_slice(&bytes[..len]);
+        Self( array )
     }
 
     /// Fills a mutable string slice with the contents of the byte array.
@@ -864,9 +871,9 @@ impl<const SIZE: usize> Bytes<SIZE> {
     ///
     /// * `dest` - The destination string slice to fill
     ///
-    /// # Panics
+    /// # Returns
     ///
-    /// Currently panics (todo!) if the byte array contains invalid UTF-8.
+    /// `Ok(())` if the operation succeeds, or `Err(Error::StringConversionError)` if the byte array cannot be converted to a valid UTF-8 string.
     ///
     /// # Examples
     ///
@@ -880,15 +887,16 @@ impl<const SIZE: usize> Bytes<SIZE> {
     /// 
     /// assert_eq!(&output[..11], "Hello World");
     /// ```
-    pub fn fill_str(&mut self, dest: &mut str) {
+    pub fn fill_str(&mut self, dest: &mut str) -> Result<()>{
         match from_utf8_mut(&mut self.0) {
             Ok(str) => {
                 let len = core::cmp::min(str.len(), dest.len());
                 unsafe {
                     dest.as_bytes_mut()[..len].copy_from_slice(&str.as_bytes()[..len]);
                 }
+                Ok(())
             }
-            Err(_) => todo!(),
+            Err(_) => Err(Error::StringConversionError),
         }
     }
 
@@ -1009,30 +1017,6 @@ impl<const SIZE: usize> Bytes<SIZE> {
             self.0[i] = *byte;
             i += 1;
         }
-    }
-
-    /// Appends a `String` reference to the existing content in the `Bytes` buffer.
-    ///
-    /// This is a convenience wrapper around [`append_str`](Self::append_str) that
-    /// converts the `String` reference to a string slice before appending.
-    ///
-    /// # Parameters
-    ///
-    /// * `str` - The `String` reference to append
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use osal_rs::utils::Bytes;
-    ///
-    /// let mut bytes = Bytes::<16>::new_by_str("Hello");
-    /// let world = String::from(" World");
-    /// bytes.append_string(&world);
-    /// assert_eq!(bytes.as_str(), "Hello World");
-    /// ```
-    #[inline]
-    pub fn append_string(&mut self, str: &String) {
-        self.append_str(str.as_str());
     }
 
     /// Appends content from any type implementing `AsSyncStr` to the buffer.

@@ -93,9 +93,9 @@ pub enum Error {
     /// No data available
     Empty,
     /// Write error occurred
-    WriteError,
+    WriteError(&'static str),
     /// Read error occurred
-    ReadError,
+    ReadError(&'static str),
     /// Return error with code
     ReturnWithCode(i32),
     /// Unhandled error with description
@@ -122,8 +122,8 @@ impl Display for Error {
             OutOfIndex => write!(f, "Index out of bounds"),
             InvalidType => write!(f, "Invalid type for operation"),
             Empty => write!(f, "No data available"),
-            WriteError => write!(f, "Write error occurred"),
-            ReadError => write!(f, "Read error occurred"),
+            WriteError(desc) => write!(f, "Write error occurred: {}", desc),
+            ReadError(desc) => write!(f, "Read error occurred: {}", desc),
             ReturnWithCode(code) => write!(f, "Return with code: {}", code),
             Unhandled(desc) => write!(f, "Unhandled error: {}", desc),
         }

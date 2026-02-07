@@ -205,7 +205,7 @@ fn main() {
     // Use custom text serializer
     let mut buffer = [0u8; 128];
     let mut serializer = TextSerializer::new(&mut buffer);
-    reading.serialize(&mut serializer).unwrap();
+    reading.serialize("", &mut serializer).unwrap();
     
     let len = serializer.position();
     let text = core::str::from_utf8(&buffer[..len]).unwrap();

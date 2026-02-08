@@ -99,7 +99,9 @@ pub enum Error {
     /// Return error with code
     ReturnWithCode(i32),
     /// Unhandled error with description
-    Unhandled(&'static str)
+    Unhandled(&'static str),
+    /// Unhandled error with description owned
+    UnhandledOwned(String)
 }
 
 impl Display for Error {
@@ -126,6 +128,7 @@ impl Display for Error {
             ReadError(desc) => write!(f, "Read error occurred: {}", desc),
             ReturnWithCode(code) => write!(f, "Return with code: {}", code),
             Unhandled(desc) => write!(f, "Unhandled error: {}", desc),
+            UnhandledOwned(desc) => write!(f, "Unhandled error owned: {}", desc),
         }
     }
 }

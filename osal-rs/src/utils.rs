@@ -605,10 +605,16 @@ impl<const SIZE: usize> Serialize for Bytes<SIZE> {
     /// * `Ok(())` - On successful serialization
     /// * `Err(S::Error)` - If serialization fails
     fn serialize<S: osal_rs_serde::Serializer>(&self, name: &str, serializer: &mut S) -> core::result::Result<(), S::Error> {
-        for &byte in self.0.iter() {
-            serializer.serialize_u8(name, byte)?;
+        // Find the actual length (up to first null byte or SIZE)
+        let len = self.0.iter().position(|&b| b == 0).unwrap_or(SIZE);
+        
+        // Try to serialize as UTF-8 string if valid, otherwise as hex
+        if let Ok(s) = core::str::from_utf8(&self.0[..len]) {
+            serializer.serialize_str(name, s)
+        } else {
+            // For binary data, serialize as bytes (hex encoded)
+            serializer.serialize_bytes(name, &self.0[..len])
         }
-        Ok(())
     }
 }
 
@@ -630,9 +636,7 @@ impl<const SIZE: usize> Deserialize for Bytes<SIZE> {
     /// * `Err(D::Error)` - If deserialization fails
     fn deserialize<D: osal_rs_serde::Deserializer>(deserializer: &mut D, name: &str) -> core::result::Result<Self, D::Error> {
         let mut array = [0u8; SIZE];
-        for i in 0..SIZE {
-            array[i] = deserializer.deserialize_u8(name)?;
-        }
+        let _ = deserializer.deserialize_bytes(name, &mut array)?;
         Ok(Self(array))
     }
 }

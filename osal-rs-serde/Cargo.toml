@@ -59,3 +59,7 @@ required-features = ["derive"]
 [[test]]
 name = "integration_tests"
 required-features = ["derive"]
+
+[[test]]
+name = "binary_serialization"
+required-features = ["derive"]

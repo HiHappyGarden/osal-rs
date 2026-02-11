@@ -438,3 +438,82 @@ fn test_derive_robot_state_with_errors() {
     assert!(decoded.error_flags & 0x01 != 0); // Battery low flag
     assert!(decoded.error_flags & 0x100 != 0); // Temperature high flag
 }
+
+/// Test binary serialization of arrays of structs
+/// This verifies that the fix for array serialization works correctly
+/// with binary format (arrays should be serialized as continuous bytes)
+#[test]
+fn test_binary_array_of_structs() {
+    #[derive(Serialize, Deserialize, Debug, PartialEq)]
+    struct UserConfig {
+        user_id: u32,
+        role: u8,
+    }
+
+    #[derive(Serialize, Deserialize, Debug, PartialEq)]
+    struct Config {
+        version: u8,
+        users: [UserConfig; 3],
+        flags: u16,
+    }
+
+    let config = Config {
+        version: 1,
+        users: [
+            UserConfig { user_id: 1001, role: 10 },
+            UserConfig { user_id: 2002, role: 20 },
+            UserConfig { user_id: 3003, role: 30 },
+        ],
+        flags: 0xABCD,
+    };
+
+    let mut buffer = [0u8; 64];
+    let len = to_bytes(&config, &mut buffer).unwrap();
+    
+    // Expected layout (little-endian):
+    // version: 1 byte = 1
+    // users[0].user_id: 4 bytes = 1001 (0xE9 0x03 0x00 0x00)
+    // users[0].role: 1 byte = 10
+    // users[1].user_id: 4 bytes = 2002 (0xD2 0x07 0x00 0x00)
+    // users[1].role: 1 byte = 20
+    // users[2].user_id: 4 bytes = 3003 (0xBB 0x0B 0x00 0x00)
+    // users[2].role: 1 byte = 30
+    // flags: 2 bytes = 0xABCD (0xCD 0xAB)
+    // Total: 1 + 15 + 2 = 18 bytes
+    
+    assert_eq!(len, 18, "Expected 18 bytes, got {}", len);
+    
+    // Verify version
+    assert_eq!(buffer[0], 1);
+    
+    // Verify first user (offset 1)
+    assert_eq!(buffer[1], 0xE9); // 1001 & 0xFF
+    assert_eq!(buffer[2], 0x03); // (1001 >> 8) & 0xFF
+    assert_eq!(buffer[5], 10);   // role
+    
+    // Verify second user (offset 6)
+    assert_eq!(buffer[6], 0xD2); // 2002 & 0xFF
+    assert_eq!(buffer[7], 0x07); // (2002 >> 8) & 0xFF
+    assert_eq!(buffer[10], 20);  // role
+    
+    // Verify third user (offset 11)
+    assert_eq!(buffer[11], 0xBB); // 3003 & 0xFF
+    assert_eq!(buffer[12], 0x0B); // (3003 >> 8) & 0xFF
+    assert_eq!(buffer[15], 30);   // role
+    
+    // Verify flags (offset 16)
+    assert_eq!(buffer[16], 0xCD);
+    assert_eq!(buffer[17], 0xAB);
+    
+    // Deserialize and verify
+    let decoded: Config = from_bytes(&buffer[..len]).unwrap();
+    assert_eq!(decoded, config);
+    assert_eq!(decoded.version, 1);
+    assert_eq!(decoded.users[0].user_id, 1001);
+    assert_eq!(decoded.users[0].role, 10);
+    assert_eq!(decoded.users[1].user_id, 2002);
+    assert_eq!(decoded.users[1].role, 20);
+    assert_eq!(decoded.users[2].user_id, 3003);
+    assert_eq!(decoded.users[2].role, 30);
+    assert_eq!(decoded.flags, 0xABCD);
+}

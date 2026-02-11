@@ -553,10 +553,7 @@ impl<T: Serialize, const N: usize> Serialize for [T; N] {
     where
         S: Serializer
     {
-        for item in self.iter() {
-            item.serialize(name, serializer)?;
-        }
-        Ok(())
+        serializer.serialize_array(name, self)
     }
 }
 

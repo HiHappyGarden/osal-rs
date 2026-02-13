@@ -191,7 +191,6 @@ macro_rules! println {
     };
     ($fmt:expr) => {{
         unsafe {
-            use alloc::string::ToString;
             let formatted = alloc::format!(concat!($fmt, "\r\n"));
             if let Ok(c_str) = alloc::ffi::CString::new(formatted) {
                 $crate::log::ffi::printf_on_uart(b"%s\0".as_ptr() as *const core::ffi::c_char, c_str.as_ptr());
@@ -200,7 +199,6 @@ macro_rules! println {
     }};
     ($fmt:expr, $($arg:tt)*) => {{
         unsafe {
-            use alloc::string::ToString;
             let formatted = alloc::format!(concat!($fmt, "\r\n"), $($arg)*);
             if let Ok(c_str) = alloc::ffi::CString::new(formatted) {
                 $crate::log::ffi::printf_on_uart(b"%s\0".as_ptr() as *const core::ffi::c_char, c_str.as_ptr());

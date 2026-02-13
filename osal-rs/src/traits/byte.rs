@@ -25,8 +25,6 @@
 #[cfg(feature = "serde")]
 use osal_rs_serde::Serialize;
 
-use crate::utils::Result;
-
 /// Trait for types that have a known byte length.
 ///
 /// Used to determine the size of data structures when working with byte arrays.

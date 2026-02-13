@@ -46,8 +46,6 @@
 //! println!("Max priorities: {}", priorities);
 //! ```
 
-use crate::os::types::StackType;
-
 /// FFI declarations for FreeRTOS configuration functions.
 ///
 /// These C functions are implemented in the porting layer and return

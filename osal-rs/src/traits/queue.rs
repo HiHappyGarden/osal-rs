@@ -27,7 +27,7 @@ use crate::os::Deserialize;
 #[cfg(feature = "serde")]
 use osal_rs_serde::Deserialize;
 
-use crate::os::types::{UBaseType, TickType};
+use crate::os::types::TickType;
 use crate::utils::Result;
 
 /// Raw byte-oriented queue for inter-task message passing.

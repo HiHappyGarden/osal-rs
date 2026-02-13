@@ -22,8 +22,7 @@
 //! Provides counting semaphores for controlling access to shared resources
 //! and coordinating task execution.
 
-use crate::os::types::UBaseType;
-use crate::utils::{OsalRsBool, Result};
+use crate::utils::OsalRsBool;
 use super::ToTick;
 
 /// Counting semaphore for resource management.

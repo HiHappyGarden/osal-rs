@@ -19,8 +19,6 @@
 
 //! Mutex trait definitions.
 
-use core::ops::{Deref, DerefMut};
-
 use crate::utils::{OsalRsBool, Result};
 
 /// Low-level raw mutex operations.

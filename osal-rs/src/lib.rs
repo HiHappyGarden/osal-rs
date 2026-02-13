@@ -176,7 +176,6 @@
 // Suppress warnings from FreeRTOS FFI bindings being included in multiple modules
 #![allow(clashing_extern_declarations)]
 #![allow(dead_code)]
-#![allow(unused_imports)]
 extern crate alloc;
 
 #[cfg(feature = "freertos")]
@@ -207,7 +206,7 @@ pub mod os {
     #[global_allocator]
     pub static ALLOCATOR: Allocator = Allocator;
 
-    
+    #[allow(unused_imports)]
     pub use crate::osal::duration::*;
     pub use crate::osal::event_group::*;
     pub use crate::osal::mutex::*;

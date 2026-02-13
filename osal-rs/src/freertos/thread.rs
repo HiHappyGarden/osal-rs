@@ -22,14 +22,12 @@
 //! This module provides a safe Rust interface for creating and managing FreeRTOS tasks.
 //! It supports thread creation with callbacks, priority management, and thread notifications.
 
-use core::any::Any;
-use core::ffi::{c_char, c_void};
+use core::ffi::c_void;
 use core::fmt::{Debug, Display, Formatter};
 use core::ops::Deref;
 use core::ptr::null_mut;
 
 use alloc::boxed::Box;
-use alloc::string::{String, ToString};
 use alloc::sync::Arc;
 
 use super::ffi::{INVALID, TaskStatus, ThreadHandle, pdPASS, pdTRUE, vTaskDelete, vTaskGetInfo, vTaskResume, vTaskSuspend, xTaskCreate, xTaskGetCurrentTaskHandle};
@@ -38,7 +36,7 @@ use super::thread::ThreadState::*;
 use crate::os::ThreadSimpleFnPtr;
 use crate::traits::{ThreadFn, ThreadParam, ThreadFnPtr, ThreadNotification, ToTick, ToPriority};
 use crate::utils::{Bytes, DoublePtr, Error, Result};
-use crate::{from_c_str, max_task_name_len, xTaskNotify, xTaskNotifyFromISR, xTaskNotifyWait};
+use crate::{xTaskNotify, xTaskNotifyFromISR, xTaskNotifyWait};
 
 const MAX_TASK_NAME_LEN: usize = 16;
 

@@ -54,7 +54,6 @@ use core::ffi::c_void;
 use core::alloc::{GlobalAlloc, Layout};
 
 use crate::freertos::ffi::{pvPortMalloc, vPortFree};
-use crate::os::{System, SystemFn};
 
 
 /// Global memory allocator using FreeRTOS heap.

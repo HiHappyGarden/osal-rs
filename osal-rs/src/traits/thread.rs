@@ -24,8 +24,8 @@ use alloc::boxed::Box;
 use alloc::sync::Arc;
 
 use crate::os::{ThreadMetadata};
-use crate::os::types::{BaseType, StackType, TickType, UBaseType};
-use crate::utils::{Result, ConstPtr, DoublePtr};
+use crate::os::types::{BaseType, TickType, UBaseType};
+use crate::utils::{Result, DoublePtr};
 
 /// Type-erased parameter that can be passed to thread callbacks.
 ///

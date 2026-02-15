@@ -1139,6 +1139,230 @@ impl<const SIZE: usize> Bytes<SIZE> {
             i += 1;
         }
     }
+
+    /// Clears all content from the buffer, filling it with zeros.
+    ///
+    /// This method resets the entire internal byte array to zeros, effectively
+    /// clearing any stored data. After calling this method, the buffer will be
+    /// empty and ready for new content.
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// use osal_rs::utils::Bytes;
+    ///
+    /// let mut bytes = Bytes::<16>::new_by_str("Hello");
+    /// assert!(!bytes.is_empty());
+    ///
+    /// bytes.clear();
+    /// assert!(bytes.is_empty());
+    /// assert_eq!(bytes.len(), 0);
+    /// ```
+    pub fn clear(&mut self) {
+        for byte in self.0.iter_mut() {
+            *byte = 0;
+        }
+    }
+
+    /// Returns the length of the content in the buffer.
+    ///
+    /// The length is determined by finding the position of the first null byte (0).
+    /// If no null byte is found, returns `SIZE`, indicating the buffer is completely
+    /// filled with non-zero data.
+    ///
+    /// # Returns
+    ///
+    /// The number of bytes before the first null terminator, or `SIZE` if the
+    /// buffer is completely filled.
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// use osal_rs::utils::Bytes;
+    ///
+    /// let bytes = Bytes::<16>::new_by_str("Hello");
+    /// assert_eq!(bytes.len(), 5);
+    ///
+    /// let empty = Bytes::<16>::new();
+    /// assert_eq!(empty.len(), 0);
+    ///
+    /// // Buffer completely filled (no null terminator)
+    /// let mut full = Bytes::<4>::new();
+    /// full[0] = b'A';
+    /// full[1] = b'B';
+    /// full[2] = b'C';
+    /// full[3] = b'D';
+    /// assert_eq!(full.len(), 4);
+    /// ```
+    pub fn len(&self) -> usize {
+        self.0.iter().position(|&b| b == 0).unwrap_or(SIZE)
+    }
+
+    /// Checks if the buffer is empty.
+    ///
+    /// A buffer is considered empty if all bytes are zero. This method searches
+    /// for the first non-zero byte to determine emptiness.
+    ///
+    /// # Returns
+    ///
+    /// `true` if all bytes are zero, `false` otherwise.
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// use osal_rs::utils::Bytes;
+    ///
+    /// let empty = Bytes::<16>::new();
+    /// assert!(empty.is_empty());
+    ///
+    /// let bytes = Bytes::<16>::new_by_str("Hello");
+    /// assert!(!bytes.is_empty());
+    ///
+    /// let mut cleared = Bytes::<16>::new_by_str("Test");
+    /// cleared.clear();
+    /// assert!(cleared.is_empty());
+    /// ```
+    pub fn is_empty(&self) -> bool {
+        self.0.iter().position(|&b| b != 0).is_none()
+    }
+
+    /// Returns the total capacity of the buffer.
+    ///
+    /// This is the fixed size of the internal byte array, determined at compile
+    /// time by the generic `SIZE` parameter. The capacity never changes during
+    /// the lifetime of the `Bytes` instance.
+    ///
+    /// # Returns
+    ///
+    /// The total capacity in bytes (`SIZE`).
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// use osal_rs::utils::Bytes;
+    ///
+    /// let bytes = Bytes::<32>::new();
+    /// assert_eq!(bytes.capacity(), 32);
+    ///
+    /// let other = Bytes::<128>::new_by_str("Hello");
+    /// assert_eq!(other.capacity(), 128);
+    /// ```
+    pub fn capacity(&self) -> usize {
+        SIZE
+    }
+
+    /// Replaces all occurrences of a byte pattern with another pattern.
+    ///
+    /// This method searches for all occurrences of the `find` byte sequence within
+    /// the buffer and replaces them with the `replace` byte sequence. The replacement
+    /// is performed in a single pass, and the method handles cases where the replacement
+    /// is larger, smaller, or equal in size to the pattern being searched for.
+    ///
+    /// # Parameters
+    ///
+    /// * `find` - The byte pattern to search for
+    /// * `replace` - The byte pattern to replace with
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(())` - If all replacements were successful
+    /// * `Err(Error::StringConversionError)` - If the replacement would exceed the buffer capacity
+    ///
+    /// # Behavior
+    ///
+    /// - Empty `find` patterns are ignored (returns `Ok(())` immediately)
+    /// - Multiple occurrences are replaced in a single pass
+    /// - Content is properly shifted when replacement size differs from find size
+    /// - Null terminators and trailing bytes are correctly maintained
+    /// - Overlapping patterns are not re-matched (avoids infinite loops)
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// use osal_rs::utils::Bytes;
+    ///
+    /// // Same length replacement
+    /// let mut bytes = Bytes::<16>::new_by_str("Hello World");
+    /// bytes.replace(b"World", b"Rust!").unwrap();
+    /// assert_eq!(bytes.as_str(), "Hello Rust!");
+    ///
+    /// // Shorter replacement
+    /// let mut bytes2 = Bytes::<16>::new_by_str("aabbcc");
+    /// bytes2.replace(b"bb", b"X").unwrap();
+    /// assert_eq!(bytes2.as_str(), "aaXcc");
+    ///
+    /// // Longer replacement
+    /// let mut bytes3 = Bytes::<16>::new_by_str("Hi");
+    /// bytes3.replace(b"Hi", b"Hello").unwrap();
+    /// assert_eq!(bytes3.as_str(), "Hello");
+    ///
+    /// // Multiple occurrences
+    /// let mut bytes4 = Bytes::<32>::new_by_str("foo bar foo");
+    /// bytes4.replace(b"foo", b"baz").unwrap();
+    /// assert_eq!(bytes4.as_str(), "baz bar baz");
+    ///
+    /// // Buffer overflow error
+    /// let mut small = Bytes::<8>::new_by_str("Hello");
+    /// assert!(small.replace(b"Hello", b"Hello World").is_err());
+    /// ```
+    pub fn replace(&mut self, find: &[u8], replace: &[u8]) -> Result<()> {
+        if find.is_empty() {
+            return Ok(());
+        }
+        
+        let mut i = 0;
+        loop {
+            let current_len = self.len();
+            
+            // Exit if we've reached the end
+            if i >= current_len {
+                break;
+            }
+            
+            // Check if pattern starts at position i
+            if i + find.len() <= current_len && self.0[i..i + find.len()] == *find {
+                let remaining_len = current_len - (i + find.len());
+                let new_len = i + replace.len() + remaining_len;
+                
+                // Check if replacement fits in buffer
+                if new_len > SIZE {
+                    return Err(Error::StringConversionError);
+                }
+                
+                // Shift remaining content if sizes differ
+                if replace.len() != find.len() {
+                    self.0.copy_within(
+                        i + find.len()..i + find.len() + remaining_len,
+                        i + replace.len()
+                    );
+                }
+                
+                // Insert replacement bytes
+                self.0[i..i + replace.len()].copy_from_slice(replace);
+                
+                // Update null terminator position
+                if new_len < SIZE {
+                    self.0[new_len] = 0;
+                }
+                
+                // Clear trailing bytes if content shrunk
+                if new_len < current_len {
+                    for j in (new_len + 1)..=current_len {
+                        if j < SIZE {
+                            self.0[j] = 0;
+                        }
+                    }
+                }
+                
+                // Move past the replacement to avoid infinite loops
+                i += replace.len();
+            } else {
+                i += 1;
+            }
+        }
+        
+        Ok(())
+    }
 }
 
 /// Converts a byte slice to a hexadecimal string representation.

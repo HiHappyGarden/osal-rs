@@ -1363,6 +1363,25 @@ impl<const SIZE: usize> Bytes<SIZE> {
         
         Ok(())
     }
+
+    /// Converts the `Bytes` instance to a byte slice.
+    ///
+    /// This method provides a convenient way to access the internal byte array
+    /// as a slice, which can be useful for C FFI or other operations that
+    /// require byte slices.
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// use osal_rs::utils::{Bytes, ToBytes};
+    /// 
+    /// let bytes = Bytes::<8>::new_by_str("example");
+    /// let byte_slice = bytes.to_bytes();
+    /// assert_eq!(byte_slice, b"example\0\0");
+    /// ```
+    pub fn to_bytes(&self) -> &[u8] {
+        &self.0
+    }
 }
 
 /// Converts a byte slice to a hexadecimal string representation.

@@ -209,8 +209,6 @@ pub type Ptr = *mut c_void;
 /// Const pointer type for C FFI.
 pub type ConstPtr = *const c_void;
 
-/// Shortcut for Arc<Mutex<T>>
-pub type ArcMux<T> = Arc<Mutex<T>>;
 
 /// Determines the CPU register size at compile time.
 ///
@@ -429,27 +427,6 @@ macro_rules! thread_extract_param {
         }
     };
 }
-
-/// Creates an Arc<Mutex<T>> from a value.
-///
-/// This is a convenience macro to reduce boilerplate when creating
-/// thread-safe shared data structures.
-///
-/// # Examples
-///
-/// ```ignore
-/// use osal_rs::arcmux;
-/// 
-/// let shared_counter = arcmux!(0);
-/// // Equivalent to: Arc::new(Mutex::new(0))
-/// ```
-#[macro_export]
-macro_rules! arcmux {
-    ($value:expr) => {
-        alloc::sync::Arc::new($crate::os::Mutex::new($value))
-    };
-}
-
 
 
 /// Fixed-size byte array wrapper with string conversion utilities.

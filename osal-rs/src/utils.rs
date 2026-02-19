@@ -32,7 +32,6 @@ use core::time::Duration;
 use alloc::ffi::CString;
 use alloc::format;
 use alloc::string::{String, ToString};
-use alloc::sync::Arc;
 use alloc::vec::Vec;
 
 #[cfg(not(feature = "serde"))]
@@ -41,7 +40,7 @@ use crate::os::{Deserialize, Serialize};
 #[cfg(feature = "serde")]
 use osal_rs_serde::{Deserialize, Serialize};
 
-use crate::os::{AsSyncStr, Mutex};
+use crate::os::AsSyncStr;
 
 /// Error types for OSAL-RS operations.
 ///

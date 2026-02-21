@@ -883,6 +883,51 @@ impl<const SIZE: usize> Bytes<SIZE> {
         }
     }
 
+    /// Creates a new `Bytes` instance from a C string pointer.
+    ///
+    /// This is a convenience wrapper around [`new_by_ptr`](Self::new_by_ptr) that directly converts a C string pointer to a `Bytes` instance.
+    /// If the pointer is null, it returns a zero-initialized `Bytes`. The function copies bytes from the C string into the fixed-size array, truncating if the source is longer than `SIZE`.
+    ///
+    /// # Parameters
+    ///
+    /// * `str` - A pointer to a null-terminated C string (`*const c_char`)
+    ///
+    /// # Safety
+    ///
+    /// This method uses `unsafe` code to dereference the pointer. The caller must ensure that:
+    /// - If not null, the pointer points to a valid null-terminated C string
+    /// - The memory the pointer references remains valid for the duration of the call
+    ///
+    /// - The byte array can be safely interpreted as UTF-8 if the conversion is expected to succeed. If the byte array contains invalid UTF-8, the resulting `Bytes` instance will contain the raw bytes, and the `Display` implementation will show "Conversion error" when attempting to display it as a string.
+    ///
+    /// # Returns
+    ///
+    /// A `Bytes` instance containing the C string data, or zero-initialized if the pointer is null.
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// use osal_rs::utils::Bytes;
+    /// use core::ffi::c_char;
+    /// use alloc::ffi::CString;
+    /// 
+    /// // From a CString
+    /// let c_string = CString::new("Hello").unwrap();
+    /// let bytes = Bytes::<16>::from_cstr(c_string.as_ptr());
+    /// 
+    /// // From a null pointer
+    /// let null_bytes = Bytes::<16>::from_cstr(core::ptr::null());
+    /// // Returns zero-initialized Bytes
+    /// 
+    /// // Truncation example
+    /// let long_string = CString::new("This is a very long string").unwrap();
+    /// let short_bytes = Bytes::<8>::from_cstr(long_string.as_ptr());
+    /// // Only first 8 bytes are copied
+    /// ```
+    pub fn from_cstr(str: *const c_char) -> Self {
+        Self::new_by_bytes(unsafe { CStr::from_ptr(str) }.to_bytes())
+    }
+
     /// Converts the byte array to a C string reference.
     ///
     /// Creates a `CStr` reference from the internal byte array, treating it as
@@ -918,7 +963,7 @@ impl<const SIZE: usize> Bytes<SIZE> {
     ///     print_string(c_str.as_ptr());
     /// }
     /// ```
-    pub fn as_c_str(&self) -> &CStr {
+    pub fn as_cstr(&self) -> &CStr {
         unsafe {
             CStr::from_ptr(self.0.as_ptr() as *const c_char)
         }
@@ -927,7 +972,7 @@ impl<const SIZE: usize> Bytes<SIZE> {
     /// Converts the byte array to an owned C string.
     ///
     /// Creates a new `CString` by copying the contents of the internal byte array.
-    /// Unlike [`as_c_str`](Self::as_c_str), this method allocates heap memory and
+    /// Unlike [`as_cstr`](Self::as_cstr), this method allocates heap memory and
     /// returns an owned string that can outlive the original `Bytes` instance.
     ///
     /// # Safety

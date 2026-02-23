@@ -140,7 +140,7 @@ pub fn test_thread_get_metadata() -> Result<()> {
     let metadata = spawned.get_metadata();
     
     log_debug!(TAG, "Metadata - name: {}, priority: {}", metadata.name, metadata.priority);
-    assert_eq!(metadata.name, "metadata_test");
+    assert_eq!(metadata.name.as_str(), "metadata_test");
     assert_eq!(metadata.priority, 5);
     
     spawned.delete();

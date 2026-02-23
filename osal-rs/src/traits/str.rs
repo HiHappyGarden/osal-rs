@@ -64,21 +64,21 @@ pub trait AsSyncStr : Sync + Send {
     fn as_str(&self) -> &str;
 }
 
-impl PartialEq for dyn AsSyncStr {
-    fn eq(&self, other: &Self) -> bool {
+impl PartialEq for dyn AsSyncStr + '_ {
+    fn eq(&self, other: &(dyn AsSyncStr + '_)) -> bool {
         self.as_str() == other.as_str()
     }
 }
 
-impl Eq for dyn AsSyncStr {}
+impl Eq for dyn AsSyncStr + '_ {}
 
-impl Debug for dyn AsSyncStr {
+impl Debug for dyn AsSyncStr + '_ {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         write!(f, "{}", self.as_str())
     }
 }
 
-impl Display for dyn AsSyncStr {
+impl Display for dyn AsSyncStr + '_ {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         write!(f, "{}", self.as_str())
     }

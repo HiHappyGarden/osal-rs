@@ -47,7 +47,16 @@ use crate::os::AsSyncStr;
 /// Represents all possible error conditions that can occur when using
 /// the OSAL-RS library.
 ///
+/// # Lifetime Parameter
+///
+/// The error type is generic over lifetime `'a` to allow flexible error messages.
+/// Most of the time, you can use the default [`Result<T>`] type alias which uses
+/// `Error<'static>`. For custom lifetimes in error messages, use
+/// `core::result::Result<T, Error<'a>>` explicitly.
+///
 /// # Examples
+///
+/// ## Basic usage with static errors
 ///
 /// ```ignore
 /// use osal_rs::os::{Queue, QueueFn};
@@ -59,8 +68,33 @@ use crate::os::AsSyncStr;
 ///     Err(e) => println!("Other error: {:?}", e),
 /// }
 /// ```
+///
+/// ## Using borrowed error messages
+///
+/// ```ignore
+/// use osal_rs::utils::Error;
+/// 
+/// fn validate_input(input: &str) -> core::result::Result<(), Error> {
+///     if input.is_empty() {
+///         // Use static lifetime for compile-time strings
+///         Err(Error::Unhandled("Input cannot be empty"))
+///     } else {
+///         Ok(())
+///     }
+/// }
+/// 
+/// // For dynamic error messages from borrowed data
+/// fn process_data<'a>(data: &'a str) -> core::result::Result<(), Error<'a>> {
+///     if !data.starts_with("valid:") {
+///         // Error message borrows from 'data' lifetime
+///         Err(Error::ReadError(data))
+///     } else {
+///         Ok(())
+///     }
+/// }
+/// ```
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum Error {
+pub enum Error<'a> {
     /// Insufficient memory to complete operation
     OutOfMemory,
     /// Queue send operation timed out
@@ -92,18 +126,18 @@ pub enum Error {
     /// No data available
     Empty,
     /// Write error occurred
-    WriteError(&'static str),
+    WriteError(&'a str),
     /// Read error occurred
-    ReadError(&'static str),
+    ReadError(&'a str),
     /// Return error with code
     ReturnWithCode(i32),
     /// Unhandled error with description
-    Unhandled(&'static str),
+    Unhandled(&'a str),
     /// Unhandled error with description owned
     UnhandledOwned(String)
 }
 
-impl Display for Error {
+impl<'a> Display for Error<'a> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         use Error::*;
 
@@ -196,8 +230,9 @@ pub const MAX_DELAY: Duration = Duration::from_millis(usize::MAX as u64);
 
 /// Standard Result type for OSAL-RS operations.
 ///
-/// Uses [`Error`] as the default error type.
-pub type Result<T, E = Error> = core::result::Result<T, E>;
+/// Uses [`Error`] as the default error type with `'static` lifetime.
+/// For custom lifetimes, use `core::result::Result<T, Error<'a>>`.
+pub type Result<T, E = Error<'static>> = core::result::Result<T, E>;
 
 /// Pointer to pointer type for C FFI.
 pub type DoublePtr = *mut *mut c_void;
@@ -538,7 +573,7 @@ impl<const SIZE: usize> Display for Bytes<SIZE> {
 }
 
 impl<const SIZE: usize> FromStr for Bytes<{SIZE}> {
-    type Err = Error;
+    type Err = Error<'static>;
 
     #[inline]
     fn from_str(s: &str) -> core::result::Result<Self, Self::Err> {

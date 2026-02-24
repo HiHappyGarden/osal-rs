@@ -223,7 +223,7 @@ impl EventGroupFn for EventGroup {
         xEventGroupGetBits!(self.0) 
     }
 
-    fn get_from_isr(&self) -> EventBits{
+    fn get_from_isr(&self) -> EventBits {
         unsafe { xEventGroupGetBitsFromISR(self.0) }
     }
 

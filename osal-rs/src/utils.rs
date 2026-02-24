@@ -462,6 +462,61 @@ macro_rules! thread_extract_param {
     };
 }
 
+/// Accesses a static Option variable, returning the contained value or panicking if None.
+/// 
+/// This macro is used to safely access static variables that are initialized at runtime.
+/// It checks if the static variable is `Some` and returns the contained value. If the variable
+/// is `None`, it panics with a message indicating that the variable is not initialized.
+/// 
+/// # Parameters
+/// * `$static_var` - The identifier of the static variable to access
+/// # Returns
+/// * The value contained in the static variable if it is `Some`
+/// * Panics if the static variable is `None`, with a message indicating it is not initialized
+/// # Examples
+/// ```ignore
+/// use osal_rs::access_static_option;
+/// static mut CONFIG: Option<Config> = None;
+/// fn get_config() -> &'static Config {
+///     access_static_option!(CONFIG)
+/// }
+/// ```
+/// 
+/// Note: This macro assumes that the static variable is of type `Option<T>` and that it is initialized at runtime before being accessed. It is intended for use with static variables that are set up during initialization phases of the program, such as in embedded systems where certain resources are not available at compile time.
+/// 
+/// # Safety
+/// This macro uses unsafe code to access the static variable. It is the caller's responsibility to ensure that the static variable is properly initialized before it is accessed, and that it is not accessed concurrently from multiple threads without proper synchronization.
+/// # Warning
+/// This macro will panic if the static variable is not initialized (i.e., if it is `None`). It should be used in contexts where it is guaranteed that the variable will be initialized before
+/// accessing it, such as after an initialization function has been called.
+/// # Alternative
+/// For safer access to static variables, consider using a function that returns a `Result` instead of panicking, allowing the caller to handle the error condition gracefully.
+/// ```ignore
+/// fn get_config() -> Result<&'static Config, Error> {
+///    unsafe {
+///       match &*&raw const CONFIG {
+///         Some(config) => Ok(config),
+///        None => Err(Error::Unhandled("CONFIG is not initialized")),
+///     }
+///  }
+/// }
+/// ```
+/// This alternative approach allows for error handling without panicking, which can be more appropriate in many contexts, especially in production code or libraries where robustness is important.
+/// # Note
+/// This macro is intended for use in embedded systems or low-level code where static variables are commonly used for global state or resources that are initialized at runtime. It provides a convenient way to access such
+/// variables while ensuring that they are initialized, albeit with the risk of panicking if they are not. Use with caution and ensure proper initialization to avoid runtime panics.
+#[macro_export]
+macro_rules! access_static_option {
+    ($static_var:ident) => {
+        unsafe {
+            match &*&raw const $static_var {
+                Some(value) => value,
+                None => panic!(concat!(stringify!($static_var), " is not initialized")),
+            }
+        }
+    };
+}
+
 
 /// Fixed-size byte array wrapper with string conversion utilities.
 ///

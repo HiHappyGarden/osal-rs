@@ -546,12 +546,6 @@ macro_rules! access_static_option {
 /// let number = 42;
 /// let num_bytes = Bytes::<8>::new_by_string(&number);
 /// ```
-
-#[cfg(feature = "serde")]
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub struct Bytes<const SIZE: usize> (pub [u8; SIZE]);
-
-#[cfg(not(feature = "serde"))]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct Bytes<const SIZE: usize> (pub [u8; SIZE]);
 

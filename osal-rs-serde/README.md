@@ -2,6 +2,10 @@
 
 An extensible, lightweight serialization/deserialization framework for Rust, inspired by Serde but optimized for embedded systems and no-std environments.
 
+[![Crates.io](https://img.shields.io/crates/v/osal-rs-serde.svg)](https://crates.io/crates/osal-rs-serde)
+[![Documentation](https://docs.rs/osal-rs-serde/badge.svg)](https://docs.rs/osal-rs-serde)
+[![License: GPL-3.0](https://img.shields.io/badge/License-GPL%203.0-blue.svg)](LICENSE)
+
 ## Features
 
 - ✅ **No-std compatible**: Works perfectly in bare-metal embedded environments

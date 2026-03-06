@@ -23,7 +23,7 @@
 //! used throughout the library.
 
 use core::cell::UnsafeCell;
-use core::ffi::{CStr, c_char, c_void};
+use core::ffi::{CStr, c_char, c_uchar, c_void};
 use core::str::{from_utf8_mut, FromStr};
 use core::fmt::{Debug, Display}; 
 use core::ops::{Deref, DerefMut};
@@ -39,8 +39,6 @@ use crate::os::{Deserialize, Serialize};
 
 #[cfg(feature = "serde")]
 use osal_rs_serde::{Deserialize, Serialize};
-
-use crate::os::AsSyncStr;
 
 /// Error types for OSAL-RS operations.
 ///
@@ -517,6 +515,70 @@ macro_rules! access_static_option {
     };
 }
 
+/// Trait for types that can provide a string reference in a thread-safe manner.
+///
+/// This trait extends the basic string reference functionality with thread-safety
+/// guarantees by requiring both `Sync` and `Send` bounds. It's useful for types
+/// that need to provide string data across thread boundaries in a concurrent
+/// environment.
+///
+/// # Thread Safety
+///
+/// Implementors must be both `Sync` (safe to share references across threads) and
+/// `Send` (safe to transfer ownership across threads).
+///
+/// # Examples
+///
+/// ```ignore
+/// use osal_rs::utils::AsSyncStr;
+/// 
+/// struct ThreadSafeName {
+///     name: &'static str,
+/// }
+/// 
+/// impl AsSyncStr for ThreadSafeName {
+///     fn as_str(&self) -> &str {
+///         self.name
+///     }
+/// }
+/// 
+/// // Can be safely shared across threads
+/// fn use_in_thread(item: &dyn AsSyncStr) {
+///     println!("Name: {}", item.as_str());
+/// }
+/// ```
+pub trait AsSyncStr : Sync + Send { 
+    /// Returns a string slice reference.
+    ///
+    /// This method provides access to the underlying string data in a way
+    /// that is safe to use across thread boundaries.
+    ///
+    /// # Returns
+    ///
+    /// A reference to a string slice with lifetime tied to `self`.
+    fn as_str(&self) -> &str;
+}
+
+impl PartialEq for dyn AsSyncStr + '_ {
+    fn eq(&self, other: &(dyn AsSyncStr + '_)) -> bool {
+        self.as_str() == other.as_str()
+    }
+}
+
+impl Eq for dyn AsSyncStr + '_ {}
+
+impl Debug for dyn AsSyncStr + '_ {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(f, "{}", self.as_str())
+    }
+}
+
+impl Display for dyn AsSyncStr + '_ {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(f, "{}", self.as_str())
+    }
+}
+
 
 /// Fixed-size byte array wrapper with string conversion utilities.
 ///
@@ -626,7 +688,7 @@ impl<const SIZE: usize> FromStr for Bytes<SIZE> {
 
     #[inline]
     fn from_str(s: &str) -> core::result::Result<Self, Self::Err> {
-        Ok(Self::new_by_str(s))
+        Ok(Self::from_str(s))
     }
 }
 
@@ -647,7 +709,7 @@ impl<const SIZE: usize> From<&str> for Bytes<SIZE> {
     /// ```
     #[inline]
     fn from(s: &str) -> Self {
-        Self::new_by_str(s)
+        Self::from_str(s)
     }
 }
 
@@ -827,7 +889,7 @@ impl<const SIZE: usize> Bytes<SIZE> {
     /// let long = Bytes::<3>::new_by_str("Hello");
     /// // Internal array: [b'H', b'e', b'l'] (truncated)
     /// ```
-    pub fn new_by_str(str: &str) -> Self {
+    pub fn from_str(str: &str) -> Self {
 
         let mut array = [0u8; SIZE];
 
@@ -852,7 +914,7 @@ impl<const SIZE: usize> Bytes<SIZE> {
     ///
     /// # Parameters
     ///
-    /// * `str` - A pointer to a null-terminated C string (`*const c_char`)
+    /// * `ptr` - A pointer to a null-terminated C string (`*const c_char`)
     ///
     /// # Safety
     ///
@@ -885,15 +947,68 @@ impl<const SIZE: usize> Bytes<SIZE> {
     /// let short_bytes = Bytes::<8>::new_by_ptr(long_string.as_ptr());
     /// // Only first 8 bytes are copied
     /// ```
-    pub fn new_by_ptr(str: *const c_char) -> Self {
-        if str.is_null() {
+    pub fn from_char_ptr(ptr: *const c_char) -> Self {
+        if ptr.is_null() {
             return Self::new();
         }
 
         let mut array = [0u8; SIZE];
 
         let mut i = 0usize ;
-        for byte in unsafe { CStr::from_ptr(str) }.to_bytes() {
+        for byte in unsafe { CStr::from_ptr(ptr) }.to_bytes() {
+            if i > SIZE - 1{
+                break;
+            }
+            array[i] = *byte;
+            i += 1;
+        }
+
+        Self( array )
+    }
+
+
+    /// Creates a new `Bytes` instance from a C unsigned char pointer.
+    /// 
+    /// Safely converts a pointer to an array of unsigned chars into a `Bytes` instance. If the pointer is null, returns a zero-initialized `Bytes`. The function copies bytes from the source pointer into the fixed-size array, truncating if the source is longer than `SIZE`.
+    /// 
+    /// # Parameters
+    /// * `ptr` - A pointer to an array of unsigned chars (`*const c_uchar`)
+    /// 
+    /// # Safety
+    /// While this function is not marked unsafe, it internally uses `unsafe` code to dereference the pointer. The caller must ensure that:
+    /// - If not null, the pointer points to a valid array of unsigned chars with at least `SIZE` bytes
+    /// - The memory the pointer references remains valid for the duration of the call
+    /// 
+    /// # Returns
+    /// A `Bytes` instance containing the data from the source pointer, or zero-initialized if the pointer is null.
+    /// 
+    /// # Examples
+    /// ```ignore
+    /// use osal_rs::utils::Bytes;
+    /// use core::ffi::c_uchar;
+    /// use alloc::ffi::CString;
+    /// 
+    /// // From a C unsigned char pointer
+    /// let data = [b'H', b'e', b'l', b'l', b'o', 0];
+    /// let bytes = Bytes::<16>::from_uchar_ptr(data.as_ptr());
+    /// 
+    /// // From a null pointer    /// let null_bytes = Bytes::<16>::from_uchar_ptr(core::ptr::null());  
+    /// // Returns zero-initialized Bytes
+    /// 
+    /// // Truncation example
+    /// let long_data = [b'T', b'h', b'i', b's', b' ', b'i', b's', b' ', b'a', b' ', b', b'v', b'e', b'r', b'y', b' ', b'l', b'o', b'n', b'g', 0];
+    /// let short_bytes = Bytes::<8>::from_uchar_ptr(long_data.as_ptr());
+    /// // Only first 8 bytes are copied
+    /// ```
+    pub fn from_uchar_ptr(ptr: *const c_uchar) -> Self {
+        if ptr.is_null() {
+            return Self::new();
+        }
+
+        let mut array = [0u8; SIZE];
+
+        let mut i = 0usize ;
+        for byte in unsafe { core::slice::from_raw_parts(ptr, SIZE) } {
             if i > SIZE - 1{
                 break;
             }
@@ -940,11 +1055,11 @@ impl<const SIZE: usize> Bytes<SIZE> {
     /// let task_bytes = Bytes::<16>::new_by_string(&TaskId(5));
     /// ```
     #[inline]
-    pub fn new_by_as_sync_str(str: &impl ToString) -> Self {
-        Self::new_by_str(&str.to_string())
+    pub fn from_as_sync_str(str: &impl ToString) -> Self {
+        Self::from_str(&str.to_string())
     }
 
-    pub fn new_by_bytes(bytes: &[u8]) -> Self {
+    pub fn from_bytes(bytes: &[u8]) -> Self {
         let mut array = [0u8; SIZE];
         let len = core::cmp::min(bytes.len(), SIZE);
         array[..len].copy_from_slice(&bytes[..len]);
@@ -1033,7 +1148,7 @@ impl<const SIZE: usize> Bytes<SIZE> {
     /// ```
     #[inline]
     pub fn from_cstr(str: *const c_char) -> Self {
-        Self::new_by_bytes(unsafe { CStr::from_ptr(str) }.to_bytes())
+        Self::from_bytes(unsafe { CStr::from_ptr(str) }.to_bytes())
     }
 
     /// Converts the byte array to a C string reference.

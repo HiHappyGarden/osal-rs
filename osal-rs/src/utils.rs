@@ -621,12 +621,33 @@ impl<const SIZE: usize> Display for Bytes<SIZE> {
     }
 }
 
-impl<const SIZE: usize> FromStr for Bytes<{SIZE}> {
+impl<const SIZE: usize> FromStr for Bytes<SIZE> {
     type Err = Error<'static>;
 
     #[inline]
     fn from_str(s: &str) -> core::result::Result<Self, Self::Err> {
         Ok(Self::new_by_str(s))
+    }
+}
+
+impl<const SIZE: usize> From<&str> for Bytes<SIZE> {
+    /// Creates a `Bytes` instance from a string slice.
+    ///
+    /// This implementation allows for easy conversion from string literals or
+    /// string slices to the `Bytes` type, filling the internal byte array
+    /// with the string data and padding with spaces if necessary.
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// use osal_rs::utils::Bytes;
+    /// 
+    /// let bytes: Bytes<16> = "Hello".into();
+    /// println!("{}", bytes); // Prints "Hello"
+    /// ```
+    #[inline]
+    fn from(s: &str) -> Self {
+        Self::new_by_str(s)
     }
 }
 
@@ -773,6 +794,7 @@ impl<const SIZE: usize> Bytes<SIZE> {
     /// let runtime_buffer = Bytes::<32>::new();
     /// assert_eq!(runtime_buffer[0], 0);
     /// ```
+    #[inline]
     pub const fn new() -> Self {
         Self( [0u8; SIZE] )
     }
@@ -917,6 +939,7 @@ impl<const SIZE: usize> Bytes<SIZE> {
     /// }
     /// let task_bytes = Bytes::<16>::new_by_string(&TaskId(5));
     /// ```
+    #[inline]
     pub fn new_by_as_sync_str(str: &impl ToString) -> Self {
         Self::new_by_str(&str.to_string())
     }
@@ -1008,6 +1031,7 @@ impl<const SIZE: usize> Bytes<SIZE> {
     /// let short_bytes = Bytes::<8>::from_cstr(long_string.as_ptr());
     /// // Only first 8 bytes are copied
     /// ```
+    #[inline]
     pub fn from_cstr(str: *const c_char) -> Self {
         Self::new_by_bytes(unsafe { CStr::from_ptr(str) }.to_bytes())
     }
@@ -1047,6 +1071,7 @@ impl<const SIZE: usize> Bytes<SIZE> {
     ///     print_string(c_str.as_ptr());
     /// }
     /// ```
+    #[inline]
     pub fn as_cstr(&self) -> &CStr {
         unsafe {
             CStr::from_ptr(self.0.as_ptr() as *const c_char)
@@ -1088,6 +1113,7 @@ impl<const SIZE: usize> Bytes<SIZE> {
     /// let owned = process_name(&name);
     /// // 'name' can be dropped, 'owned' still valid
     /// ```
+    #[inline]
     pub fn as_cstring(&self) -> CString {
         unsafe {
             CString::from_vec_unchecked(self.0.to_vec())
@@ -1299,6 +1325,7 @@ impl<const SIZE: usize> Bytes<SIZE> {
     /// full[3] = b'D';
     /// assert_eq!(full.len(), 4);
     /// ```
+    #[inline]
     pub fn len(&self) -> usize {
         self.0.iter().position(|&b| b == 0).unwrap_or(SIZE)
     }
@@ -1327,6 +1354,7 @@ impl<const SIZE: usize> Bytes<SIZE> {
     /// cleared.clear();
     /// assert!(cleared.is_empty());
     /// ```
+    #[inline]
     pub fn is_empty(&self) -> bool {
         self.0.iter().position(|&b| b != 0).is_none()
     }
@@ -1352,6 +1380,7 @@ impl<const SIZE: usize> Bytes<SIZE> {
     /// let other = Bytes::<128>::new_by_str("Hello");
     /// assert_eq!(other.capacity(), 128);
     /// ```
+    #[inline]
     pub fn capacity(&self) -> usize {
         SIZE
     }
@@ -1484,6 +1513,7 @@ impl<const SIZE: usize> Bytes<SIZE> {
     /// let byte_slice = bytes.to_bytes();
     /// assert_eq!(byte_slice, b"example\0\0");
     /// ```
+    #[inline]
     pub fn to_bytes(&self) -> &[u8] {
         &self.0
     }
@@ -1520,6 +1550,7 @@ impl<const SIZE: usize> Bytes<SIZE> {
 /// let empty = bytes_to_hex(&[]);
 /// assert_eq!(empty, "");
 /// ```
+#[inline]
 pub fn bytes_to_hex(bytes: &[u8]) -> String {
     bytes.iter()
          .map(|b| format!("{:02x}", b))
@@ -1760,6 +1791,7 @@ impl<T> SyncUnsafeCell<T> {
     ///
     /// static CONFIG: SyncUnsafeCell<u32> = SyncUnsafeCell::new(42);
     /// ```
+    #[inline]
     pub const fn new(value: T) -> Self {
         Self(UnsafeCell::new(value))
     }
@@ -1789,6 +1821,7 @@ impl<T> SyncUnsafeCell<T> {
     ///     *ptr = 42;
     /// }
     /// ```
+    #[inline]
     pub unsafe fn get(&self) -> *mut T {
         self.0.get()
     }

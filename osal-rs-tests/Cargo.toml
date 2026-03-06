@@ -16,4 +16,4 @@ default = ["freertos"]
 freertos = ["osal-rs/freertos"]
 
 [dependencies]
-osal-rs = { version = "0.3", path = "../osal-rs" }
+osal-rs = { version = "0.4", path = "../osal-rs" }

@@ -1,6 +1,6 @@
 [package]
 name = "osal-rs"
-version = "0.3.7"
+version = "0.4.0"
 edition = "2024"
 rust-version = "1.85.0"
 authors = ["Antonio Salsi"]
@@ -34,10 +34,10 @@ serde = ["osal-rs-serde"]
 
 
 [dependencies]
-osal-rs-serde = { version = "0.3", path = "../osal-rs-serde", features = ["derive"], optional = true }
+osal-rs-serde = { version = "0.4", path = "../osal-rs-serde", features = ["derive"], optional = true }
 
 [build-dependencies]
-osal-rs-build = { version = "0.3", path = "../osal-rs-build" }
+osal-rs-build = { version = "0.4", path = "../osal-rs-build" }
 
 
 [profile.dev]

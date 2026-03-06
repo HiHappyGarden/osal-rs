@@ -132,7 +132,7 @@ impl From<(ThreadHandle,TaskStatus)> for ThreadMetadata {
 
         ThreadMetadata {
             thread: status.0,
-            name: Bytes::new_by_ptr(status.1.pcTaskName),
+            name: Bytes::from_char_ptr(status.1.pcTaskName),
             // Avoid dereferencing pxStackBase, which may be null or otherwise invalid.
             // Use 0 as a safe default for unknown stack depth.
             stack_depth: 0,
@@ -240,7 +240,7 @@ impl Thread {
     {
         Self { 
             handle: null_mut(), 
-            name: Bytes::new_by_str(name),
+            name: Bytes::from_str(name),
             stack_depth, 
             priority, 
             callback: None,
@@ -259,7 +259,7 @@ impl Thread {
         }
         Ok(Self { 
             handle, 
-            name: Bytes::new_by_str(name), 
+            name: Bytes::from_str(name), 
             stack_depth, 
             priority, 
             callback: None,
@@ -288,7 +288,7 @@ impl Thread {
     {
         Self { 
             handle: null_mut(), 
-            name: Bytes::new_by_str(name), 
+            name: Bytes::from_str(name), 
             stack_depth, 
             priority: priority.to_priority(), 
             callback: None,
@@ -324,7 +324,7 @@ impl Thread {
         }
         Ok(Self { 
             handle, 
-            name: Bytes::new_by_str(name),
+            name: Bytes::from_str(name),
             stack_depth, 
             priority: priority.to_priority(), 
             callback: None,

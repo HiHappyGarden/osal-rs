@@ -2,6 +2,10 @@
 
 Procedural macros for automatic implementation of serialization traits in `osal-rs-serde`.
 
+[![Crates.io](https://img.shields.io/crates/v/osal-rs-serde-derive.svg)](https://crates.io/crates/osal-rs-serde-derive)
+[![Documentation](https://docs.rs/osal-rs-serde-derive/badge.svg)](https://docs.rs/osal-rs-serde-derive)
+[![License: GPL-3.0](https://img.shields.io/badge/License-GPL%203.0-blue.svg)](LICENSE)
+
 ## Overview
 
 This crate provides `#[derive(Serialize, Deserialize)]` macros that automatically implement the `Serialize` and `Deserialize` traits for your custom types. These macros are the recommended way to use `osal-rs-serde`.

@@ -2,6 +2,10 @@
 
 Operating System Abstraction Layer for Rust - A cross-platform compatibility layer for embedded and real-time systems development.
 
+[![Crates.io](https://img.shields.io/crates/v/osal-rs.svg)](https://crates.io/crates/osal-rs)
+[![Documentation](https://docs.rs/osal-rs/badge.svg)](https://docs.rs/osal-rs)
+[![License: GPL-3.0](https://img.shields.io/badge/License-GPL%203.0-blue.svg)](LICENSE)
+
 ## Overview
 
 OSAL-RS provides a unified API for developing multi-platform embedded applications in Rust. It abstracts operating system-specific functionality, allowing you to write portable code that can run on different platforms with minimal changes.

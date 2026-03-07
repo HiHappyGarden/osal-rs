@@ -29,7 +29,6 @@ use core::fmt::{Debug, Display};
 use core::ops::{Deref, DerefMut};
 use core::time::Duration;
 
-use alloc::ffi::CString;
 use alloc::format;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
@@ -686,6 +685,19 @@ impl<const SIZE: usize> Display for Bytes<SIZE> {
 impl<const SIZE: usize> FromStr for Bytes<SIZE> {
     type Err = Error<'static>;
 
+    /// Creates a `Bytes` instance from a string slice.
+    ///
+    /// This implementation allows for easy conversion from string literals or
+    /// string slices to the `Bytes` type, filling the internal byte array
+    /// with the string data and padding with spaces if necessary.
+    ///
+    /// # Examples
+    //// ```ignore
+    /// use osal_rs::utils::Bytes;
+    /// 
+    /// let bytes: Bytes<16> = "Hello".parse().unwrap();
+    /// println!("{}", bytes); // Prints "Hello"
+    /// ```
     #[inline]
     fn from_str(s: &str) -> core::result::Result<Self, Self::Err> {
         Ok(Self::from_str(s))
@@ -1059,6 +1071,24 @@ impl<const SIZE: usize> Bytes<SIZE> {
         Self::from_str(&str.to_string())
     }
 
+    /// Creates a new `Bytes` instance from a byte slice.
+    /// 
+    /// This function copies bytes from the input slice into the fixed-size array. If the slice is shorter than `SIZE`, the remaining bytes are zero-filled. If the slice is longer, it is truncated to fit.
+    /// 
+    /// # Parameters
+    /// * `bytes` - The source byte slice to convert
+    /// 
+    /// # Returns
+    /// A `Bytes` instance containing the data from the byte slice.
+    /// 
+    /// # Examples
+    /// ```ignore
+    /// use osal_rs::utils::Bytes;
+    /// 
+    /// let data = b"Hello";
+    /// let bytes = Bytes::<16>::from_bytes(data);
+    /// // Result: [b'H', b'e', b'l', b'l', b'o', 0, 0, 0, ...]
+    /// ```
     pub fn from_bytes(bytes: &[u8]) -> Self {
         let mut array = [0u8; SIZE];
         let len = core::cmp::min(bytes.len(), SIZE);
@@ -1159,12 +1189,12 @@ impl<const SIZE: usize> Bytes<SIZE> {
     ///
     /// # Safety
     ///
-    /// This method is unsafe because it assumes:
-    /// - The byte array contains valid UTF-8 data
-    /// - The byte array is null-terminated
-    /// - There are no interior null bytes before the terminating null
+    /// This method assumes the byte array is already null-terminated. All
+    /// constructors (`new()`, `from_str()`, `from_char_ptr()`, etc.) guarantee
+    /// this property by initializing with `[0u8; SIZE]`.
     ///
-    /// Violating these assumptions may lead to undefined behavior.
+    /// However, if you've manually modified the array via `DerefMut`,
+    /// you must ensure the last byte remains 0.
     ///
     /// # Returns
     ///
@@ -1176,7 +1206,7 @@ impl<const SIZE: usize> Bytes<SIZE> {
     /// use osal_rs::utils::Bytes;
     /// 
     /// let bytes = Bytes::<16>::new_by_str("Hello");
-    /// let c_str = bytes.as_c_str();
+    /// let c_str = bytes.as_cstr();
     /// 
     /// extern "C" {
     ///     fn print_string(s: *const core::ffi::c_char);
@@ -1193,45 +1223,32 @@ impl<const SIZE: usize> Bytes<SIZE> {
         }
     }
 
-    /// Converts the byte array to an owned C string.
+    /// Converts the byte array to a C string reference, ensuring null-termination.
     ///
-    /// Creates a new `CString` by copying the contents of the internal byte array.
-    /// Unlike [`as_cstr`](Self::as_cstr), this method allocates heap memory and
-    /// returns an owned string that can outlive the original `Bytes` instance.
-    ///
-    /// # Safety
-    ///
-    /// This method uses `from_vec_unchecked` which assumes the byte array
-    /// does not contain any interior null bytes. If this assumption is violated,
-    /// the resulting `CString` will be invalid.
+    /// This is a safer version of `as_cstr()` that explicitly guarantees
+    /// null-termination by modifying the last byte. Use this if you've
+    /// manually modified the array and want to ensure it's null-terminated.
     ///
     /// # Returns
     ///
-    /// An owned `CString` containing a copy of the byte array data.
-    ///
-    /// # Memory Allocation
-    ///
-    /// This method allocates on the heap. In memory-constrained embedded systems,
-    /// prefer [`as_c_str`](Self::as_c_str) when possible.
+    /// A reference to a `CStr` with lifetime tied to `self`.
     ///
     /// # Examples
     ///
     /// ```ignore
     /// use osal_rs::utils::Bytes;
     /// 
-    /// fn process_name(bytes: &Bytes<16>) -> alloc::ffi::CString {
-    ///     // Create an owned copy that can be returned
-    ///     bytes.as_cstring()
-    /// }
-    /// 
-    /// let name = Bytes::<16>::new_by_str("Task");
-    /// let owned = process_name(&name);
-    /// // 'name' can be dropped, 'owned' still valid
+    /// let mut bytes = Bytes::<16>::new();
+    /// bytes[0] = b'H';
+    /// bytes[1] = b'i';
+    /// // After manual modification, ensure null-termination
+    /// let c_str = bytes.as_cstr_mut();
     /// ```
     #[inline]
-    pub fn as_cstring(&self) -> CString {
+    pub fn as_cstr_mut(&mut self) -> &CStr {
         unsafe {
-            CString::from_vec_unchecked(self.0.to_vec())
+            self.0[SIZE - 1] = 0; // Ensure null-termination
+            CStr::from_ptr(self.0.as_ptr() as *const c_char)
         }
     }
 

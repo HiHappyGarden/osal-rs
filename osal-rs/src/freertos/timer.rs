@@ -192,6 +192,38 @@ unsafe impl Send for Timer {}
 unsafe impl Sync for Timer {}
 
 impl Timer {
+    /// Creates a new software timer with tick conversion.
+    /// 
+    /// This is a convenience method that accepts any type implementing `ToTick`
+    /// (like `Duration`) for the timer period.
+    /// 
+    /// # Parameters
+    /// 
+    /// * `name` - Timer name for debugging
+    /// * `timer_period_in_ticks` - Timer period (e.g., `Duration::from_secs(1)`)
+    /// * `auto_reload` - `true` for periodic, `false` for one-shot
+    /// * `param` - Optional parameter passed to callback
+    /// * `callback` - Function called when timer expires
+    /// 
+    /// # Returns
+    /// 
+    /// * `Ok(Self)` - Successfully created timer
+    /// * `Err(Error)` - Creation failed
+    /// 
+    /// # Examples
+    /// 
+    /// ```ignore
+    /// use osal_rs::os::{Timer, TimerFn};
+    /// use core::time::Duration;
+    /// 
+    /// let timer = Timer::new_with_to_tick(
+    ///     "periodic",
+    ///     Duration::from_secs(1),
+    ///     true,
+    ///     None,
+    ///     |_timer, _param| { println!("Tick"); Ok(None) }
+    /// ).unwrap();
+    /// ```
     #[inline]
     pub fn new_with_to_tick<F>(name: &str, timer_period_in_ticks: impl ToTick, auto_reload: bool, param: Option<TimerParam>, callback: F) -> Result<Self>
     where
@@ -199,32 +231,156 @@ impl Timer {
             Self::new(name, timer_period_in_ticks.to_ticks(), auto_reload, param, callback)
         }
 
+    /// Starts the timer with tick conversion.
+    /// 
+    /// Convenience method that accepts any type implementing `ToTick`.
+    /// 
+    /// # Parameters
+    /// 
+    /// * `ticks_to_wait` - Maximum time to wait for the command to be sent to timer daemon
+    /// 
+    /// # Returns
+    /// 
+    /// * `OsalRsBool::True` - Timer started successfully
+    /// * `OsalRsBool::False` - Failed to start timer
+    /// 
+    /// # Examples
+    /// 
+    /// ```ignore
+    /// use osal_rs::os::{Timer, TimerFn};
+    /// use core::time::Duration;
+    /// 
+    /// timer.start_with_to_tick(Duration::from_millis(10));
+    /// ```
     #[inline]
     pub fn start_with_to_tick(&self, ticks_to_wait: impl ToTick) -> OsalRsBool {
         self.start(ticks_to_wait.to_ticks())
     }
 
+    /// Stops the timer with tick conversion.
+    /// 
+    /// Convenience method that accepts any type implementing `ToTick`.
+    /// 
+    /// # Parameters
+    /// 
+    /// * `ticks_to_wait` - Maximum time to wait for the command to be sent to timer daemon
+    /// 
+    /// # Returns
+    /// 
+    /// * `OsalRsBool::True` - Timer stopped successfully
+    /// * `OsalRsBool::False` - Failed to stop timer
+    /// 
+    /// # Examples
+    /// 
+    /// ```ignore
+    /// use osal_rs::os::{Timer, TimerFn};
+    /// use core::time::Duration;
+    /// 
+    /// timer.stop_with_to_tick(Duration::from_millis(10));
+    /// ```
     #[inline]
     pub fn stop_with_to_tick(&self, ticks_to_wait: impl ToTick)  -> OsalRsBool {
         self.stop(ticks_to_wait.to_ticks())
     }
 
+    /// Resets the timer with tick conversion.
+    /// 
+    /// Resets the timer to restart its period. For one-shot timers, this
+    /// restarts them. For periodic timers, this resets the period.
+    /// 
+    /// # Parameters
+    /// 
+    /// * `ticks_to_wait` - Maximum time to wait for the command to be sent to timer daemon
+    /// 
+    /// # Returns
+    /// 
+    /// * `OsalRsBool::True` - Timer reset successfully
+    /// * `OsalRsBool::False` - Failed to reset timer
+    /// 
+    /// # Examples
+    /// 
+    /// ```ignore
+    /// use osal_rs::os::{Timer, TimerFn};
+    /// use core::time::Duration;
+    /// 
+    /// // Reset watchdog timer before it expires
+    /// timer.reset_with_to_tick(Duration::from_millis(10));
+    /// ```
     #[inline]
     pub fn reset_with_to_tick(&self, ticks_to_wait: impl ToTick) -> OsalRsBool {
         self.reset(ticks_to_wait.to_ticks())
     }
 
+    /// Changes the timer period with tick conversion.
+    /// 
+    /// Convenience method that accepts any type implementing `ToTick`.
+    /// 
+    /// # Parameters
+    /// 
+    /// * `new_period_in_ticks` - New timer period
+    /// * `new_period_ticks` - Maximum time to wait for the command to be sent to timer daemon
+    /// 
+    /// # Returns
+    /// 
+    /// * `OsalRsBool::True` - Period changed successfully
+    /// * `OsalRsBool::False` - Failed to change period
+    /// 
+    /// # Examples
+    /// 
+    /// ```ignore
+    /// use osal_rs::os::{Timer, TimerFn};
+    /// use core::time::Duration;
+    /// 
+    /// // Change from 1 second to 500ms
+    /// timer.change_period_with_to_tick(
+    ///     Duration::from_millis(500),
+    ///     Duration::from_millis(10)
+    /// );
+    /// ```
     #[inline]
     pub fn change_period_with_to_tick(&self, new_period_in_ticks: impl ToTick, new_period_ticks: impl ToTick) -> OsalRsBool {
         self.change_period(new_period_in_ticks.to_ticks(), new_period_ticks.to_ticks())
     }
 
+    /// Deletes the timer with tick conversion.
+    /// 
+    /// Convenience method that accepts any type implementing `ToTick`.
+    /// 
+    /// # Parameters
+    /// 
+    /// * `ticks_to_wait` - Maximum time to wait for the command to be sent to timer daemon
+    /// 
+    /// # Returns
+    /// 
+    /// * `OsalRsBool::True` - Timer deleted successfully
+    /// * `OsalRsBool::False` - Failed to delete timer
+    /// 
+    /// # Examples
+    /// 
+    /// ```ignore
+    /// use osal_rs::os::{Timer, TimerFn};
+    /// use core::time::Duration;
+    /// 
+    /// timer.delete_with_to_tick(Duration::from_millis(10));
+    /// ```
     #[inline]
     pub fn delete_with_to_tick(&mut self, ticks_to_wait: impl ToTick) -> OsalRsBool {
         self.delete(ticks_to_wait.to_ticks())
     }
 }
 
+/// Internal C-compatible wrapper for timer callbacks.
+/// 
+/// This function bridges between FreeRTOS C API and Rust closures.
+/// It retrieves the timer instance from the timer ID, extracts the callback
+/// and parameters, and executes the user-provided callback.
+/// 
+/// # Safety
+/// 
+/// This function is marked extern "C" because it:
+/// - Is called from FreeRTOS C code (timer daemon task)
+/// - Performs raw pointer conversions
+/// - Expects a valid timer handle with associated timer instance
 extern "C" fn callback_c_wrapper(handle: TimerHandle) {
 
     if handle.is_null() {
@@ -313,6 +469,28 @@ impl Timer {
 
 impl TimerFn for Timer {
 
+    /// Starts the timer.
+    /// 
+    /// Sends a command to the timer daemon to start the timer. If the timer
+    /// was already running, this has no effect.
+    /// 
+    /// # Parameters
+    /// 
+    /// * `ticks_to_wait` - Maximum time to wait for command to be sent to timer daemon
+    /// 
+    /// # Returns
+    /// 
+    /// * `OsalRsBool::True` - Timer started successfully
+    /// * `OsalRsBool::False` - Failed to start (command queue full)
+    /// 
+    /// # Examples
+    /// 
+    /// ```ignore
+    /// use osal_rs::os::{Timer, TimerFn};
+    /// 
+    /// let timer = Timer::new("my_timer", 1000, true, None, |_, _| Ok(None)).unwrap();
+    /// timer.start(10);  // Wait up to 10 ticks
+    /// ```
     fn start(&self, ticks_to_wait: TickType) -> OsalRsBool {
         if unsafe {
             osal_rs_timer_start(self.handle, ticks_to_wait)
@@ -323,6 +501,27 @@ impl TimerFn for Timer {
         }
     }
 
+    /// Stops the timer.
+    /// 
+    /// Sends a command to the timer daemon to stop the timer. The timer will not
+    /// fire again until it is restarted.
+    /// 
+    /// # Parameters
+    /// 
+    /// * `ticks_to_wait` - Maximum time to wait for command to be sent to timer daemon
+    /// 
+    /// # Returns
+    /// 
+    /// * `OsalRsBool::True` - Timer stopped successfully
+    /// * `OsalRsBool::False` - Failed to stop (command queue full)
+    /// 
+    /// # Examples
+    /// 
+    /// ```ignore
+    /// use osal_rs::os::{Timer, TimerFn};
+    /// 
+    /// timer.stop(10);  // Wait up to 10 ticks to stop
+    /// ```
     fn stop(&self, ticks_to_wait: TickType)  -> OsalRsBool {
         if unsafe {
             osal_rs_timer_stop(self.handle, ticks_to_wait)
@@ -333,6 +532,28 @@ impl TimerFn for Timer {
         }
     }
 
+    /// Resets the timer.
+    /// 
+    /// Resets the timer's period. For a one-shot timer that has already expired,
+    /// this will restart it. For a periodic timer, this resets the period.
+    /// 
+    /// # Parameters
+    /// 
+    /// * `ticks_to_wait` - Maximum time to wait for command to be sent to timer daemon
+    /// 
+    /// # Returns
+    /// 
+    /// * `OsalRsBool::True` - Timer reset successfully
+    /// * `OsalRsBool::False` - Failed to reset (command queue full)
+    /// 
+    /// # Examples
+    /// 
+    /// ```ignore
+    /// use osal_rs::os::{Timer, TimerFn};
+    /// 
+    /// // Reset a watchdog timer before it expires
+    /// timer.reset(10);
+    /// ```
     fn reset(&self, ticks_to_wait: TickType) -> OsalRsBool {
         if unsafe {
             osal_rs_timer_reset(self.handle, ticks_to_wait)
@@ -343,6 +564,29 @@ impl TimerFn for Timer {
         }
     }
 
+    /// Changes the timer period.
+    /// 
+    /// Changes the period of a timer that was previously created. The timer
+    /// must be stopped, or the period will be changed when it next expires.
+    /// 
+    /// # Parameters
+    /// 
+    /// * `new_period_in_ticks` - New period for the timer in ticks
+    /// * `new_period_ticks` - Maximum time to wait for command to be sent to timer daemon
+    /// 
+    /// # Returns
+    /// 
+    /// * `OsalRsBool::True` - Period changed successfully
+    /// * `OsalRsBool::False` - Failed to change period (command queue full)
+    /// 
+    /// # Examples
+    /// 
+    /// ```ignore
+    /// use osal_rs::os::{Timer, TimerFn};
+    /// 
+    /// // Change period from 1000 ticks to 500 ticks
+    /// timer.change_period(500, 10);
+    /// ```
     fn change_period(&self, new_period_in_ticks: TickType, new_period_ticks: TickType) -> OsalRsBool {
         if unsafe {
             osal_rs_timer_change_period(self.handle, new_period_in_ticks, new_period_ticks)
@@ -353,6 +597,32 @@ impl TimerFn for Timer {
         }
     }
 
+    /// Deletes the timer.
+    /// 
+    /// Sends a command to the timer daemon to delete the timer.
+    /// The timer handle becomes invalid after this call.
+    /// 
+    /// # Parameters
+    /// 
+    /// * `ticks_to_wait` - Maximum time to wait for command to be sent to timer daemon
+    /// 
+    /// # Returns
+    /// 
+    /// * `OsalRsBool::True` - Timer deleted successfully
+    /// * `OsalRsBool::False` - Failed to delete (command queue full)
+    /// 
+    /// # Safety
+    /// 
+    /// After calling this function, the timer handle is set to null and should not be used.
+    /// 
+    /// # Examples
+    /// 
+    /// ```ignore
+    /// use osal_rs::os::{Timer, TimerFn};
+    /// 
+    /// let mut timer = Timer::new("temp", 1000, false, None, |_, _| Ok(None)).unwrap();
+    /// timer.delete(10);
+    /// ```
     fn delete(&mut self, ticks_to_wait: TickType) -> OsalRsBool {
         if unsafe {
             osal_rs_timer_delete(self.handle, ticks_to_wait)
@@ -366,12 +636,17 @@ impl TimerFn for Timer {
     }
 }
 
+/// Automatically deletes the timer when it goes out of scope.
+/// 
+/// This ensures proper cleanup of FreeRTOS resources by calling
+/// `delete(0)` when the timer is dropped.
 impl Drop for Timer {
     fn drop(&mut self) {
         self.delete(0);
     }
 }
 
+/// Allows dereferencing to the underlying FreeRTOS timer handle.
 impl Deref for Timer {
     type Target = TimerHandle;
 
@@ -380,6 +655,9 @@ impl Deref for Timer {
     }
 }
 
+/// Formats the timer for debugging purposes.
+/// 
+/// Shows the timer handle and name.
 impl Debug for Timer {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("Timer")
@@ -389,6 +667,9 @@ impl Debug for Timer {
     }
 }
 
+/// Formats the timer for display purposes.
+/// 
+/// Shows a concise representation with name and handle.
 impl Display for Timer {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         write!(f, "Timer {{ name: {}, handle: {:?} }}", self.name, self.handle)

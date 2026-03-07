@@ -67,15 +67,99 @@
 //! println!(" World!");
 //! println!("Value: {}", 123);
 //! ```
+//!
+//! # Thread Safety
+//!
+//! The logging system uses a simple busy-wait lock to ensure thread-safe output:
+//! - Only one thread can log at a time
+//! - Other threads spin-wait until the log is complete
+//! - No heap allocation during the lock
+//! - Suitable for task context only (see ISR Context below)
+//!
+//! # ISR Context
+//!
+//! **WARNING**: Do not use logging macros from interrupt service routines (ISRs).
+//! 
+//! Reasons:
+//! - Busy-wait lock can cause priority inversion
+//! - String formatting allocates memory
+//! - UART operations may block
+//! - Can significantly delay interrupt response
+//!
+//! If you need logging from ISR context, use a queue to defer the log to a task.
+//!
+//! # Performance Considerations
+//!
+//! - Each log call allocates a string (uses RTOS heap)
+//! - UART transmission is synchronous and relatively slow
+//! - Verbose logging (DEBUG level) can impact real-time performance
+//! - Consider using WARNING or ERROR level in production
+//! - Logs are compiled out when the level is disabled (zero cost)
+//!
+//! # Color Output
+//!
+//! When colors are enabled, log levels are color-coded:
+//! - **DEBUG**: Cyan - Detailed debugging information
+//! - **INFO**: Green - Normal operational messages
+//! - **WARNING**: Yellow - Potential issues, non-critical
+//! - **ERROR**: Red - Errors affecting functionality
+//! - **FATAL**: Magenta - Critical errors, system failure
+//!
+//! Disable colors if your terminal doesn't support ANSI escape codes.
+//!
+//! # Best Practices
+//!
+//! 1. **Use appropriate tags**: Use meaningful tags like "NET", "FS", "APP" to identify sources
+//! 2. **Choose correct levels**: DEBUG for development, INFO for milestones, ERROR for failures
+//! 3. **Avoid logging in hot paths**: Logging can significantly slow down tight loops
+//! 4. **Set production levels**: Use WARNING or ERROR level in production builds
+//! 5. **Never log from ISRs**: Defer to task context using queues or notifications
 
 #[cfg(not(feature = "std"))]
 pub mod ffi {
+    //! Foreign Function Interface (FFI) to C UART functions.
+    //!
+    //! This module provides low-level bindings to C functions for UART communication.
+    //! These functions are only available in `no_std` mode.
+    //!
+    //! # Safety
+    //!
+    //! All functions in this module are `unsafe` because they:
+    //! - Call external C code that cannot be verified by Rust
+    //! - Require valid C string pointers (null-terminated)
+    //! - May access hardware registers directly
+    //! - Do not perform bounds checking
+    //!
+    //! # Platform Requirements
+    //!
+    //! The C implementation must provide `printf_on_uart` that:
+    //! - Accepts printf-style format strings
+    //! - Outputs to UART hardware
+    //! - Is thread-safe (or only called from synchronized contexts)
+    //! - Returns number of characters written, or negative on error
+    
     use core::ffi::{c_char, c_int};
 
     unsafe extern "C" {
         /// FFI function to print formatted strings to UART.
         ///
         /// This is the low-level C function that interfaces with the hardware UART.
+        /// Typically implemented in the platform-specific porting layer.
+        ///
+        /// # Safety
+        ///
+        /// - `format` must be a valid null-terminated C string
+        /// - Variable arguments must match the format specifiers
+        /// - Must not be called from multiple threads simultaneously (unless C implementation is thread-safe)
+        ///
+        /// # Parameters
+        ///
+        /// * `format` - Printf-style format string (null-terminated)
+        /// * `...` - Variable arguments matching format specifiers
+        ///
+        /// # Returns
+        ///
+        /// Number of characters written, or negative value on error
         pub fn printf_on_uart(format: *const c_char, ...) -> c_int;
 
     }
@@ -110,38 +194,136 @@ pub const RETURN: &str = "\r\n";
 ///
 /// This module defines bit flags for different log levels and combined
 /// level masks for filtering log messages.
+///
+/// # Flag vs Level
+///
+/// - **FLAGS** (`FLAG_*`): Individual bits for each log level, used internally
+/// - **LEVELS** (`LEVEL_*`): Combined masks that include all levels at or above the specified severity
+///
+/// For example, `LEVEL_WARNING` includes WARNING, ERROR, and FATAL flags.
+///
+/// # Usage
+///
+/// ```ignore
+/// use osal_rs::log::log_levels::*;
+/// use osal_rs::log::set_level_log;
+///
+/// // Set minimum level to WARNING (shows WARNING, ERROR, FATAL)
+/// set_level_log(LEVEL_WARNING);
+///
+/// // Check if specific level is enabled
+/// if is_enabled_log(FLAG_DEBUG) {
+///     // Debug is enabled
+/// }
+/// ```
 pub mod log_levels {
-    /// Flag for DEBUG level messages (most verbose)
+    /// Flag for DEBUG level messages (bit 0, most verbose).
+    ///
+    /// Use for detailed debugging information during development.
     pub const FLAG_DEBUG: u8 = 1 << 0;
-    /// Flag for INFO level messages
+    
+    /// Flag for INFO level messages (bit 1).
+    ///
+    /// Use for informational messages about normal operation.
     pub const FLAG_INFO: u8 = 1 << 1;
-    /// Flag for WARNING level messages
+    
+    /// Flag for WARNING level messages (bit 2).
+    ///
+    /// Use for potentially problematic situations that don't prevent operation.
     pub const FLAG_WARNING: u8 = 1 << 2;
-    /// Flag for ERROR level messages
+    
+    /// Flag for ERROR level messages (bit 3).
+    ///
+    /// Use for errors that affect functionality but allow continued operation.
     pub const FLAG_ERROR: u8 = 1 << 3;
-    /// Flag for FATAL level messages (most severe)
+    
+    /// Flag for FATAL level messages (bit 4, most severe).
+    ///
+    /// Use for critical errors that prevent continued operation.
     pub const FLAG_FATAL: u8 = 1 << 4;
-    /// Flag to enable color output
+    
+    /// Flag to enable color output (bit 6).
+    ///
+    /// When set, log messages are color-coded by severity level.
     pub const FLAG_COLOR_ON: u8 = 1 << 6;
-    /// Flag to enable/disable logging entirely
+    
+    /// Flag to enable/disable logging entirely (bit 7).
+    ///
+    /// When clear, all logging is disabled for zero runtime cost.
     pub const FLAG_STATE_ON: u8 = 1 << 7;
 
-    /// DEBUG level: Shows all messages
+    /// DEBUG level: Shows all messages (DEBUG, INFO, WARNING, ERROR, FATAL).
+    ///
+    /// Most verbose setting, suitable for development and troubleshooting.
     pub const LEVEL_DEBUG: u8 = FLAG_DEBUG | FLAG_INFO | FLAG_WARNING | FLAG_ERROR | FLAG_FATAL;
-    /// INFO level: Shows INFO and above
+    
+    /// INFO level: Shows INFO and above (INFO, WARNING, ERROR, FATAL).
+    ///
+    /// Filters out DEBUG messages, suitable for normal operation.
     pub const LEVEL_INFO: u8 = FLAG_INFO | FLAG_WARNING | FLAG_ERROR | FLAG_FATAL;
-    /// WARNING level: Shows WARNING and above
+    
+    /// WARNING level: Shows WARNING and above (WARNING, ERROR, FATAL).
+    ///
+    /// Shows only warnings and errors, suitable for production.
     pub const LEVEL_WARNING: u8 = FLAG_WARNING | FLAG_ERROR | FLAG_FATAL;
-    /// ERROR level: Shows ERROR and FATAL only
+    
+    /// ERROR level: Shows ERROR and FATAL only.
+    ///
+    /// Shows only errors and critical failures.
     pub const LEVEL_ERROR: u8 = FLAG_ERROR | FLAG_FATAL;
 
-    /// FATAL level: Shows only FATAL messages
+    /// FATAL level: Shows only FATAL messages.
+    ///
+    /// Most restrictive setting, shows only critical failures.
     pub const LEVEL_FATAL: u8 = FLAG_FATAL;
 }
 
-/// Global log level mask with color and state flags enabled by default
+/// Global log level mask with color and state flags enabled by default.
+///
+/// This mutable static holds the current logging configuration:
+/// - Bits 0-4: Log level flags (DEBUG, INFO, WARNING, ERROR, FATAL)
+/// - Bit 6: Color enable flag
+/// - Bit 7: Logging enable/disable flag
+///
+/// # Default
+///
+/// Initialized to `LEVEL_DEBUG | FLAG_COLOR_ON | FLAG_STATE_ON`:
+/// - All log levels enabled
+/// - Color output enabled
+/// - Logging enabled
+///
+/// # Thread Safety
+///
+/// Modifications are not atomic. Use the provided setter functions
+/// (`set_level_log`, `set_enable_log`, `set_enable_color`) which perform
+/// simple bit operations that are effectively atomic on most platforms.
+/// Race conditions during initialization are unlikely to cause issues
+/// beyond temporarily incorrect filter settings.
 static mut MASK: u8 = log_levels::LEVEL_DEBUG | log_levels::FLAG_COLOR_ON | log_levels::FLAG_STATE_ON;
-/// Simple busy flag for thread-safe logging (0 = free, non-zero = busy)
+
+/// Simple busy flag for thread-safe logging (0 = free, non-zero = busy).
+///
+/// Used as a spinlock to ensure only one thread logs at a time:
+/// - 0 = Lock is free, logging available
+/// - Non-zero = Lock is held, other threads must wait
+///
+/// # Synchronization
+///
+/// Uses a basic busy-wait (spinlock) pattern:
+/// 1. Wait until BUSY == 0
+/// 2. Set BUSY = 1
+/// 3. Perform logging
+/// 4. Set BUSY = 0
+///
+/// # Limitations
+///
+/// - Not a true atomic operation (no memory barriers)
+/// - Priority inversion possible (low-priority task holds lock)
+/// - Wastes CPU cycles during contention
+/// - **Never use from ISR context** - can deadlock
+///
+/// This simple approach is sufficient for most embedded use cases where
+/// logging contention is infrequent.
 static mut BUSY: u8 = 0;
 
 /// Prints formatted text to UART without a newline.
@@ -362,9 +544,31 @@ pub fn set_enable_color(enabled: bool) {
 ///
 /// # Parameters
 ///
-/// * `tag` - Category or module name for the log message
+/// * `tag` - Category or module name for the log message (e.g., "APP", "NET", "FS")
 /// * `log_type` - Log level flag (DEBUG, INFO, WARNING, ERROR, FATAL)
-/// * `to_print` - The message to log
+/// * `to_print` - The formatted message string to log
+///
+/// # Thread Safety
+///
+/// Uses a busy-wait lock (BUSY flag) to ensure only one thread logs at a time:
+/// 1. Spins until BUSY == 0
+/// 2. Sets BUSY = 1
+/// 3. Formats and outputs the message
+/// 4. Sets BUSY = 0
+///
+/// Other threads will spin-wait during this time.
+///
+/// # Output Format
+///
+/// In `no_std` mode:
+/// ```text
+/// {color}({timestamp}ms)[{tag}] {message}{color_reset}\r\n
+/// ```
+///
+/// Example:
+/// ```text
+/// \x1b[32m(1234ms)[APP] System initialized\x1b[0m\r\n
+/// ```
 ///
 /// # Examples
 ///
@@ -372,12 +576,19 @@ pub fn set_enable_color(enabled: bool) {
 /// use osal_rs::log::*;
 /// 
 /// sys_log("APP", log_levels::FLAG_INFO, "Application started");
+/// sys_log("NET", log_levels::FLAG_ERROR, "Connection failed");
 /// ```
 ///
 /// # Note
 ///
 /// Prefer using the log macros (`log_info!`, `log_error!`, etc.) instead of
-/// calling this function directly.
+/// calling this function directly. The macros check if the log level is enabled
+/// before formatting the message, avoiding allocation for disabled levels.
+///
+/// # Warning
+///
+/// **Never call from ISR context** - the busy-wait can cause deadlock if a
+/// higher-priority ISR preempts a task that holds the lock.
 pub fn sys_log(tag: &str, log_type: u8, to_print: &str) {
     unsafe {
         while BUSY != 0 {}

@@ -35,10 +35,11 @@ use crate::utils::Result;
 /// # Examples
 ///
 /// ```ignore
-/// use osal_rs::os::BytesHasLen;
+/// use osal_rs::traits::BytesHasLen;
 /// 
 /// let data: [u8; 4] = [1, 2, 3, 4];
 /// assert_eq!(data.len(), 4);
+/// assert!(!data.is_empty());
 /// ```
 pub trait BytesHasLen {
     /// Returns the length in bytes.
@@ -47,11 +48,20 @@ pub trait BytesHasLen {
     ///
     /// Number of bytes in the data structure
     fn len(&self) -> usize;
+
+    /// Returns `true` if the length is zero.
+    ///
+    /// # Returns
+    ///
+    /// `true` if empty, `false` otherwise
+    fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
 }
 
 /// Automatic implementation of `BytesHasLen` for fixed-size arrays.
 ///
-/// This allows arrays of types implementing `ToBytes` to automatically
+/// This allows arrays of types implementing `Serialize` to automatically
 /// report their size.
 impl<T, const N: usize> BytesHasLen for [T; N] 
 where 
@@ -66,19 +76,32 @@ where
 /// Enables serialization of structured data for transmission through
 /// queues or other byte-oriented communication channels.
 ///
+/// # Safety
+///
+/// When implementing this trait, ensure that the returned byte slice
+/// is a valid representation of the type and lives at least as long
+/// as the value itself.
+///
 /// # Examples
 ///
 /// ```ignore
-/// use osal_rs::os::ToBytes;
+/// use osal_rs::traits::Serialize;
 /// 
 /// struct SensorData {
 ///     temperature: i16,
 ///     humidity: u8,
 /// }
 /// 
-/// impl ToBytes for SensorData {
+/// impl Serialize for SensorData {
 ///     fn to_bytes(&self) -> &[u8] {
 ///         // Convert struct to bytes
+///         // Safety: ensure proper memory layout
+///         unsafe {
+///             core::slice::from_raw_parts(
+///                 self as *const Self as *const u8,
+///                 core::mem::size_of::<Self>()
+///             )
+///         }
 ///     }
 /// }
 /// ```
@@ -97,10 +120,17 @@ pub trait Serialize {
 /// Enables reconstruction of structured data from byte arrays received
 /// from queues or communication channels.
 ///
+/// # Errors
+///
+/// Implementations should return an error if:
+/// - The byte slice is too small or too large
+/// - The data is invalid or corrupted
+/// - The conversion fails for any other reason
+///
 /// # Examples
 ///
 /// ```ignore
-/// use osal_rs::os::FromBytes;
+/// use osal_rs::traits::Deserialize;
 /// use osal_rs::utils::Result;
 /// 
 /// struct SensorData {
@@ -108,7 +138,7 @@ pub trait Serialize {
 ///     humidity: u8,
 /// }
 /// 
-/// impl FromBytes for SensorData {
+/// impl Deserialize for SensorData {
 ///     fn from_bytes(bytes: &[u8]) -> Result<Self> {
 ///         if bytes.len() < 3 {
 ///             return Err(Error::InvalidParameter);

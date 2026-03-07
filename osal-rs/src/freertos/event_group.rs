@@ -167,6 +167,24 @@ unsafe impl Send for EventGroup {}
 unsafe impl Sync for EventGroup {}
 
 impl EventGroup {
+
+    /// Maximum usable event bits mask.
+    /// FreeRTOS reserves the top 8 bits for internal use:
+    /// - For u32 (TickType): 0x00FFFFFF (24 bits usable)
+    /// - For u64 (TickType): 0x00FFFFFFFFFFFFFF (56 bits usable)
+    pub const MAX_MASK: EventBits = EventBits::MAX >> 8;
+
+    /// Waits for specified event bits to be set with a timeout in ticks.
+    /// This is a convenience method that converts a `ToTick` type to ticks and calls `wait`.
+    ///
+    /// # Examples
+    ////
+    /// ```ignore
+    /// use osal_rs::os::{EventGroup, EventGroupFn};
+    /// use core::time::Duration;
+    /// let events = EventGroup::new().unwrap();
+    /// let bits = events.wait_with_to_tick(0b0001, Duration::from_secs(1));
+    /// ```
     pub fn wait_with_to_tick(&self, mask: EventBits, timeout_ticks: impl ToTick) -> EventBits {
         self.wait(mask, timeout_ticks.to_ticks())
     }
@@ -200,10 +218,57 @@ impl EventGroup {
 }
 impl EventGroupFn for EventGroup {
 
+    /// Sets specified event bits.
+    /// 
+    /// This function sets (raises) the specified event bits in the event group.
+    /// Any threads waiting for these bits may be unblocked.
+    /// 
+    /// # Arguments
+    /// 
+    /// * `bits` - The event bits to set (bitwise OR to set multiple bits)
+    /// 
+    /// # Returns
+    /// 
+    /// The event bits value after the set operation.
+    /// 
+    /// # Examples
+    /// 
+    /// ```ignore
+    /// use osal_rs::os::{EventGroup, EventGroupFn};
+    /// 
+    /// let events = EventGroup::new().unwrap();
+    /// events.set(0b0001);  // Set bit 0
+    /// events.set(0b0110);  // Set bits 1 and 2
+    /// ```
     fn set(&self, bits: EventBits) -> EventBits {
         unsafe { xEventGroupSetBits(self.0, bits) }
     }
 
+    /// Sets specified event bits from an interrupt service routine (ISR).
+    /// 
+    /// This is the ISR-safe version of `set()`. It can be called from interrupt
+    /// context and will trigger a context switch if a higher priority thread
+    /// is unblocked by the bit setting.
+    /// 
+    /// # Arguments
+    /// 
+    /// * `bits` - The event bits to set
+    /// 
+    /// # Returns
+    /// 
+    /// * `Ok(())` - Bits were successfully set
+    /// * `Err(Error::QueueFull)` - Operation failed
+    /// 
+    /// # Examples
+    /// 
+    /// ```ignore
+    /// // In interrupt handler
+    /// use osal_rs::os::{EventGroup, EventGroupFn};
+    /// 
+    /// fn interrupt_handler(events: &EventGroup) {
+    ///     events.set_from_isr(0b0001).ok();
+    /// }
+    /// ```
     fn set_from_isr(&self, bits: EventBits) -> Result<()> {
 
         let mut higher_priority_task_woken: BaseType = pdFALSE;
@@ -219,19 +284,104 @@ impl EventGroupFn for EventGroup {
         }
     }
 
+    /// Gets the current value of event bits.
+    /// 
+    /// Returns the current state of all event bits in the event group.
+    /// This is a non-blocking operation.
+    /// 
+    /// # Returns
+    /// 
+    /// The current event bits value.
+    /// 
+    /// # Examples
+    /// 
+    /// ```ignore
+    /// use osal_rs::os::{EventGroup, EventGroupFn};
+    /// 
+    /// let events = EventGroup::new().unwrap();
+    /// events.set(0b0101);
+    /// let current = events.get();
+    /// assert_eq!(current & 0b0101, 0b0101);
+    /// ```
     fn get(&self) -> EventBits {
         xEventGroupGetBits!(self.0) 
     }
 
+    /// Gets the current value of event bits from an ISR.
+    /// 
+    /// This is the ISR-safe version of `get()`. It can be called from
+    /// interrupt context to read the current event bits.
+    /// 
+    /// # Returns
+    /// 
+    /// The current event bits value.
+    /// 
+    /// # Examples
+    /// 
+    /// ```ignore
+    /// // In interrupt handler
+    /// use osal_rs::os::{EventGroup, EventGroupFn};
+    /// 
+    /// fn interrupt_handler(events: &EventGroup) {
+    ///     let current = events.get_from_isr();
+    /// }
+    /// ```
     fn get_from_isr(&self) -> EventBits {
         unsafe { xEventGroupGetBitsFromISR(self.0) }
     }
 
 
+    /// Clears specified event bits.
+    /// 
+    /// This function clears (lowers) the specified event bits in the event group.
+    /// 
+    /// # Arguments
+    /// 
+    /// * `bits` - The event bits to clear (bitwise OR to clear multiple bits)
+    /// 
+    /// # Returns
+    /// 
+    /// The event bits value before the clear operation.
+    /// 
+    /// # Examples
+    /// 
+    /// ```ignore
+    /// use osal_rs::os::{EventGroup, EventGroupFn};
+    /// 
+    /// let events = EventGroup::new().unwrap();
+    /// events.set(0b1111);
+    /// events.clear(0b0011);  // Clear bits 0 and 1
+    /// let current = events.get();
+    /// assert_eq!(current & 0b1111, 0b1100);
+    /// ```
     fn clear(&self, bits: EventBits) -> EventBits {
         unsafe { xEventGroupClearBits(self.0, bits) }
     }
 
+    /// Clears specified event bits from an ISR.
+    /// 
+    /// This is the ISR-safe version of `clear()`. It can be called from
+    /// interrupt context to clear event bits.
+    /// 
+    /// # Arguments
+    /// 
+    /// * `bits` - The event bits to clear
+    /// 
+    /// # Returns
+    /// 
+    /// * `Ok(())` - Bits were successfully cleared
+    /// * `Err(Error::QueueFull)` - Operation failed
+    /// 
+    /// # Examples
+    /// 
+    /// ```ignore
+    /// // In interrupt handler
+    /// use osal_rs::os::{EventGroup, EventGroupFn};
+    /// 
+    /// fn interrupt_handler(events: &EventGroup) {
+    ///     events.clear_from_isr(0b0001).ok();
+    /// }
+    /// ```
     fn clear_from_isr(&self, bits: EventBits) -> Result<()> {
         let ret = unsafe { xEventGroupClearBitsFromISR(self.0, bits) };
         if ret != pdFAIL {
@@ -241,6 +391,34 @@ impl EventGroupFn for EventGroup {
         }
     }
 
+    /// Waits for specified event bits to be set.
+    /// 
+    /// Blocks the calling thread until any of the specified bits are set,
+    /// or until the timeout expires. The bits are not cleared automatically.
+    /// 
+    /// # Arguments
+    /// 
+    /// * `mask` - The event bits to wait for (bitwise OR for multiple bits)
+    /// * `timeout_ticks` - Maximum time to wait in system ticks (0 = no wait, MAX = wait forever)
+    /// 
+    /// # Returns
+    /// 
+    /// The event bits value when the function returns. Check if the desired
+    /// bits are set to determine if the wait succeeded or timed out.
+    /// 
+    /// # Examples
+    /// 
+    /// ```ignore
+    /// use osal_rs::os::{EventGroup, EventGroupFn};
+    /// 
+    /// let events = EventGroup::new().unwrap();
+    /// 
+    /// // Wait for bit 0 or bit 1, timeout after 1000 ticks
+    /// let result = events.wait(0b0011, 1000);
+    /// if result & 0b0011 != 0 {
+    ///     println!("At least one bit was set");
+    /// }
+    /// ```
     fn wait(&self, mask: EventBits, timeout_ticks: TickType) -> EventBits {
         unsafe {
             crate::freertos::ffi::xEventGroupWaitBits(
@@ -253,6 +431,25 @@ impl EventGroupFn for EventGroup {
         }
     }
 
+    /// Deletes the event group and frees its resources.
+    /// 
+    /// This function destroys the event group and releases any memory
+    /// allocated for it. After calling this, the event group should not
+    /// be used. The handle is set to null after deletion.
+    /// 
+    /// # Safety
+    /// 
+    /// Ensure no threads are waiting on this event group before deleting it.
+    /// 
+    /// # Examples
+    /// 
+    /// ```ignore
+    /// use osal_rs::os::{EventGroup, EventGroupFn};
+    /// 
+    /// let mut events = EventGroup::new().unwrap();
+    /// // Use the event group...
+    /// events.delete();
+    /// ```
     fn delete(&mut self) {
         unsafe {
             vEventGroupDelete(self.0);
@@ -261,6 +458,9 @@ impl EventGroupFn for EventGroup {
     }
 }
 
+/// Automatically deletes the event group when it goes out of scope.
+/// 
+/// This ensures proper cleanup of FreeRTOS resources.
 impl Drop for EventGroup {
     fn drop(&mut self) {
         if self.0.is_null() {
@@ -270,6 +470,7 @@ impl Drop for EventGroup {
     }
 }
 
+/// Allows dereferencing to the underlying FreeRTOS event group handle.
 impl Deref for EventGroup {
     type Target = EventGroupHandle;
 
@@ -278,12 +479,14 @@ impl Deref for EventGroup {
     }
 }
 
+/// Formats the event group for debugging purposes.
 impl Debug for EventGroup {
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
         write!(f, "EventGroup {{ handle: {:?} }}", self.0)
     }
 }
 
+/// Formats the event group for display purposes.
 impl Display for EventGroup {
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
         write!(f, "EventGroup {{ handle: {:?} }}", self.0)

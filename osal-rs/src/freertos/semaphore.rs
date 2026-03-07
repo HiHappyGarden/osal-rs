@@ -313,14 +313,19 @@ impl SemaphoreFn for Semaphore {
     
     /// Deletes the semaphore and frees its resources.
     ///
+    /// After calling this, the semaphore handle is set to null and should not be used.
+    ///
     /// # Safety
     ///
-    /// After calling this, the semaphore handle becomes invalid.
+    /// Ensure no threads are waiting on this semaphore before deleting it.
     ///
     /// # Examples
     ///
     /// ```ignore
+    /// use osal_rs::os::{Semaphore, SemaphoreFn};
+    /// 
     /// let mut sem = Semaphore::new(1, 1).unwrap();
+    /// // Use the semaphore...
     /// sem.delete();
     /// ```
     fn delete(&mut self) {
@@ -332,6 +337,9 @@ impl SemaphoreFn for Semaphore {
 }
 
 
+/// Automatically deletes the semaphore when it goes out of scope.
+/// 
+/// This ensures proper cleanup of FreeRTOS resources.
 impl Drop for Semaphore {
     fn drop(&mut self) {
         if self.0.is_null() {
@@ -341,6 +349,7 @@ impl Drop for Semaphore {
     }
 }
 
+/// Allows dereferencing to the underlying FreeRTOS semaphore handle.
 impl Deref for Semaphore {
     type Target = SemaphoreHandle;
 
@@ -349,6 +358,7 @@ impl Deref for Semaphore {
     }
 }
 
+/// Formats the semaphore for debugging purposes.
 impl Debug for Semaphore {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("Semaphore")
@@ -357,6 +367,7 @@ impl Debug for Semaphore {
     }
 }
 
+/// Formats the semaphore for display purposes.
 impl Display for Semaphore {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         write!(f, "Semaphore {{ handle: {:?} }}", self.0)

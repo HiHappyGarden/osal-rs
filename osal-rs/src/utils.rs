@@ -21,6 +21,78 @@
 //!
 //! This module contains common types, error definitions, and helper functions
 //! used throughout the library.
+//!
+//! # Overview
+//!
+//! The utilities module provides essential building blocks for working with
+//! OSAL-RS in embedded environments:
+//!
+//! - **Error handling**: Comprehensive [`Error`] enum for all OSAL operations
+//! - **String utilities**: Fixed-size [`Bytes`] type for embedded string handling
+//! - **Conversion macros**: Safe C string conversion and parameter extraction
+//! - **FFI types**: Type aliases for C interoperability
+//! - **Thread safety**: [`SyncUnsafeCell`] for static mutable state in Rust 2024+
+//!
+//! # Main Types
+//!
+//! ## Error Handling
+//!
+//! - [`Error<'a>`] - All possible error conditions with optional borrowed error messages
+//! - [`Result<T, E>`] - Type alias for `core::result::Result` with default `Error<'static>`
+//! - [`OsalRsBool`] - Boolean type compatible with RTOS return values
+//!
+//! ## String Handling
+//!
+//! - [`Bytes<SIZE>`] - Fixed-size byte buffer with string conversion utilities
+//! - [`AsSyncStr`] - Trait for thread-safe string references
+//!
+//! ## Constants
+//!
+//! - [`MAX_DELAY`] - Maximum timeout for blocking indefinitely
+//! - [`CpuRegisterSize`] - CPU register size detection (32-bit or 64-bit)
+//!
+//! ## FFI Types
+//!
+//! - [`Ptr`], [`ConstPtr`], [`DoublePtr`] - Type aliases for C pointers
+//!
+//! ## Thread Safety
+//!
+//! - [`SyncUnsafeCell<T>`] - Wrapper for static mutable variables (replaces `static mut`)
+//!
+//! # Macros
+//!
+//! ## String Conversion
+//!
+//! - [`from_c_str!`] - Convert C string pointer to Rust String (lossy conversion)
+//! - [`to_cstring!`] - Convert Rust string to CString with error handling
+//! - [`to_c_str!`] - Convert Rust string to C string pointer (panics on error)
+//! - [`from_str_to_array!`] - Convert string to fixed-size byte array
+//!
+//! ## Parameter Handling
+//!
+//! - [`thread_extract_param!`] - Extract typed parameter from thread entry point
+//! - [`access_static_option!`] - Access static Option variable (panics if None)
+//!
+//! # Helper Functions
+//!
+//! ## Hex Conversion
+//!
+//! - [`bytes_to_hex`] - Convert bytes to hex string (allocates)
+//! - [`bytes_to_hex_into_slice`] - Convert bytes to hex into buffer (no allocation)
+//! - [`hex_to_bytes`] - Parse hex string to bytes (allocates)
+//! - [`hex_to_bytes_into_slice`] - Parse hex string into buffer (no allocation)
+//!
+//! # Platform Detection
+//!
+//! - [`register_bit_size`] - Const function to detect CPU register size (32-bit or 64-bit)
+//!
+//! # Best Practices
+//!
+//! 1. **Use `Bytes<SIZE>` for embedded strings**: Avoids heap allocation, fixed size
+//! 2. **Prefer no-alloc variants**: Use `_into_slice` functions when possible
+//! 3. **Handle errors explicitly**: Always check `Result` returns
+//! 4. **Use `to_cstring!` over `to_c_str!`**: Better error handling with `?` operator
+//! 5. **Synchronize `SyncUnsafeCell` access**: Use mutexes or critical sections in multi-threaded environments
 
 use core::cell::UnsafeCell;
 use core::ffi::{CStr, c_char, c_uchar, c_void};
@@ -135,6 +207,10 @@ pub enum Error<'a> {
 }
 
 impl<'a> Display for Error<'a> {
+    /// Formats the error for display.
+    ///
+    /// Provides human-readable error messages suitable for logging or
+    /// presentation to users.
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         use Error::*;
 
@@ -167,12 +243,38 @@ impl<'a> Display for Error<'a> {
 /// CPU register size enumeration.
 ///
 /// Identifies whether the target CPU uses 32-bit or 64-bit registers.
-/// This is used for platform-specific tick count overflow handling.
+/// This is used for platform-specific tick count overflow handling and
+/// time calculation optimizations.
+///
+/// # Usage
+///
+/// Typically determined at compile time via [`register_bit_size()`] which
+/// checks `size_of::<usize>()`.
+///
+/// # Examples
+///
+/// ```ignore
+/// use osal_rs::utils::{CpuRegisterSize, register_bit_size};
+///
+/// match register_bit_size() {
+///     CpuRegisterSize::Bit64 => {
+///         // Use 64-bit optimized calculations
+///     }
+///     CpuRegisterSize::Bit32 => {
+///         // Use 32-bit overflow-safe calculations
+///     }
+/// }
+/// ```
 #[derive(PartialEq, Eq, Clone, Copy, Debug)]
 pub enum CpuRegisterSize {
-    /// 64-bit CPU registers
+    /// 64-bit CPU registers (e.g., ARM Cortex-A, x86_64).
+    ///
+    /// On these platforms, `usize` is 8 bytes.
     Bit64,
-    /// 32-bit CPU registers
+    
+    /// 32-bit CPU registers (e.g., ARM Cortex-M, RP2040, ESP32).
+    ///
+    /// On these platforms, `usize` is 4 bytes.
     Bit32
 }
 
@@ -229,15 +331,32 @@ pub const MAX_DELAY: Duration = Duration::from_millis(usize::MAX as u64);
 ///
 /// Uses [`Error`] as the default error type with `'static` lifetime.
 /// For custom lifetimes, use `core::result::Result<T, Error<'a>>`.
+///
+/// # Examples
+///
+/// ```ignore
+/// use osal_rs::utils::Result;
+///
+/// fn create_resource() -> Result<ResourceHandle> {
+///     // Returns Result<ResourceHandle, Error<'static>>
+///     Ok(ResourceHandle::new())
+/// }
+/// ```
 pub type Result<T, E = Error<'static>> = core::result::Result<T, E>;
 
 /// Pointer to pointer type for C FFI.
+///
+/// Equivalent to `void**` in C. Used for double indirection in FFI calls.
 pub type DoublePtr = *mut *mut c_void;
 
 /// Mutable pointer type for C FFI.
+///
+/// Equivalent to `void*` in C. Used for generic mutable data pointers.
 pub type Ptr = *mut c_void;
 
 /// Const pointer type for C FFI.
+///
+/// Equivalent to `const void*` in C. Used for generic immutable data pointers.
 pub type ConstPtr = *const c_void;
 
 
@@ -1004,11 +1123,12 @@ impl<const SIZE: usize> Bytes<SIZE> {
     /// let data = [b'H', b'e', b'l', b'l', b'o', 0];
     /// let bytes = Bytes::<16>::from_uchar_ptr(data.as_ptr());
     /// 
-    /// // From a null pointer    /// let null_bytes = Bytes::<16>::from_uchar_ptr(core::ptr::null());  
+    /// // From a null pointer
+    /// let null_bytes = Bytes::<16>::from_uchar_ptr(core::ptr::null());  
     /// // Returns zero-initialized Bytes
     /// 
     /// // Truncation example
-    /// let long_data = [b'T', b'h', b'i', b's', b' ', b'i', b's', b' ', b'a', b' ', b', b'v', b'e', b'r', b'y', b' ', b'l', b'o', b'n', b'g', 0];
+    /// let long_data = [b'T', b'h', b'i', b's', b' ', b'i', b's', b' ', b'v', b'e', b'r', b'y', b' ', b'l', b'o', b'n', b'g', 0];
     /// let short_bytes = Bytes::<8>::from_uchar_ptr(long_data.as_ptr());
     /// // Only first 8 bytes are copied
     /// ```
@@ -1369,7 +1489,7 @@ impl<const SIZE: usize> Bytes<SIZE> {
     ///
     /// # Type Parameters
     ///
-    /// * `OHTER_SIZE` - The size of the source `Bytes` buffer (can be different from `SIZE`)
+    /// * `OTHER_SIZE` - The size of the source `Bytes` buffer (can be different from `SIZE`)
     ///
     /// # Parameters
     ///
@@ -1391,7 +1511,7 @@ impl<const SIZE: usize> Bytes<SIZE> {
     /// small.append(&large);
     /// assert_eq!(small.as_str(), "Hi ther");
     /// ```
-    pub fn append<const OHTER_SIZE: usize>(&mut self, other: &Bytes<OHTER_SIZE>) {
+    pub fn append<const OTHER_SIZE: usize>(&mut self, other: &Bytes<OTHER_SIZE>) {
         let current_len = self.0.iter().position(|&b| b == 0).unwrap_or(SIZE);
         let mut i = current_len;
         for &byte in other.0.iter() {

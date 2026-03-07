@@ -72,6 +72,7 @@ pub struct SystemState {
     pub total_run_time: u32
 }
 
+/// Provides access to the task list as a slice.
 impl Deref for SystemState {
     type Target = [ThreadMetadata];
 
@@ -347,11 +348,50 @@ impl SystemFn for System {
         unsafe { xTaskGetTickCount() }
     }
 
+    /// Returns the current system time as a `Duration`.
+    ///
+    /// Converts the current tick count to microseconds and returns it as
+    /// a standard `Duration` type.
+    ///
+    /// # Returns
+    ///
+    /// Current system uptime as `Duration`
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// use osal_rs::os::{System, SystemFn};
+    /// 
+    /// let uptime = System::get_current_time_us();
+    /// println!("System uptime: {:?}", uptime);
+    /// ```
     fn get_current_time_us () -> Duration {
         let ticks = Self::get_tick_count();
         Duration::from_millis( 1_000 * ticks as u64 / tick_period_ms!() as u64 )
     }
 
+    /// Converts a `Duration` to microsecond ticks.
+    ///
+    /// Helper function for converting duration values to system tick counts
+    /// in microsecond resolution.
+    ///
+    /// # Parameters
+    ///
+    /// * `duration` - Duration to convert
+    ///
+    /// # Returns
+    ///
+    /// Equivalent tick count in microseconds
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// use osal_rs::os::{System, SystemFn};
+    /// use core::time::Duration;
+    /// 
+    /// let duration = Duration::from_millis(100);
+    /// let us_ticks = System::get_us_from_tick(&duration);
+    /// ```
     fn get_us_from_tick(duration: &Duration) -> TickType {
         let millis = duration.as_millis() as TickType;
         millis / (1_000 * tick_period_ms!() as TickType) 
@@ -517,6 +557,35 @@ impl SystemFn for System {
         }   
     }
     
+    /// Checks if a timer has elapsed.
+    ///
+    /// Compares the elapsed time since a timestamp against a target duration,
+    /// handling tick counter overflow correctly for both 32-bit and 64-bit systems.
+    ///
+    /// # Parameters
+    ///
+    /// * `timestamp` - Starting time reference
+    /// * `time` - Target duration to wait for
+    ///
+    /// # Returns
+    ///
+    /// * `OsalRsBool::True` - Timer has elapsed
+    /// * `OsalRsBool::False` - Timer has not yet elapsed
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// use osal_rs::os::{System, SystemFn};
+    /// use core::time::Duration;
+    /// 
+    /// let start = System::get_current_time_us();
+    /// let timeout = Duration::from_secs(1);
+    /// 
+    /// // Later...
+    /// if System::check_timer(&start, &timeout).into() {
+    ///     println!("Timeout occurred");
+    /// }
+    /// ```
     fn check_timer(timestamp: &Duration, time: &Duration) -> OsalRsBool {
         let temp_tick_time = Self::get_current_time_us();
         
@@ -565,9 +634,25 @@ impl SystemFn for System {
 
     /// Ends ISR and performs context switch if needed.
     ///
+    /// This function should be called at the end of an interrupt service routine
+    /// to trigger a context switch if a higher priority task was woken during
+    /// the ISR.
+    ///
     /// # Parameters
     ///
-    /// * `switch_required` - pdTRUE if context switch is required
+    /// * `switch_required` - `pdTRUE` if context switch is required, `pdFALSE` otherwise
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// use osal_rs::os::{System, SystemFn};
+    /// use osal_rs::os::ffi::pdTRUE;
+    /// 
+    /// // In ISR:
+    /// let mut switch_required = pdFALSE;
+    /// // ... ISR operations that might require context switch ...
+    /// System::end_switching_isr(switch_required);
+    /// ```
     fn end_switching_isr( switch_required: BaseType ) {
         unsafe {
             osal_rs_port_end_switching_isr( switch_required );

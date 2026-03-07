@@ -196,6 +196,41 @@ use crate::freertos as osal;
 #[cfg(feature = "posix")]
 use crate::posix as osal;
 
+/// Re-export OSAL types and traits for users of the library
+/// This allows users to access all OSAL functionality through `osal_rs::os::*`
+/// For example, `osal_rs::os::Thread`, `osal_rs::os::Mutex`, etc.
+/// This also includes the traits defined in `traits` module for easier access.
+/// Users can still access the traits directly via `osal_rs::traits::*` if they prefer.
+/// This design provides a single entry point for all OSAL-related types and traits, improving discoverability and ease of use.
+/// The `os` module serves as the main interface for users of the OSAL library, while the `traits` module can be used for more advanced use cases or when users want to implement their own abstractions on top of OSAL.
+/// The `utils` module is also re-exported for users who need utility types and error handling provided by the library.
+/// This approach keeps the public API organized and user-friendly, while still allowing access to all necessary components of the library.
+/// Note: The actual implementation of the OSAL abstractions (threads, mutexes, etc.) is contained within the `freertos` and `posix` modules, which are conditionally compiled based on the selected features. The re-exporting in the `os` module ensures that users do not need to worry about which underlying OSAL implementation is being used, as they can simply use the unified API provided by `osal_rs::os::*`.
+/// Example usage:
+/// ```ignore
+/// use osal_rs::os::*;
+/// use osal_rs::traits::state::Initializable;
+/// use osal_rs::utils::Result;
+/// struct MyApp;
+/// impl Initializable for MyApp {
+///     fn init(&mut self) -> Result<()> {
+///         // Initialization code here
+///         Ok(())
+///     }
+/// }
+/// fn main() {
+///     let mut app = MyApp;
+///     app.init().unwrap();
+///     let thread = Thread::new("worker", 4096, 5, || {
+///         loop {
+///             println!("Working...");
+///             Duration::from_secs(1).sleep();
+///         }
+///     }).unwrap();
+///     thread.start().unwrap();
+///     System::start();
+/// }
+/// ```
 pub mod os {
 
     #[cfg(not(feature = "disable_panic"))]

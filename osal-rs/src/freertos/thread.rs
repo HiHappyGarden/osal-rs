@@ -119,6 +119,10 @@ pub struct ThreadMetadata {
 unsafe impl Send for ThreadMetadata {}
 unsafe impl Sync for ThreadMetadata {}
 
+/// Converts a FreeRTOS TaskStatus into ThreadMetadata.
+///
+/// This conversion extracts all relevant task information from the FreeRTOS
+/// TaskStatus structure and creates a safe Rust representation.
 impl From<(ThreadHandle,TaskStatus)> for ThreadMetadata {
     fn from(status: (ThreadHandle, TaskStatus)) -> Self {
         let state = match status.1.eCurrentState {
@@ -147,6 +151,10 @@ impl From<(ThreadHandle,TaskStatus)> for ThreadMetadata {
     }
 }
 
+/// Provides default values for ThreadMetadata.
+///
+/// Creates a metadata instance with null/zero values, representing an
+/// invalid or uninitialized thread.
 impl Default for ThreadMetadata {
     fn default() -> Self {
         ThreadMetadata {
@@ -423,6 +431,18 @@ impl Thread {
 
 }
 
+/// Internal C-compatible wrapper for thread callbacks.
+///
+/// This function bridges between FreeRTOS C API and Rust closures.
+/// It unpacks the boxed thread instance, initializes the handle,
+/// and calls the user-provided callback.
+///
+/// # Safety
+///
+/// This function is marked unsafe because it:
+/// - Expects a valid pointer to a boxed Thread instance
+/// - Performs raw pointer conversions
+/// - Is called from C code (FreeRTOS)
 unsafe extern "C" fn callback_c_wrapper(param_ptr: *mut c_void) {
     if param_ptr.is_null() {
         return;
@@ -445,6 +465,18 @@ unsafe extern "C" fn callback_c_wrapper(param_ptr: *mut c_void) {
     thread.delete();
 }
 
+/// Internal C-compatible wrapper for simple thread callbacks.
+///
+/// This function bridges between FreeRTOS C API and simple Rust closures
+/// (without parameters). It unpacks the boxed function pointer and executes it.
+///
+/// # Safety
+///
+/// This function is marked unsafe because it:
+/// - Expects a valid pointer to a boxed function pointer
+/// - Performs raw pointer conversions
+/// - Is called from C code (FreeRTOS)
+/// - Directly calls vTaskDelete after execution
 unsafe extern "C" fn simple_callback_wrapper(param_ptr: *mut c_void) {
     if param_ptr.is_null() {
         return;
@@ -805,6 +837,9 @@ impl ThreadFn for Thread {
 //     }
 // }
 
+/// Allows dereferencing to the underlying FreeRTOS thread handle.
+///
+/// This enables direct access to the handle when needed for low-level operations.
 impl Deref for Thread {
     type Target = ThreadHandle;
 
@@ -813,6 +848,9 @@ impl Deref for Thread {
     }
 }
 
+/// Formats the thread for debugging purposes.
+///
+/// Includes handle, name, stack depth, priority, and callback status.
 impl Debug for Thread {
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("Thread")
@@ -826,6 +864,9 @@ impl Debug for Thread {
     }
 }
 
+/// Formats the thread for display purposes.
+///
+/// Shows a concise representation with handle, name, priority, and stack depth.
 impl Display for Thread {
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
         write!(f, "Thread {{ handle: {:?}, name: {}, priority: {}, stack_depth: {} }}", self.handle, self.name, self.priority, self.stack_depth)

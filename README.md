@@ -486,11 +486,17 @@ Contributions are welcome! Please feel free to submit pull requests or open issu
 
 ## Author
 
-Antonio Salsi
+Antonio Salsi - [passy.linux@zresa.it](mailto:passy.linux@zresa.it)
 
-## Repository
+## Contributing
 
-[https://github.com/HiHappyGarden/osal-rs](https://github.com/HiHappyGarden/osal-rs)
+Contributions are welcome! Please feel free to submit a Pull Request.
+
+## Links
+
+- [Repository](https://github.com/HiHappyGarden/osal-rs)
+- [Documentation](https://docs.rs/osal-rs)
+- [Crates.io](https://crates.io/crates/osal-rs)
 
 ## Example implementation
 

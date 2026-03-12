@@ -352,4 +352,15 @@ GPL-3.0 - See [LICENSE](../LICENSE) for details.
 
 ## Author
 
-Antonio Salsi <passy.linux@zresa.it>
+Antonio Salsi - [passy.linux@zresa.it](mailto:passy.linux@zresa.it)
+
+## Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request.
+
+## Links
+
+- [Repository](https://github.com/HiHappyGarden/osal-rs)
+- [Documentation](https://docs.rs/osal-rs-serde)
+- [Crates.io](https://crates.io/crates/osal-rs-serde)
+

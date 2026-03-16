@@ -405,17 +405,6 @@ unsafe extern "C" {
     pub fn printf(fmt: *const u8, ...) -> i32; 
 }
 
-macro_rules! ulTaskNotifyTake {
-    ($xClearCountOnExit:expr, $xTicksToWait:expr) => {
-        unsafe {
-            $crate::freertos::ffi::ulTaskGenericNotifyTake(
-                $crate::freertos::ffi::tskDEFAULT_INDEX_TO_NOTIFY,
-                $xClearCountOnExit,
-                $xTicksToWait
-            )
-        }
-    };
-}
 
 macro_rules! xTaskNotifyWait {
     ($ulBitsToClearOnEntry:expr, $ulBitsToClearOnExit:expr, $pulNotificationValue:expr, $xTicksToWait:expr) => {
@@ -460,30 +449,6 @@ macro_rules! xTaskNotifyFromISR {
     };
 }
 
-macro_rules! xTaskNotifyAndQuery {
-    ($xTaskToNotify:expr, $ulValue:expr, $eAction:expr, $pulPreviousNotificationValue:expr) => {
-        unsafe {
-            $crate::freertos::ffi::xTaskGenericNotify(
-                $xTaskToNotify,
-                $crate::freertos::ffi::tskDEFAULT_INDEX_TO_NOTIFY,
-                $ulValue,
-                $eAction,
-                $pulPreviousNotificationValue
-            )
-        }
-    };
-}
-
-macro_rules! vTaskDelayUntil {
-    ($pxPreviousWakeTime:expr, $xTimeIncrement:expr) => {
-        unsafe {
-            $crate::freertos::ffi::xTaskDelayUntil(
-                $pxPreviousWakeTime,
-                $xTimeIncrement
-            );
-        }
-    };
-}
 
 macro_rules! xEventGroupGetBits {
     ($xEventGroup:expr) => {
@@ -555,18 +520,6 @@ macro_rules! vSemaphoreDelete {
     ($xSemaphore:expr) => {
         unsafe {
             $crate::freertos::ffi::vQueueDelete($xSemaphore)
-        }
-    };
-}
-
-macro_rules! xQueueCreate {
-    ($uxQueueLength:expr, $uxItemSize:expr) => {
-        unsafe {
-            $crate::freertos::ffi::xQueueGenericCreate(
-                $uxQueueLength,
-                $uxItemSize,
-                $crate::freertos::ffi::queueQUEUE_TYPE_BASE
-            )
         }
     };
 }

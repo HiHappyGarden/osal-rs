@@ -137,6 +137,12 @@
 //! - Efficient priority-based scheduler
 
 /// Memory allocator using FreeRTOS heap.
+/// FreeRTOS FFI (Foreign Function Interface) bindings.
+///
+/// This module is private and contains unsafe C bindings to the FreeRTOS kernel.
+#[macro_use]
+mod ffi;
+
 pub mod allocator;
 
 /// FreeRTOS configuration constants and utilities.
@@ -147,11 +153,6 @@ pub mod duration;
 
 /// Event group synchronization primitives.
 pub mod event_group;
-
-/// FreeRTOS FFI (Foreign Function Interface) bindings.
-///
-/// This module is private and contains unsafe C bindings to the FreeRTOS kernel.
-mod ffi;
 
 /// Mutex implementations with optional priority inheritance.
 pub mod mutex;

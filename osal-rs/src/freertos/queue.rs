@@ -42,7 +42,6 @@ use osal_rs_serde::{Serialize, Deserialize, to_bytes};
 pub trait StructSerde : Serialize + BytesHasLen + Deserialize {}
 
 use crate::utils::{Result, Error};
-use crate::{xQueueSendToBack, xQueueSendToBackFromISR};
 
 
 /// A FIFO queue for byte-based message passing.

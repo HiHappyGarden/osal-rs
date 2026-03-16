@@ -32,7 +32,6 @@ use super::system::System;
 use super::types::{BaseType, UBaseType};
 use crate::traits::{SemaphoreFn, SystemFn, ToTick};
 use crate::utils::{Error, Result, OsalRsBool};
-use crate::{vSemaphoreDelete, xSemaphoreCreateCounting, xSemaphoreGive, xSemaphoreGiveFromISR, xSemaphoreTake, xSemaphoreTakeFromISR};
 
 /// A counting semaphore for resource management and signaling.
 ///

@@ -405,7 +405,6 @@ unsafe extern "C" {
     pub fn printf(fmt: *const u8, ...) -> i32; 
 }
 
-#[macro_export]
 macro_rules! ulTaskNotifyTake {
     ($xClearCountOnExit:expr, $xTicksToWait:expr) => {
         unsafe {
@@ -418,7 +417,6 @@ macro_rules! ulTaskNotifyTake {
     };
 }
 
-#[macro_export]
 macro_rules! xTaskNotifyWait {
     ($ulBitsToClearOnEntry:expr, $ulBitsToClearOnExit:expr, $pulNotificationValue:expr, $xTicksToWait:expr) => {
         unsafe {
@@ -433,7 +431,6 @@ macro_rules! xTaskNotifyWait {
     };
 }
 
-#[macro_export]
 macro_rules! xTaskNotify {
     ($xTaskToNotify:expr, $ulValue:expr, $eAction:expr) => {
         unsafe {
@@ -448,7 +445,6 @@ macro_rules! xTaskNotify {
     };
 }
 
-#[macro_export]
 macro_rules! xTaskNotifyFromISR {
     ($xTaskToNotify:expr, $ulValue:expr, $eAction:expr, $pxHigherPriorityTaskWoken:expr) => {
         unsafe {
@@ -464,7 +460,6 @@ macro_rules! xTaskNotifyFromISR {
     };
 }
 
-#[macro_export]
 macro_rules! xTaskNotifyAndQuery {
     ($xTaskToNotify:expr, $ulValue:expr, $eAction:expr, $pulPreviousNotificationValue:expr) => {
         unsafe {
@@ -479,7 +474,6 @@ macro_rules! xTaskNotifyAndQuery {
     };
 }
 
-#[macro_export]
 macro_rules! vTaskDelayUntil {
     ($pxPreviousWakeTime:expr, $xTimeIncrement:expr) => {
         unsafe {
@@ -491,7 +485,6 @@ macro_rules! vTaskDelayUntil {
     };
 }
 
-#[macro_export]
 macro_rules! xEventGroupGetBits {
     ($xEventGroup:expr) => {
         unsafe {
@@ -500,7 +493,6 @@ macro_rules! xEventGroupGetBits {
     };
 }
 
-#[macro_export]
 macro_rules! xSemaphoreCreateCounting {
     ($uxMaxCount:expr, $uxInitialCount:expr) => {
         unsafe {
@@ -512,7 +504,6 @@ macro_rules! xSemaphoreCreateCounting {
     };
 }
 
-#[macro_export]
 macro_rules! xSemaphoreTake {
     ($xSemaphore:expr, $xBlockTime:expr) => {
         unsafe {
@@ -524,7 +515,6 @@ macro_rules! xSemaphoreTake {
     };
 }
 
-#[macro_export]
 macro_rules! xSemaphoreTakeFromISR {
     ($xSemaphore:expr, $pxHigherPriorityTaskWoken:expr) => {
         unsafe {
@@ -537,7 +527,6 @@ macro_rules! xSemaphoreTakeFromISR {
     };
 }
 
-#[macro_export]
 macro_rules! xSemaphoreGive {
     ($xSemaphore:expr) => {
         unsafe {
@@ -551,7 +540,6 @@ macro_rules! xSemaphoreGive {
     };
 }
 
-#[macro_export]
 macro_rules! xSemaphoreGiveFromISR {
     ($xSemaphore:expr, $pxHigherPriorityTaskWoken:expr) => {
         unsafe {
@@ -563,7 +551,6 @@ macro_rules! xSemaphoreGiveFromISR {
     };
 }
 
-#[macro_export]
 macro_rules! vSemaphoreDelete {
     ($xSemaphore:expr) => {
         unsafe {
@@ -572,7 +559,6 @@ macro_rules! vSemaphoreDelete {
     };
 }
 
-#[macro_export]
 macro_rules! xQueueCreate {
     ($uxQueueLength:expr, $uxItemSize:expr) => {
         unsafe {
@@ -585,7 +571,6 @@ macro_rules! xQueueCreate {
     };
 }
 
-#[macro_export]
 macro_rules! xQueueSendToBackFromISR {
     ($xQueue:expr, $pvItemToQueue:expr, $pxHigherPriorityTaskWoken:expr) => {
         unsafe {
@@ -599,7 +584,6 @@ macro_rules! xQueueSendToBackFromISR {
     };
 }
 
-#[macro_export]
 macro_rules! xQueueSendToBack {
     ($xQueue:expr, $pvItemToQueue:expr, $xTicksToWait:expr) => {
         unsafe {
@@ -613,7 +597,6 @@ macro_rules! xQueueSendToBack {
     };
 }
 
-#[macro_export]
 macro_rules! xSemaphoreCreateRecursiveMutex {
     () => {
         unsafe {
@@ -624,7 +607,6 @@ macro_rules! xSemaphoreCreateRecursiveMutex {
     };
 }
 
-#[macro_export]
 macro_rules! xSemaphoreTakeRecursive {
     ($xMutex:expr, $xBlockTime:expr) => {
         unsafe {
@@ -636,7 +618,6 @@ macro_rules! xSemaphoreTakeRecursive {
     };
 }
 
-#[macro_export]
 macro_rules! xSemaphoreGiveRecursive {
     ($xMutex:expr) => {
         unsafe {

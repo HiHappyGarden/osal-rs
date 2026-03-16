@@ -36,7 +36,6 @@ use super::thread::ThreadState::*;
 use crate::os::ThreadSimpleFnPtr;
 use crate::traits::{ThreadFn, ThreadParam, ThreadFnPtr, ThreadNotification, ToTick, ToPriority};
 use crate::utils::{Bytes, DoublePtr, Error, Result};
-use crate::{xTaskNotify, xTaskNotifyFromISR, xTaskNotifyWait};
 
 const MAX_TASK_NAME_LEN: usize = 16;
 

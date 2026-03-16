@@ -33,7 +33,6 @@ use super::system::System;
 use super::types::{BaseType, EventBits, TickType};
 use crate::traits::{ToTick, EventGroupFn, SystemFn};
 use crate::utils::{Result, Error};
-use crate::xEventGroupGetBits;
 
 /// A set of event flags for thread synchronization.
 ///

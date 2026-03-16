@@ -35,7 +35,6 @@ use super::system::System;
 use crate::traits::SystemFn;
 use crate::traits::{MutexGuardFn, RawMutexFn, MutexFn, ToTick};
 use crate::utils::{Result, Error, OsalRsBool, MAX_DELAY};
-use crate::{vSemaphoreDelete, xSemaphoreCreateRecursiveMutex, xSemaphoreGiveFromISR, xSemaphoreGiveRecursive, xSemaphoreTakeFromISR, xSemaphoreTakeRecursive};
 
 //// RawMutex ////
 

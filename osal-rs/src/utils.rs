@@ -967,6 +967,39 @@ impl<const SIZE: usize> Deserialize for Bytes<SIZE> {
     }
 }
 
+
+/// Default implementation for `Bytes<SIZE>`.
+/// This provides a default value for `Bytes<SIZE>`, which is a zero-initialized byte array. This allows `Bytes` to be used in contexts that require a default value, such as when using the `Default` trait or when initializing variables without explicit values.
+/// # Examples
+/// ```ignore
+/// use osal_rs::utils::Bytes;
+/// 
+/// let default_bytes: Bytes<16> = Default::default();
+/// assert_eq!(default_bytes[0], 0);
+/// ```
+/// The default implementation initializes the internal byte array to all zeros, which is a common default state for byte buffers in embedded systems and C APIs. This ensures that any uninitialized `Bytes` instance will contain predictable data (zeros) rather than random memory content.
+/// This is particularly useful when `Bytes` is used as a buffer for C string operations, as it ensures that the buffer starts in a known state. Additionally, it allows for easy creation of empty buffers that can be filled later without needing to manually initialize the array each time.
+/// Overall, this default implementation enhances the usability of the `Bytes` type by providing a sensible default state that is commonly needed in embedded and systems programming contexts.
+/// 
+impl<const SIZE: usize> Default for Bytes<SIZE> {
+    /// Provides a default value for `Bytes<SIZE>`, which is a zero-initialized byte array.
+    ///
+    /// This implementation allows `Bytes` to be used in contexts that require a default value,
+    /// such as when using the `Default` trait or when initializing variables without explicit values.
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// use osal_rs::utils::Bytes;
+    /// 
+    /// let default_bytes: Bytes<16> = Default::default();
+    /// assert_eq!(default_bytes[0], 0);
+    /// ```
+    fn default() -> Self {
+        Self( [0u8; SIZE] )
+    }
+}
+
 impl<const SIZE: usize> Bytes<SIZE> {
     /// Creates a new `Bytes` instance filled with zeros.
     ///

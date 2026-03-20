@@ -1615,6 +1615,27 @@ impl<const SIZE: usize> Bytes<SIZE> {
         self.0.iter().position(|&b| b == 0).unwrap_or(SIZE)
     }
 
+
+    /// Returns the fixed size of the buffer.
+    /// 
+    /// This method returns the compile-time constant `SIZE`, which represents the total capacity of the internal byte array. The size is determined by the generic parameter `SIZE` specified when creating the `Bytes` instance. This value is fixed and does not change during the lifetime of the instance.
+    /// # Returns
+    /// The fixed size of the buffer in bytes (`SIZE`).
+    /// # Examples
+    /// ```ignore
+    /// use osal_rs::utils::Bytes;
+    /// 
+    /// let bytes = Bytes::<32>::new();
+    /// assert_eq!(bytes.size(), 32);
+    /// 
+    /// let other = Bytes::<128>::new_by_str("Hello");
+    /// assert_eq!(other.size(), 128);
+    /// ```
+    #[inline]
+    pub const fn size(&self) -> usize {
+        SIZE
+    }
+
     /// Checks if the buffer is empty.
     ///
     /// A buffer is considered empty if all bytes are zero. This method searches

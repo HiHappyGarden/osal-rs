@@ -1802,6 +1802,160 @@ impl<const SIZE: usize> Bytes<SIZE> {
     pub fn to_bytes(&self) -> &[u8] {
         &self.0
     }
+
+    /// Pops the last byte from the buffer and returns it.
+    ///
+    /// This method removes the last byte of content (before the first null terminator)
+    /// and returns it. If the buffer is empty, it returns `None`. After popping, the last byte is set to zero to maintain the null-terminated property.
+    ///
+    /// # Returns
+    ///
+    /// * `Some(u8)` - The last byte of content if the buffer is not empty
+    /// * `None` - If the buffer is empty
+    ///
+    /// # Examples
+    //// ```ignore
+    /// use osal_rs::utils::Bytes;
+    /// 
+    /// let mut bytes = Bytes::<16>::new_by_str("Hello");
+    /// assert_eq!(bytes.pop(), Some(b'o'));
+    /// assert_eq!(bytes.as_str(), "Hell");
+    /// 
+    /// // Pop until empty
+    /// assert_eq!(bytes.pop(), Some(b'l'));
+    /// assert_eq!(bytes.pop(), Some(b'l'));
+    /// assert_eq!(bytes.pop(), Some(b'e'));
+    /// assert_eq!(bytes.pop(), Some(b'H'));
+    /// assert_eq!(bytes.pop(), None);
+    /// ``` 
+    pub fn pop(&mut self) -> Option<u8> {
+        let len = self.len();
+        if len == 0 {
+            None
+        } else {
+            let byte = self.0[len - 1];
+            self.0[len - 1] = 0; // Clear the popped byte
+            Some(byte)
+        }
+    }
+
+    /// Pushes a byte to the end of the content in the buffer.
+    ///
+    /// # Parameters
+    ///
+    /// * `byte` - The byte to push into the buffer
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(())` - If the byte was successfully pushed
+    /// * `Err(Error::StringConversionError)` - If the buffer is full
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// use osal_rs::utils::Bytes;
+    ///
+    /// let mut bytes = Bytes::<16>::new_by_str("Hello");
+    /// assert_eq!(bytes.push(b'!'), Ok(()));
+    /// assert_eq!(bytes.as_str(), "Hello!");
+    /// ```
+    pub fn push(&mut self, byte: u8) -> Result<()> {
+        let len = self.len();
+        if len >= SIZE {
+            Err(Error::StringConversionError) // Buffer is full
+        } else {
+            self.0[len] = byte;
+            Ok(())
+        }
+    }
+
+    /// Pops the last byte from the buffer and returns it as a character.
+    ///
+    /// This method removes the last byte of content (before the first null terminator)
+    /// and attempts to convert it to a `char`. If the buffer is empty or if the byte cannot be converted to a valid `char`, it returns `None`. After popping, the last byte is set to zero to maintain the null-terminated property.
+    ///
+    /// # Returns
+    ///
+    /// * `Some(char)` - The last byte of content as a character if the buffer is not empty and the byte is a valid character
+    /// * `None` - If the buffer is empty or if the byte cannot be converted to a valid character
+    ///
+    /// # Examples
+    //// ```ignore
+    /// use osal_rs::utils::Bytes;
+    /// 
+    /// let mut bytes = Bytes::<16>::new_by_str("Hello");
+    /// assert_eq!(bytes.pop_char(), Some('o'));
+    /// assert_eq!(bytes.as_str(), "Hell");
+    /// 
+    /// // Pop until empty
+    /// assert_eq!(bytes.pop_char(), Some('l'));
+    /// assert_eq!(bytes.pop_char(), Some('l'));
+    /// assert_eq!(bytes.pop_char(), Some('e'));
+    /// assert_eq!(bytes.pop_char(), Some('H'));
+    /// assert_eq!(bytes.pop_char(), None);
+    /// ```
+    #[inline]
+    pub fn pop_char(&mut self) -> Option<char> {
+        self.pop().and_then(|byte| char::from_u32(byte as u32))
+    }
+
+    /// Pushes a character to the end of the content in the buffer.
+    ///
+    /// This method attempts to convert the provided `char` to a byte and push it into the buffer. If the character is not a valid ASCII character (i.e., its code point is greater than 127), it returns an error since it cannot be represented as a single byte. If the buffer is full, it also returns an error.
+    ///
+    /// # Parameters
+    ///
+    /// * `ch` - The character to push into the buffer
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(())` - If the character was successfully pushed
+    /// * `Err(Error::StringConversionError)` - If the character is not a valid ASCII character or if the buffer is full
+    ///
+    /// # Examples
+    //// ```ignore
+    /// use osal_rs::utils::Bytes;
+    /// 
+    /// let mut bytes = Bytes::<16>::new_by_str("Hello");
+    /// assert_eq!(bytes.push_char('!'), Ok(()));
+    /// assert_eq!(bytes.as_str(), "Hello!");
+    /// 
+    /// // Attempt to push a non-ASCII character
+    /// assert!(bytes.push_char('é').is_err());
+    /// ```
+    pub fn push_char(&mut self, ch: char) -> Result<()> {
+        if ch.is_ascii() {
+            self.push(ch as u8)
+        } else {
+            Err(Error::StringConversionError) // Non-ASCII characters not supported
+        }
+    }
+
+    /// Checks if the content of the buffer can be interpreted as a valid UTF-8 string.
+    ///
+    /// This method attempts to convert the internal byte array to a UTF-8 string. If the conversion is successful, it returns `true`, indicating that the content can be treated as a valid string. If the conversion fails due to invalid UTF-8 sequences, it returns `false`.
+    ///
+    /// # Returns
+    ///
+    /// * `true` - If the content can be interpreted as a valid UTF-8 string
+    /// * `false` - If the content contains invalid UTF-8 sequences
+    ///
+    /// # Examples
+    //// ```ignore
+    /// use osal_rs::utils::Bytes;
+    /// 
+    /// let valid_bytes = Bytes::<16>::new_by_str("Hello");
+    /// assert!(valid_bytes.is_string());
+    /// 
+    /// let mut invalid_bytes = Bytes::<16>::new();
+    /// invalid_bytes[0] = 0xFF; // Invalid UTF-8 byte
+    /// assert!(!invalid_bytes.is_string());
+    /// ```
+    #[inline]
+    pub fn is_string(&self) -> bool {
+        String::from_utf8(self.0.to_vec()).is_ok()
+    }
+        
 }
 
 /// Converts a byte slice to a hexadecimal string representation.

@@ -1615,6 +1615,13 @@ impl<const SIZE: usize> Bytes<SIZE> {
         self.0.iter().position(|&b| b == 0).unwrap_or(SIZE)
     }
 
+    /// Returns the active bytes (up to the first null byte) as a raw byte slice.
+    /// Unlike `as_str()`, this does not require valid UTF-8 and supports the
+    /// full 32–255 byte range.
+    #[inline]
+    pub fn as_raw_bytes(&self) -> &[u8] {
+        &self.0[..self.len()]
+    }
 
     /// Returns the fixed size of the buffer.
     /// 

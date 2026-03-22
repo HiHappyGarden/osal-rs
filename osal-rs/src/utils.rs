@@ -1615,9 +1615,26 @@ impl<const SIZE: usize> Bytes<SIZE> {
         self.0.iter().position(|&b| b == 0).unwrap_or(SIZE)
     }
 
-    /// Returns the active bytes (up to the first null byte) as a raw byte slice.
-    /// Unlike `as_str()`, this does not require valid UTF-8 and supports the
-    /// full 32–255 byte range.
+    /// Returns a byte slice of the content in the buffer.
+    /// 
+    /// This method returns a slice of the internal byte array up to the first null byte (0). If no null byte is found, it returns a slice of the entire array. This allows you to access the valid content stored in the buffer without including any trailing zeros.
+    /// 
+    /// # Returns
+    /// A byte slice containing the content of the buffer up to the first null terminator.
+    /// 
+    /// # Examples
+    /// ```ignore
+    /// use osal_rs::utils::Bytes;
+    /// 
+    /// let bytes = Bytes::<16>::new_by_str("Hello");
+    /// assert_eq!(bytes.as_raw_bytes(), b"Hello");
+    /// 
+    /// let empty = Bytes::<16>::new();
+    /// assert_eq!(empty.as_raw_bytes(), b"");
+    /// 
+    /// let full = Bytes::<4>::new_by_str("ABCD");
+    /// assert_eq!(full.as_raw_bytes(), b"ABCD");
+    /// ``` 
     #[inline]
     pub fn as_raw_bytes(&self) -> &[u8] {
         &self.0[..self.len()]

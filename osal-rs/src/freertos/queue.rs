@@ -30,7 +30,7 @@ use core::ops::Deref;
 
 use alloc::vec::Vec;
 
-use super::ffi::{QueueHandle, pdFALSE, vQueueDelete, xQueueCreateCountingSemaphore, xQueueReceive, xQueueReceiveFromISR};
+use super::ffi::{QueueHandle, pdFALSE, vQueueDelete, xQueueGenericCreate, xQueueReceive, xQueueReceiveFromISR};
 use super::types::{BaseType, UBaseType, TickType};
 use super::system::System;
 use crate::traits::{ToTick, QueueFn, SystemFn, QueueStreamedFn, BytesHasLen};
@@ -124,7 +124,8 @@ impl Queue {
     /// let queue = Queue::new(5, 16).unwrap();
     /// ```
     pub fn new (size: UBaseType, message_size: UBaseType) -> Result<Self> {
-        let handle = unsafe { xQueueCreateCountingSemaphore(size, message_size) };
+        const QUEUE_TYPE_BASE: u8 = 0; // queueQUEUE_TYPE_BASE
+        let handle = unsafe { xQueueGenericCreate(size, message_size, QUEUE_TYPE_BASE) };
         if handle.is_null() {
             Err(Error::OutOfMemory)
         } else {

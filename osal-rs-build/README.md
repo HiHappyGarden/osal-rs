@@ -4,7 +4,7 @@ Build utilities for [osal-rs](https://github.com/HiHappyGarden/osal-rs) - FreeRT
 
 [![Crates.io](https://img.shields.io/crates/v/osal-rs-build.svg)](https://crates.io/crates/osal-rs-build)
 [![Documentation](https://docs.rs/osal-rs-build/badge.svg)](https://docs.rs/osal-rs-build)
-[![License: GPL-3.0](https://img.shields.io/badge/License-GPL%203.0-blue.svg)](LICENSE)
+[![License: LGPL-2.1](https://img.shields.io/badge/License-LGPL%202.1-blue.svg)](LICENSE)
 
 ## Overview
 
@@ -148,7 +148,7 @@ The main struct for generating FreeRTOS type mappings.
 
 ## License
 
-This project is licensed under the GNU General Public License v3.0 - see the [LICENSE](LICENSE) file for details.
+This project is licensed under the GNU Lesser General Public License v2.1 or later - see the [LICENSE](LICENSE) file for details.
 
 ## Author
 

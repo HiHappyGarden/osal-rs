@@ -4,7 +4,7 @@ An extensible, lightweight serialization/deserialization framework for Rust, ins
 
 [![Crates.io](https://img.shields.io/crates/v/osal-rs-serde.svg)](https://crates.io/crates/osal-rs-serde)
 [![Documentation](https://docs.rs/osal-rs-serde/badge.svg)](https://docs.rs/osal-rs-serde)
-[![License: GPL-3.0](https://img.shields.io/badge/License-GPL%203.0-blue.svg)](LICENSE)
+[![License: LGPL-2.1](https://img.shields.io/badge/License-LGPL%202.1-blue.svg)](LICENSE)
 
 ## Features
 
@@ -533,7 +533,7 @@ struct Message {
 
 ## License
 
-GPL-3.0 - See [LICENSE](LICENSE) for details.
+LGPL-2.1-or-later - See [LICENSE](LICENSE) for details.
 
 ## Author
 

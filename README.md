@@ -4,7 +4,7 @@ Operating System Abstraction Layer for Rust - A cross-platform compatibility lay
 
 [![Crates.io](https://img.shields.io/crates/v/osal-rs.svg)](https://crates.io/crates/osal-rs)
 [![Documentation](https://docs.rs/osal-rs/badge.svg)](https://docs.rs/osal-rs)
-[![License: GPL-3.0](https://img.shields.io/badge/License-GPL%203.0-blue.svg)](LICENSE)
+[![License: LGPL-2.1](https://img.shields.io/badge/License-LGPL%202.1-blue.svg)](LICENSE)
 
 ## Overview
 
@@ -478,7 +478,7 @@ osal-rs/
 
 ## License
 
-This project is licensed under the GPL-3.0 License - see the LICENSE file for details.
+This project is licensed under the LGPL-2.1-or-later License - see the LICENSE file for details.
 
 ## Contributing
 

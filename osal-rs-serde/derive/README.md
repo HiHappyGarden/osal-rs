@@ -4,7 +4,7 @@ Procedural macros for automatic implementation of serialization traits in `osal-
 
 [![Crates.io](https://img.shields.io/crates/v/osal-rs-serde-derive.svg)](https://crates.io/crates/osal-rs-serde-derive)
 [![Documentation](https://docs.rs/osal-rs-serde-derive/badge.svg)](https://docs.rs/osal-rs-serde-derive)
-[![License: GPL-3.0](https://img.shields.io/badge/License-GPL%203.0-blue.svg)](LICENSE)
+[![License: LGPL-2.1](https://img.shields.io/badge/License-LGPL%202.1-blue.svg)](LICENSE)
 
 ## Overview
 
@@ -348,7 +348,7 @@ See the parent crate's `examples/` directory for complete working examples:
 
 ## License
 
-GPL-3.0 - See [LICENSE](../LICENSE) for details.
+LGPL-2.1-or-later - See [LICENSE](../LICENSE) for details.
 
 ## Author
 

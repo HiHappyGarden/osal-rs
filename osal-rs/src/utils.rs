@@ -845,6 +845,15 @@ impl<const SIZE: usize> From<&str> for Bytes<SIZE> {
     }
 }
 
+impl<const SIZE: usize> core::fmt::Write for Bytes<SIZE> {
+    /// Appends a string slice to the buffer, truncating if the content exceeds `SIZE`.
+    #[inline]
+    fn write_str(&mut self, s: &str) -> core::fmt::Result {
+        self.append_str(s);
+        Ok(())
+    }
+}
+
 impl<const SIZE: usize> AsSyncStr for Bytes<SIZE> {
     /// Returns a string slice reference.
     ///
@@ -2002,34 +2011,32 @@ impl<const SIZE: usize> Bytes<SIZE> {
         String::from_utf8(self.0.to_vec()).is_ok()
     }
 
-    /// Creates a new `Bytes` instance from a formatted string, behaving like `alloc::format!`.
+    /// Overwrites the buffer with a formatted string, behaving like `alloc::format!`.
     ///
-    /// Accepts a [`core::fmt::Arguments`] value (produced by [`format_args!`]) and
-    /// converts the resulting formatted string into a `Bytes` buffer.  Content that
-    /// exceeds `SIZE` is silently truncated.
+    /// Clears the current content and fills the buffer with the result of formatting
+    /// `args`. Content that exceeds `SIZE` is silently truncated.
     ///
     /// # Parameters
     ///
     /// * `args` - A [`core::fmt::Arguments`] value, typically created with [`format_args!`]
-    ///
-    /// # Returns
-    ///
-    /// A `Bytes` instance containing the formatted string.
     ///
     /// # Examples
     ///
     /// ```ignore
     /// use osal_rs::utils::Bytes;
     ///
-    /// let b = Bytes::<32>::format(format_args!("Hello {}", 42));
+    /// let mut b = Bytes::<32>::new();
+    /// b.format(format_args!("Hello {}", 42));
     /// assert_eq!(b.as_str(), "Hello 42");
     ///
-    /// let b2 = Bytes::<8>::format(format_args!("{:.2}", 3.14159));
+    /// let mut b2 = Bytes::<8>::new();
+    /// b2.format(format_args!("{:.2}", 3.14159));
     /// assert_eq!(b2.as_str(), "3.14");
     /// ```
     #[inline]
-    pub fn format(args: core::fmt::Arguments<'_>) -> Self {
-        Self::from_str(&alloc::format!("{}", args))
+    pub fn format(&mut self, args: core::fmt::Arguments<'_>) {
+        self.clear();
+        let _ = core::fmt::write(self, args);
     }
         
 }

@@ -863,12 +863,9 @@ impl<const SIZE: usize> AsSyncStr for Bytes<SIZE> {
     /// # Returns
     ///
     /// A reference to a string slice with lifetime tied to `self`.
+    #[inline]
     fn as_str(&self) -> &str {
-        unsafe {
-            CStr::from_ptr(self.0.as_ptr() as *const c_char)
-            .to_str()
-            .unwrap_or("Conversion error")
-        }
+        self.as_str()
     }
 }
 
@@ -2009,6 +2006,21 @@ impl<const SIZE: usize> Bytes<SIZE> {
     #[inline]
     pub fn is_string(&self) -> bool {
         String::from_utf8(self.0.to_vec()).is_ok()
+    }
+
+    /// Returns the buffer content as a UTF-8 string slice.
+    ///
+    /// Interprets the byte array as a null-terminated C string and returns
+    /// a `&str`. If the bytes contain invalid UTF-8, returns `"Conversion error"`.
+    ///
+    /// This is an inherent method (no trait import required at the call site).
+    #[inline]
+    pub fn as_str(&self) -> &str {
+        unsafe {
+            CStr::from_ptr(self.0.as_ptr() as *const c_char)
+                .to_str()
+                .unwrap_or("Conversion error")
+        }
     }
 
     /// Overwrites the buffer with a formatted string, behaving like `alloc::format!`.

@@ -168,10 +168,9 @@ pub mod ffi {
 
 use core::ffi::c_char;
 
-use alloc::{ffi::CString, format};
-
 use crate::log::ffi::printf_on_uart;
 use crate::os::{System, SystemFn};
+use crate::utils::Bytes;
 
 
 /// ANSI escape code for red text color
@@ -344,11 +343,9 @@ static mut BUSY: u8 = 0;
 macro_rules! print {
     ($($arg:tt)*) => {{
         unsafe {
-            use alloc::string::ToString;
-            let formatted = alloc::format!($($arg)*);
-            if let Ok(c_str) = alloc::ffi::CString::new(formatted) {
-                $crate::log::ffi::printf_on_uart(b"%s\0".as_ptr() as *const core::ffi::c_char, c_str.as_ptr());
-            }
+            let mut buf = $crate::utils::Bytes::<256>::new();
+            buf.format(format_args!($($arg)*));
+            $crate::log::ffi::printf_on_uart(b"%s\0".as_ptr() as *const core::ffi::c_char, buf.as_cstr().as_ptr());
         }
     }};
 }
@@ -374,18 +371,16 @@ macro_rules! println {
     };
     ($fmt:expr) => {{
         unsafe {
-            let formatted = alloc::format!(concat!($fmt, "\r\n"));
-            if let Ok(c_str) = alloc::ffi::CString::new(formatted) {
-                $crate::log::ffi::printf_on_uart(b"%s\0".as_ptr() as *const core::ffi::c_char, c_str.as_ptr());
-            }
+            let mut buf = $crate::utils::Bytes::<256>::new();
+            buf.format(format_args!(concat!($fmt, "\r\n")));
+            $crate::log::ffi::printf_on_uart(b"%s\0".as_ptr() as *const core::ffi::c_char, buf.as_cstr().as_ptr());
         }
     }};
     ($fmt:expr, $($arg:tt)*) => {{
         unsafe {
-            let formatted = alloc::format!(concat!($fmt, "\r\n"), $($arg)*);
-            if let Ok(c_str) = alloc::ffi::CString::new(formatted) {
-                $crate::log::ffi::printf_on_uart(b"%s\0".as_ptr() as *const core::ffi::c_char, c_str.as_ptr());
-            }
+            let mut buf = $crate::utils::Bytes::<256>::new();
+            buf.format(format_args!(concat!($fmt, "\r\n"), $($arg)*));
+            $crate::log::ffi::printf_on_uart(b"%s\0".as_ptr() as *const core::ffi::c_char, buf.as_cstr().as_ptr());
         }
     }};
 }
@@ -617,10 +612,9 @@ pub fn sys_log(tag: &str, log_type: u8, to_print: &str) {
 
         #[cfg(not(feature = "std"))]
         {
-            let formatted = format!("{color}({millis}ms)[{tag}] {to_print}{color_reset}{RETURN}", millis=now.as_millis());
-            if let Ok(c_str) = CString::new(formatted) {
-                printf_on_uart(b"%s\0".as_ptr() as *const c_char, c_str.as_ptr());
-            }
+            let mut buf = Bytes::<512>::new();
+            buf.format(format_args!("{color}({millis}ms)[{tag}] {to_print}{color_reset}{RETURN}", millis=now.as_millis()));
+            printf_on_uart(b"%s\0".as_ptr() as *const c_char, buf.as_cstr().as_ptr());
         }
 
         #[cfg(feature = "std")]
@@ -658,8 +652,9 @@ pub fn sys_log(tag: &str, log_type: u8, to_print: &str) {
 macro_rules! log_debug {
     ($app_tag:expr, $fmt:expr $(, $($arg:tt)*)?) => {{
         if $crate::log::is_enabled_log($crate::log::log_levels::FLAG_DEBUG) {
-            let msg = alloc::format!($fmt $(, $($arg)*)?);
-            $crate::log::sys_log($app_tag, $crate::log::log_levels::FLAG_DEBUG, &msg);
+            let mut msg = $crate::utils::Bytes::<256>::new();
+            msg.format(format_args!($fmt $(, $($arg)*)?));
+            $crate::log::sys_log($app_tag, $crate::log::log_levels::FLAG_DEBUG, msg.as_str());
         }
     }};
 }
@@ -687,8 +682,9 @@ macro_rules! log_debug {
 macro_rules! log_info {
     ($app_tag:expr, $fmt:expr $(, $($arg:tt)*)?) => {{
         if $crate::log::is_enabled_log($crate::log::log_levels::FLAG_INFO) {
-            let msg = alloc::format!($fmt $(, $($arg)*)?);
-            $crate::log::sys_log($app_tag, $crate::log::log_levels::FLAG_INFO, &msg);
+            let mut msg = $crate::utils::Bytes::<256>::new();
+            msg.format(format_args!($fmt $(, $($arg)*)?));
+            $crate::log::sys_log($app_tag, $crate::log::log_levels::FLAG_INFO, msg.as_str());
         }
     }};
 }
@@ -716,8 +712,9 @@ macro_rules! log_info {
 macro_rules! log_warning {
     ($app_tag:expr, $fmt:expr $(, $($arg:tt)*)?) => {{
         if $crate::log::is_enabled_log($crate::log::log_levels::FLAG_WARNING) {
-            let msg = alloc::format!($fmt $(, $($arg)*)?);
-            $crate::log::sys_log($app_tag, $crate::log::log_levels::FLAG_WARNING, &msg);
+            let mut msg = $crate::utils::Bytes::<256>::new();
+            msg.format(format_args!($fmt $(, $($arg)*)?));
+            $crate::log::sys_log($app_tag, $crate::log::log_levels::FLAG_WARNING, msg.as_str());
         }
     }};
 }
@@ -745,8 +742,9 @@ macro_rules! log_warning {
 macro_rules! log_error {
     ($app_tag:expr, $fmt:expr $(, $($arg:tt)*)?) => {{
         if $crate::log::is_enabled_log($crate::log::log_levels::FLAG_ERROR) {
-            let msg = alloc::format!($fmt $(, $($arg)*)?);
-            $crate::log::sys_log($app_tag, $crate::log::log_levels::FLAG_ERROR, &msg);
+            let mut msg = $crate::utils::Bytes::<256>::new();
+            msg.format(format_args!($fmt $(, $($arg)*)?));
+            $crate::log::sys_log($app_tag, $crate::log::log_levels::FLAG_ERROR, msg.as_str());
         }
     }};
 }
@@ -774,8 +772,9 @@ macro_rules! log_error {
 macro_rules! log_fatal {
     ($app_tag:expr, $fmt:expr $(, $($arg:tt)*)?) => {{
         if $crate::log::is_enabled_log($crate::log::log_levels::FLAG_FATAL) {
-            let msg = alloc::format!($fmt $(, $($arg)*)?);
-            $crate::log::sys_log($app_tag, $crate::log::log_levels::FLAG_FATAL, &msg);
+            let mut msg = $crate::utils::Bytes::<256>::new();
+            msg.format(format_args!($fmt $(, $($arg)*)?));
+            $crate::log::sys_log($app_tag, $crate::log::log_levels::FLAG_FATAL, msg.as_str());
         }
     }};
 }

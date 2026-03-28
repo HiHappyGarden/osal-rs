@@ -172,6 +172,7 @@ use crate::log::ffi::printf_on_uart;
 use crate::os::{System, SystemFn};
 use crate::utils::Bytes;
 
+pub const LOG_BUFFER_SIZE: usize = 256;
 
 /// ANSI escape code for red text color
 const COLOR_RED: &str = "\x1b[31m";
@@ -343,7 +344,7 @@ static mut BUSY: u8 = 0;
 macro_rules! print {
     ($($arg:tt)*) => {{
         unsafe {
-            let mut buf = $crate::utils::Bytes::<256>::new();
+            let mut buf = $crate::utils::Bytes::<{$crate::log::LOG_BUFFER_SIZE}>::new();
             buf.format(format_args!($($arg)*));
             $crate::log::ffi::printf_on_uart(b"%s\0".as_ptr() as *const core::ffi::c_char, buf.as_cstr().as_ptr());
         }
@@ -371,14 +372,14 @@ macro_rules! println {
     };
     ($fmt:expr) => {{
         unsafe {
-            let mut buf = $crate::utils::Bytes::<256>::new();
+            let mut buf = $crate::utils::Bytes::<{$crate::log::LOG_BUFFER_SIZE}>::new();
             buf.format(format_args!(concat!($fmt, "\r\n")));
             $crate::log::ffi::printf_on_uart(b"%s\0".as_ptr() as *const core::ffi::c_char, buf.as_cstr().as_ptr());
         }
     }};
     ($fmt:expr, $($arg:tt)*) => {{
         unsafe {
-            let mut buf = $crate::utils::Bytes::<256>::new();
+            let mut buf = $crate::utils::Bytes::<{$crate::log::LOG_BUFFER_SIZE}>::new();
             buf.format(format_args!(concat!($fmt, "\r\n"), $($arg)*));
             $crate::log::ffi::printf_on_uart(b"%s\0".as_ptr() as *const core::ffi::c_char, buf.as_cstr().as_ptr());
         }
@@ -652,7 +653,7 @@ pub fn sys_log(tag: &str, log_type: u8, to_print: &str) {
 macro_rules! log_debug {
     ($app_tag:expr, $fmt:expr $(, $($arg:tt)*)?) => {{
         if $crate::log::is_enabled_log($crate::log::log_levels::FLAG_DEBUG) {
-            let mut msg = $crate::utils::Bytes::<256>::new();
+            let mut msg = $crate::utils::Bytes::<{$crate::log::LOG_BUFFER_SIZE}>::new();
             msg.format(format_args!($fmt $(, $($arg)*)?));
             $crate::log::sys_log($app_tag, $crate::log::log_levels::FLAG_DEBUG, msg.as_str());
         }
@@ -682,7 +683,7 @@ macro_rules! log_debug {
 macro_rules! log_info {
     ($app_tag:expr, $fmt:expr $(, $($arg:tt)*)?) => {{
         if $crate::log::is_enabled_log($crate::log::log_levels::FLAG_INFO) {
-            let mut msg = $crate::utils::Bytes::<256>::new();
+            let mut msg = $crate::utils::Bytes::<{$crate::log::LOG_BUFFER_SIZE}>::new();
             msg.format(format_args!($fmt $(, $($arg)*)?));
             $crate::log::sys_log($app_tag, $crate::log::log_levels::FLAG_INFO, msg.as_str());
         }
@@ -712,7 +713,7 @@ macro_rules! log_info {
 macro_rules! log_warning {
     ($app_tag:expr, $fmt:expr $(, $($arg:tt)*)?) => {{
         if $crate::log::is_enabled_log($crate::log::log_levels::FLAG_WARNING) {
-            let mut msg = $crate::utils::Bytes::<256>::new();
+            let mut msg = $crate::utils::Bytes::<{$crate::log::LOG_BUFFER_SIZE}>::new();
             msg.format(format_args!($fmt $(, $($arg)*)?));
             $crate::log::sys_log($app_tag, $crate::log::log_levels::FLAG_WARNING, msg.as_str());
         }
@@ -742,7 +743,7 @@ macro_rules! log_warning {
 macro_rules! log_error {
     ($app_tag:expr, $fmt:expr $(, $($arg:tt)*)?) => {{
         if $crate::log::is_enabled_log($crate::log::log_levels::FLAG_ERROR) {
-            let mut msg = $crate::utils::Bytes::<256>::new();
+            let mut msg = $crate::utils::Bytes::<{$crate::log::LOG_BUFFER_SIZE}>::new();
             msg.format(format_args!($fmt $(, $($arg)*)?));
             $crate::log::sys_log($app_tag, $crate::log::log_levels::FLAG_ERROR, msg.as_str());
         }
@@ -772,7 +773,7 @@ macro_rules! log_error {
 macro_rules! log_fatal {
     ($app_tag:expr, $fmt:expr $(, $($arg:tt)*)?) => {{
         if $crate::log::is_enabled_log($crate::log::log_levels::FLAG_FATAL) {
-            let mut msg = $crate::utils::Bytes::<256>::new();
+            let mut msg = $crate::utils::Bytes::<{$crate::log::LOG_BUFFER_SIZE}>::new();
             msg.format(format_args!($fmt $(, $($arg)*)?));
             $crate::log::sys_log($app_tag, $crate::log::log_levels::FLAG_FATAL, msg.as_str());
         }

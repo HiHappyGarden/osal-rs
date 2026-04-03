@@ -57,13 +57,6 @@
 //!
 //! # Macros
 //!
-//! ## String Conversion
-//!
-//! - [`from_c_str!`] - Convert C string pointer to Rust String (lossy conversion)
-//! - [`to_cstring!`] - Convert Rust string to CString with error handling
-//! - [`to_c_str!`] - Convert Rust string to C string pointer (panics on error)
-//! - [`from_str_to_array!`] - Convert string to fixed-size byte array
-//!
 //! ## Parameter Handling
 //!
 //! - [`thread_extract_param!`] - Extract typed parameter from thread entry point
@@ -87,7 +80,6 @@
 //! 1. **Use `Bytes<SIZE>` for embedded strings**: Avoids heap allocation, fixed size
 //! 2. **Prefer no-alloc variants**: Use `_into_slice` functions when possible
 //! 3. **Handle errors explicitly**: Always check `Result` returns
-//! 4. **Use `to_cstring!` over `to_c_str!`**: Better error handling with `?` operator
 
 use core::ffi::{CStr, c_char, c_uchar, c_void};
 use core::str::{from_utf8_mut, FromStr};
@@ -383,140 +375,6 @@ pub const fn register_bit_size() -> CpuRegisterSize {
     }
 }
 
-/// Converts a C string pointer to a Rust String.
-///
-/// This macro safely converts a raw C string pointer (`*const c_char`) into
-/// a Rust `String`. It handles UTF-8 conversion gracefully using lossy conversion.
-///
-/// # Safety
-///
-/// The pointer must be valid and point to a null-terminated C string.
-///
-/// # Examples
-///
-/// ```ignore
-/// use osal_rs::from_c_str;
-/// use core::ffi::c_char;
-/// 
-/// extern "C" {
-///     fn get_system_name() -> *const c_char;
-/// }
-/// 
-/// let name = from_c_str!(get_system_name());
-/// println!("System: {}", name);
-/// ```
-#[macro_export]
-macro_rules! from_c_str {
-    ($str:expr) => {
-        unsafe {
-            let c_str = core::ffi::CStr::from_ptr($str);
-            alloc::string::String::from_utf8_lossy(c_str.to_bytes()).to_string()
-        }
-    };
-}
-
-/// Converts a Rust string to a CString with error handling.
-///
-/// This macro creates a `CString` from a Rust string reference, returning
-/// a `Result` that can be used with the `?` operator. If the conversion fails
-/// (e.g., due to interior null bytes), it returns an appropriate error.
-///
-/// # Returns
-///
-/// * `Ok(CString)` - On successful conversion
-/// * `Err(Error::Unhandled)` - If the string contains interior null bytes
-///
-/// # Examples
-///
-/// ```ignore
-/// use osal_rs::to_cstring;
-/// use osal_rs::utils::Result;
-/// 
-/// fn pass_to_c_api(name: &str) -> Result<()> {
-///     let c_name = to_cstring!(name)?;
-///     // Use c_name.as_ptr() with C FFI
-///     Ok(())
-/// }
-/// ```
-#[macro_export]
-macro_rules! to_cstring {
-    ($s:expr) => {
-        alloc::ffi::CString::new($s.as_str())
-            .map_err(|_| $crate::utils::Error::Unhandled("Failed to convert string to CString"))
-    };
-}
-
-/// Converts a Rust string to a C string pointer.
-///
-/// This macro creates a `CString` from a Rust string and returns its raw pointer.
-/// **Warning**: This macro panics if the conversion fails. Consider using
-/// [`to_cstring!`] for safer error handling.
-///
-/// # Panics
-///
-/// Panics if the string contains interior null bytes.
-///
-/// # Examples
-///
-/// ```ignore
-/// use osal_rs::to_c_str;
-/// 
-/// extern "C" {
-///     fn set_name(name: *const core::ffi::c_char);
-/// }
-/// 
-/// let name = "FreeRTOS Task";
-/// unsafe {
-///     set_name(to_c_str!(name));
-/// }
-/// ```
-#[macro_export]
-macro_rules! to_c_str {
-    ($s:expr) => {
-        alloc::ffi::CString::new($s.as_ref() as &str).unwrap().as_ptr()
-    };
-}
-
-/// Converts a string to a fixed-size byte array.
-///
-/// This macro creates a byte array of the specified size and fills it with
-/// the bytes from the input string. If the string is shorter than the buffer,
-/// the remaining bytes are filled with spaces. If the string is longer, it
-/// is truncated to fit.
-///
-/// # Parameters
-///
-/// * `$str` - The source string to convert
-/// * `$buff_name` - The identifier name for the created buffer variable
-/// * `$buff_size` - The size of the byte array to create
-///
-/// # Examples
-///
-/// ```ignore
-/// use osal_rs::from_str_to_array;
-/// 
-/// let task_name = "MainTask";
-/// from_str_to_array!(task_name, name_buffer, 16);
-/// // name_buffer is now [u8; 16] containing "MainTask        "
-/// 
-/// // Use with C FFI
-/// extern "C" {
-///     fn create_task(name: *const u8, len: usize);
-/// }
-/// 
-/// unsafe {
-///     create_task(name_buffer.as_ptr(), name_buffer.len());
-/// }
-/// ```
-#[macro_export]
-macro_rules! from_str_to_array {
-    ($str:expr, $buff_name:ident, $buff_size:expr) => {
-        let mut $buff_name = [b' '; $buff_size];
-        let _bytes = $str.as_bytes();
-        let _len = core::cmp::min(_bytes.len(), $buff_size);
-        $buff_name[.._len].copy_from_slice(&_bytes[.._len]);
-    };
-}
 
 /// Extracts a typed parameter from an optional boxed Any reference.
 ///

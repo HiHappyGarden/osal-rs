@@ -32,7 +32,6 @@
 //! - **String utilities**: Fixed-size [`Bytes`] type for embedded string handling
 //! - **Conversion macros**: Safe C string conversion and parameter extraction
 //! - **FFI types**: Type aliases for C interoperability
-//! - **Thread safety**: [`SyncUnsafeCell`] for static mutable state in Rust 2024+
 //!
 //! # Main Types
 //!
@@ -55,10 +54,6 @@
 //! ## FFI Types
 //!
 //! - [`Ptr`], [`ConstPtr`], [`DoublePtr`] - Type aliases for C pointers
-//!
-//! ## Thread Safety
-//!
-//! - [`SyncUnsafeCell<T>`] - Wrapper for static mutable variables (replaces `static mut`)
 //!
 //! # Macros
 //!
@@ -93,9 +88,7 @@
 //! 2. **Prefer no-alloc variants**: Use `_into_slice` functions when possible
 //! 3. **Handle errors explicitly**: Always check `Result` returns
 //! 4. **Use `to_cstring!` over `to_c_str!`**: Better error handling with `?` operator
-//! 5. **Synchronize `SyncUnsafeCell` access**: Use mutexes or critical sections in multi-threaded environments
 
-use core::cell::UnsafeCell;
 use core::ffi::{CStr, c_char, c_uchar, c_void};
 use core::str::{from_utf8_mut, FromStr};
 use core::fmt::{Debug, Display}; 
@@ -2240,123 +2233,4 @@ pub fn hex_to_bytes_into_slice(hex: &str, output: &mut [u8]) -> Result<usize> {
     }
 
     Ok(hex.len() / 2)
-}
-
-/// Thread-safe wrapper for `UnsafeCell` usable in `static` contexts.
-///
-/// `SyncUnsafeCell<T>` is a thin wrapper around `UnsafeCell<T>` that manually
-/// implements the `Sync` and `Send` traits, allowing its use in `static` variables.
-/// This is necessary in Rust 2024+ where `static mut` is no longer allowed.
-///
-/// # Safety
-///
-/// The manual implementation of `Sync` and `Send` is **unsafe** because the compiler
-/// cannot verify that concurrent access is safe. It is the programmer's responsibility
-/// to ensure that:
-///
-/// 1. In **single-threaded** environments (e.g., embedded bare-metal), there are no
-///    synchronization issues since only one thread of execution exists.
-///
-/// 2. In **multi-threaded** environments, access to `SyncUnsafeCell` must be
-///    externally protected via mutexes, critical sections, or other synchronization
-///    primitives.
-///
-/// 3. No **data race** conditions occur during data access.
-///
-/// # Typical Usage
-///
-/// This structure is designed to replace `static mut` in embedded scenarios
-/// where global mutability is necessary (e.g., hardware registers, shared buffers).
-///
-/// # Examples
-///
-/// ```ignore
-/// use osal_rs::utils::SyncUnsafeCell;
-///
-/// // Global mutable variable in Rust 2024+
-/// static COUNTER: SyncUnsafeCell<u32> = SyncUnsafeCell::new(0);
-///
-/// fn increment_counter() {
-///     unsafe {
-///         let counter = &mut *COUNTER.get();
-///         *counter += 1;
-///     }
-/// }
-/// ```
-///
-/// # Alternatives
-///
-/// For non-embedded code or when real synchronization is needed:
-/// - Use `Mutex<T>` or `RwLock<T>` for thread-safe protection
-/// - Use `AtomicUsize`, `AtomicBool`, etc. for simple atomic types
-pub struct SyncUnsafeCell<T>(UnsafeCell<T>);
-
-/// Manual implementation of `Sync` for `SyncUnsafeCell<T>`.
-///
-/// # Safety
-///
-/// This is **unsafe** because it asserts that `SyncUnsafeCell<T>` can be shared
-/// between threads without causing data races. The caller must ensure synchronization.
-unsafe impl<T> Sync for SyncUnsafeCell<T> {}
-
-/// Manual implementation of `Send` for `SyncUnsafeCell<T>`.
-///
-/// # Safety
-///
-/// This is **unsafe** because it asserts that `SyncUnsafeCell<T>` can be transferred
-/// between threads. The inner type `T` may not be `Send`, so the caller must handle
-/// memory safety.
-unsafe impl<T> Send for SyncUnsafeCell<T> {}
-
-impl<T> SyncUnsafeCell<T> {
-    /// Creates a new instance of `SyncUnsafeCell<T>`.
-    ///
-    /// This is a `const` function, allowing initialization in static and
-    /// constant contexts.
-    ///
-    /// # Parameters
-    ///
-    /// * `value` - The initial value to wrap
-    ///
-    /// # Examples
-    ///
-    /// ```ignore
-    /// use osal_rs::utils::SyncUnsafeCell;
-    ///
-    /// static CONFIG: SyncUnsafeCell<u32> = SyncUnsafeCell::new(42);
-    /// ```
-    #[inline]
-    pub const fn new(value: T) -> Self {
-        Self(UnsafeCell::new(value))
-    }
-    
-    /// Gets a raw mutable pointer to the contained value.
-    ///
-    /// # Safety
-    ///
-    /// This function is **unsafe** because:
-    /// - It returns a raw pointer that bypasses the borrow checker
-    /// - The caller must ensure there are no mutable aliases
-    /// - Dereferencing the pointer without synchronization can cause data races
-    ///
-    /// # Returns
-    ///
-    /// A raw mutable pointer `*mut T` to the inner value.
-    ///
-    /// # Examples
-    ///
-    /// ```ignore
-    /// use osal_rs::utils::SyncUnsafeCell;
-    ///
-    /// static VALUE: SyncUnsafeCell<i32> = SyncUnsafeCell::new(0);
-    ///
-    /// unsafe {
-    ///     let ptr = VALUE.get();
-    ///     *ptr = 42;
-    /// }
-    /// ```
-    #[inline]
-    pub unsafe fn get(&self) -> *mut T {
-        self.0.get()
-    }
 }

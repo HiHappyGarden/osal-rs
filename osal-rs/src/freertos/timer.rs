@@ -25,6 +25,7 @@
 //! in the timer daemon task context.
 
 use core::any::Any;
+use core::ffi::c_char;
 use core::fmt::{Debug, Display};
 use core::ops::Deref;
 use core::ptr::null_mut;
@@ -34,7 +35,6 @@ use alloc::string::{String, ToString};
 use alloc::sync::Arc;
 
 use crate::freertos::ffi::pdPASS;
-use crate::to_c_str;
 use crate::traits::{ToTick, TimerParam, TimerFn, TimerFnPtr};
 use crate::utils::{OsalRsBool, Result, Error};
 use super::ffi::{TimerHandle, pvTimerGetTimerID, xTimerCreate, osal_rs_timer_start, osal_rs_timer_change_period, osal_rs_timer_delete, osal_rs_timer_reset, osal_rs_timer_stop};
@@ -449,7 +449,7 @@ impl Timer {
             });
 
             let handle = unsafe {
-                xTimerCreate( to_c_str!(name), 
+                xTimerCreate( name.as_ptr() as *const c_char, 
                     timer_period_in_ticks, 
                     if auto_reload { 1 } else { 0 }, 
                     Box::into_raw(boxed_timer.clone()) as *mut _, 

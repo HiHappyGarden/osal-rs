@@ -34,7 +34,7 @@ Add this to your `Cargo.toml`:
 
 ```toml
 [build-dependencies]
-osal-rs-build = "0.3"
+osal-rs-build = "0.4"
 ```
 
 ## Usage

@@ -457,10 +457,10 @@ To use OSAL-RS in your project with specific features:
 
 ```toml
 [dependencies]
-osal-rs = { version = "0.3", features = ["freertos"] }
+osal-rs = { version = "0.4", features = ["freertos"] }
 
 # Or with serialization support
-osal-rs = { version = "0.3", features = ["freertos", "serde"] }
+osal-rs = { version = "0.4", features = ["freertos", "serde"] }
 ```
 
 ## Project Structure

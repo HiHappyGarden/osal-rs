@@ -646,7 +646,7 @@ impl<const SIZE: usize> Display for Bytes<SIZE> {
         let str = unsafe {
             CStr::from_ptr(self.0.as_ptr() as *const c_char)
             .to_str()
-            .unwrap_or("Conversion error")
+            .unwrap_or("Bytes::fmt() Conversion error - invalid UTF-8")
         };
         
         write!(f, "{}", str.to_string())
@@ -1870,7 +1870,7 @@ impl<const SIZE: usize> Bytes<SIZE> {
         unsafe {
             CStr::from_ptr(self.0.as_ptr() as *const c_char)
                 .to_str()
-                .unwrap_or("Conversion error")
+                .unwrap_or("Bytes::as_str() Conversion error - invalid UTF-8")
         }
     }
 

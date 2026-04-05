@@ -64,7 +64,7 @@ Add to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-osal-rs-serde = { version = "0.3", features = ["derive"] }
+osal-rs-serde = { version = "0.4", features = ["derive"] }
 ```
 
 Available features:
@@ -76,7 +76,7 @@ Available features:
 For no-std environments without allocation:
 ```toml
 [dependencies]
-osal-rs-serde = { version = "0.3", default-features = false, features = ["derive"] }
+osal-rs-serde = { version = "0.4", default-features = false, features = ["derive"] }
 ```
 
 ## Project Structure

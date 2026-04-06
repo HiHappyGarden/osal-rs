@@ -1,3 +1,5 @@
+#![cfg_attr(target_os = "none", no_std)]
+
 /***************************************************************************
  *
  * osal-rs
@@ -18,16 +20,49 @@
  *
  ***************************************************************************/
 
+#[cfg(not(target_os = "none"))]
 use std::env;
+#[cfg(not(target_os = "none"))]
 use std::fs;
+#[cfg(not(target_os = "none"))]
 use std::path::PathBuf;
+#[cfg(not(target_os = "none"))]
 use std::process::Command;
 
+#[cfg(target_os = "none")]
+pub struct FreeRtosTypeGenerator;
+
+#[cfg(target_os = "none")]
+impl FreeRtosTypeGenerator {
+    pub fn new() -> Self {
+        Self
+    }
+
+    pub fn with_config_path<P>(_config_path: P) -> Self {
+        Self
+    }
+
+    pub fn set_config_path<P>(&mut self, _config_path: P) {}
+
+    pub fn generate_types(&self) {}
+
+    pub fn generate_all(&self) {}
+}
+
+#[cfg(target_os = "none")]
+impl Default for FreeRtosTypeGenerator {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[cfg(not(target_os = "none"))]
 pub struct FreeRtosTypeGenerator {
     out_dir: PathBuf,
     config_path: Option<PathBuf>,
 }
 
+#[cfg(not(target_os = "none"))]
 impl FreeRtosTypeGenerator {
     pub fn new() -> Self {
         let out_dir = PathBuf::from(env::var("OUT_DIR").expect("OUT_DIR not set"));
@@ -359,6 +394,7 @@ pub type StackType = {};
 //     }
 }
 
+#[cfg(not(target_os = "none"))]
 impl Default for FreeRtosTypeGenerator {
     fn default() -> Self {
         Self::new()

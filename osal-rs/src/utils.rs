@@ -1414,6 +1414,144 @@ impl<const SIZE: usize> Bytes<SIZE> {
         }
     }
 
+
+    /// Prepends a string slice to the existing content in the `Bytes` buffer.
+    ///
+    /// This method inserts the provided string at the beginning of the buffer,
+    /// shifting the existing content to the right. If the combined length exceeds
+    /// `SIZE`, the existing content is truncated to fit within the buffer.
+    ///
+    /// # Parameters
+    ///
+    /// * `str` - The string slice to prepend
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use osal_rs::utils::Bytes;
+    ///
+    /// let mut bytes = Bytes::<16>::new_by_str("World");
+    /// bytes.prepend_str("Hello ");
+    /// assert_eq!(bytes.as_str(), "Hello World");
+    ///
+    /// // Truncation when exceeding buffer size
+    /// let mut small = Bytes::<8>::new_by_str("World");
+    /// small.prepend_str("Hello ");
+    /// assert_eq!(small.as_str(), "Hello Wo");
+    /// ```
+    pub fn prepend_str(&mut self, str: &str) {
+        let current_len = self.0.iter().position(|&b| b == 0).unwrap_or(SIZE);
+        let prefix = str.as_bytes();
+        let prefix_len = prefix.len().min(SIZE);
+        let keep_len = (SIZE - prefix_len).min(current_len);
+        if keep_len > 0 {
+            self.0.copy_within(0..keep_len, prefix_len);
+        }
+        self.0[..prefix_len].copy_from_slice(&prefix[..prefix_len]);
+        let new_len = prefix_len + keep_len;
+        if new_len < SIZE {
+            self.0[new_len] = 0;
+        }
+    }
+
+    /// Prepends content from any type implementing `AsSyncStr` to the buffer.
+    ///
+    /// This method accepts any type that implements the `AsSyncStr` trait, converts
+    /// it to a string slice, and prepends it to the existing content. If the combined
+    /// length exceeds `SIZE`, the existing content is truncated to fit.
+    ///
+    /// # Parameters
+    ///
+    /// * `c_str` - A reference to any type implementing `AsSyncStr`
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// use osal_rs::utils::Bytes;
+    ///
+    /// let mut bytes = Bytes::<16>::new_by_str("World");
+    /// let prefix = Bytes::<8>::new_by_str("Hello ");
+    /// bytes.prepend_as_sync_str(&prefix);
+    /// assert_eq!(bytes.as_str(), "Hello World");
+    /// ```
+    pub fn prepend_as_sync_str(&mut self, c_str: & impl AsSyncStr) {
+        self.prepend_str(c_str.as_str());
+    }
+
+    /// Prepends raw bytes to the existing content in the `Bytes` buffer.
+    ///
+    /// This method inserts the provided byte slice at the beginning of the buffer,
+    /// shifting the existing content to the right. If the combined length exceeds
+    /// `SIZE`, the existing content is truncated to fit within the buffer.
+    ///
+    /// # Parameters
+    ///
+    /// * `bytes` - The byte slice to prepend
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use osal_rs::utils::Bytes;
+    ///
+    /// let mut bytes = Bytes::<16>::new_by_str("World");
+    /// bytes.prepend_bytes(b"Hello ");
+    /// assert_eq!(bytes.as_str(), "Hello World");
+    ///
+    /// // Prepending arbitrary bytes
+    /// let mut data = Bytes::<16>::new_by_str("BC");
+    /// data.prepend_bytes(&[0x41]); // 'A'
+    /// assert_eq!(data.as_str(), "ABC");
+    /// ```
+    pub fn prepend_bytes(&mut self, bytes: &[u8]) {
+        let current_len = self.0.iter().position(|&b| b == 0).unwrap_or(SIZE);
+        let prefix_len = bytes.len().min(SIZE);
+        let keep_len = (SIZE - prefix_len).min(current_len);
+        if keep_len > 0 {
+            self.0.copy_within(0..keep_len, prefix_len);
+        }
+        self.0[..prefix_len].copy_from_slice(&bytes[..prefix_len]);
+        let new_len = prefix_len + keep_len;
+        if new_len < SIZE {
+            self.0[new_len] = 0;
+        }
+    }
+
+    /// Prepends the content of another `Bytes` instance to this buffer.
+    ///
+    /// This method allows prepending content from a `Bytes` instance of a different
+    /// size (specified by the generic parameter `OTHER_SIZE`). The method inserts the
+    /// content of the other `Bytes` at the beginning, shifting existing content to the
+    /// right. If the combined length exceeds `SIZE`, the existing content is truncated.
+    ///
+    /// # Type Parameters
+    ///
+    /// * `OTHER_SIZE` - The size of the source `Bytes` buffer (can be different from `SIZE`)
+    ///
+    /// # Parameters
+    ///
+    /// * `other` - A reference to the `Bytes` instance to prepend
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use osal_rs::utils::Bytes;
+    ///
+    /// let mut bytes = Bytes::<16>::new_by_str("World");
+    /// let prefix = Bytes::<8>::new_by_str("Hello ");
+    /// bytes.prepend(&prefix);
+    /// assert_eq!(bytes.as_str(), "Hello World");
+    ///
+    /// // Prepending from a larger buffer with truncation
+    /// let mut small = Bytes::<8>::new_by_str("end");
+    /// let large = Bytes::<32>::new_by_str("begin_");
+    /// small.prepend(&large);
+    /// assert_eq!(small.as_str(), "begin_en");
+    /// ```
+    pub fn prepend<const OTHER_SIZE: usize>(&mut self, other: &Bytes<OTHER_SIZE>) {
+        let other_len = other.0.iter().position(|&b| b == 0).unwrap_or(OTHER_SIZE);
+        self.prepend_bytes(&other.0[..other_len]);
+    }
+
     /// Clears all content from the buffer, filling it with zeros.
     ///
     /// This method resets the entire internal byte array to zeros, effectively

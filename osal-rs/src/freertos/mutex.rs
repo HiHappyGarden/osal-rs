@@ -49,6 +49,7 @@ use crate::utils::{Result, Error, OsalRsBool, MAX_DELAY};
 ///
 /// Users should typically use [`Mutex<T>`] instead, which provides type-safe
 /// data protection. This type is exposed for advanced use cases.
+#[derive(Clone)]
 pub struct RawMutex(MutexHandle);
 
 unsafe impl Send for RawMutex {}

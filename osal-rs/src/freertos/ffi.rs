@@ -80,12 +80,16 @@ pub type TimerCallback = unsafe extern "C" fn(timer: TimerHandle);
 pub type TaskState = c_uint;
 
 // Task states
-pub const RUNNING: TaskState = 0;
-pub const READY: TaskState = 1;
-pub const BLOCKED: TaskState = 2;
-pub const SUSPENDED: TaskState = 3;
-pub const DELETED: TaskState = 4;
-pub const INVALID: TaskState = 5;
+pub mod task {
+    use super::TaskState;
+
+    pub const RUNNING: TaskState = 0;
+    pub const READY: TaskState = 1;
+    pub const BLOCKED: TaskState = 2;
+    pub const SUSPENDED: TaskState = 3;
+    pub const DELETED: TaskState = 4;
+    pub const INVALID: TaskState = 5;
+}
 
 // Boolean/status constants
 pub const pdFALSE: BaseType = 0;
@@ -100,31 +104,32 @@ pub const pdFAIL: BaseType = pdFALSE;
 pub const tskDEFAULT_INDEX_TO_NOTIFY: UBaseType = 0;
 
 // Semaphore constants
-pub const semBINARY_SEMAPHORE_QUEUE_LENGTH: u8 = 1;
+// Queue constants
+#[allow(dead_code)]
+pub mod sem {
+    use super::TickType;
 
-pub const semSEMAPHORE_QUEUE_ITEM_LENGTH: u8 = 0;
-
-pub const semGIVE_BLOCK_TIME: TickType = 0;
+    pub const BINARY_SEMAPHORE_QUEUE_LENGTH: u8 = 1;
+    pub const SEMAPHORE_QUEUE_ITEM_LENGTH: u8 = 0;
+    pub const GIVE_BLOCK_TIME: TickType = 0;
+}
 
 // Queue constants
-pub const queueSEND_TO_BACK: BaseType = 0;
+#[allow(dead_code)]
+pub mod queue {
+    use crate::os::types::BaseType;
 
-pub const queueSEND_TO_FRONT: BaseType = 1;
+    pub const SEND_TO_BACK: BaseType = 0;
+    pub const SEND_TO_FRONT: BaseType = 1;
+    pub const OVERWRITE: BaseType = 2;
+    pub const QUEUE_TYPE_BASE: u8 = 0;
+    pub const QUEUE_TYPE_MUTEX: u8 = 1;
+    pub const QUEUE_TYPE_COUNTING_SEMAPHORE: u8 = 2;
+    pub const QUEUE_TYPE_BINARY_SEMAPHORE: u8 = 3;
+    pub const QUEUE_TYPE_RECURSIVE_MUTEX: u8 = 4;
+}
 
-pub const queueOVERWRITE: BaseType = 2;
 
-// Queue type constants
-pub const queueQUEUE_TYPE_BASE: u8 = 0;
-
-pub const queueQUEUE_TYPE_MUTEX: u8 = 1;
-
-pub const queueQUEUE_TYPE_COUNTING_SEMAPHORE: u8 = 2;
-
-pub const queueQUEUE_TYPE_BINARY_SEMAPHORE: u8 = 3;
-
-pub const queueQUEUE_TYPE_RECURSIVE_MUTEX: u8 = 4;
-
-pub const queueQUEUE_TYPE_SET: u8 = 5;
 
 
 
@@ -160,7 +165,7 @@ impl Default for TaskStatus {
             xHandle: ptr::null(),
             pcTaskName: ptr::null(),
             xTaskNumber: 0,
-            eCurrentState: INVALID,
+            eCurrentState: task::INVALID,
             uxCurrentPriority: 0,
             uxBasePriority: 0,
             ulRunTimeCounter: 0,
@@ -249,7 +254,7 @@ unsafe extern "C" {
         eState: TaskState,
     );
 
-    pub fn ulTaskGenericNotifyTake(uxIndexToWaitOn: UBaseType, xClearCountOnExit: BaseType, xTicksToWait: TickType) -> u32;
+    // pub fn ulTaskGenericNotifyTake(uxIndexToWaitOn: UBaseType, xClearCountOnExit: BaseType, xTicksToWait: TickType) -> u32;
 
 
     pub fn xTaskGenericNotifyWait(
@@ -377,7 +382,7 @@ unsafe extern "C" {
 
     pub fn xPortGetFreeHeapSize() -> usize;
 
-    pub fn xTimerCreateTimerTask() -> BaseType;
+    // pub fn xTimerCreateTimerTask() -> BaseType;
 
     pub fn xTimerCreate(
         pcTimerName: *const c_char,
@@ -403,7 +408,7 @@ unsafe extern "C" {
 
     pub fn pvTimerGetTimerID(xTimer: TimerHandle) -> *mut c_void;
 
-    pub fn printf(fmt: *const u8, ...) -> i32; 
+    // pub fn printf(fmt: *const u8, ...) -> i32; 
 }
 
 
@@ -499,8 +504,8 @@ macro_rules! xSemaphoreGive {
             $crate::freertos::ffi::xQueueGenericSend(
                 $xSemaphore,
                 core::ptr::null(),
-                $crate::freertos::ffi::semGIVE_BLOCK_TIME,
-                $crate::freertos::ffi::queueSEND_TO_BACK
+                $crate::freertos::ffi::sem::GIVE_BLOCK_TIME,
+                $crate::freertos::ffi::queue::SEND_TO_BACK
             )
         }
     };
@@ -532,7 +537,7 @@ macro_rules! xQueueSendToBackFromISR {
                 $xQueue,
                 $pvItemToQueue,
                 $pxHigherPriorityTaskWoken,
-                $crate::freertos::ffi::queueSEND_TO_BACK
+                $crate::freertos::ffi::queue::SEND_TO_BACK
             )
         }
     };
@@ -545,7 +550,7 @@ macro_rules! xQueueSendToBack {
                 $xQueue,
                 $pvItemToQueue,
                 $xTicksToWait,
-                $crate::freertos::ffi::queueSEND_TO_BACK
+                $crate::freertos::ffi::queue::SEND_TO_BACK
             )
         }
     };
@@ -555,7 +560,7 @@ macro_rules! xSemaphoreCreateRecursiveMutex {
     () => {
         unsafe {
             $crate::freertos::ffi::xQueueCreateMutex(
-                $crate::freertos::ffi::queueQUEUE_TYPE_RECURSIVE_MUTEX
+                $crate::freertos::ffi::queue::QUEUE_TYPE_RECURSIVE_MUTEX
             )
         }
     };

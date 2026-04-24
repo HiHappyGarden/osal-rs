@@ -33,8 +33,9 @@ use core::time::Duration;
 
 use alloc::vec::Vec;
 
+use super::ffi::task::{BLOCKED, DELETED, READY, RUNNING, SUSPENDED};
 use super::ffi::{
-    BLOCKED, DELETED, READY, RUNNING, SUSPENDED, TaskStatus, eTaskGetState, osal_rs_critical_section_enter, osal_rs_critical_section_exit, osal_rs_port_end_switching_isr, osal_rs_port_yield_from_isr, uxTaskGetNumberOfTasks, uxTaskGetSystemState, vTaskDelay, vTaskEndScheduler, vTaskStartScheduler, vTaskSuspendAll, xPortGetFreeHeapSize, xTaskDelayUntil, xTaskGetCurrentTaskHandle, xTaskGetTickCount, xTaskResumeAll, osal_rs_task_enter_critical, osal_rs_task_enter_critical_from_isr, osal_rs_task_exit_critical, osal_rs_task_exit_critical_from_isr
+    TaskStatus, eTaskGetState, osal_rs_critical_section_enter, osal_rs_critical_section_exit, osal_rs_port_end_switching_isr, osal_rs_port_yield_from_isr, uxTaskGetNumberOfTasks, uxTaskGetSystemState, vTaskDelay, vTaskEndScheduler, vTaskStartScheduler, vTaskSuspendAll, xPortGetFreeHeapSize, xTaskDelayUntil, xTaskGetCurrentTaskHandle, xTaskGetTickCount, xTaskResumeAll, osal_rs_task_enter_critical, osal_rs_task_enter_critical_from_isr, osal_rs_task_exit_critical, osal_rs_task_exit_critical_from_isr
 };
 use super::thread::{ThreadState, ThreadMetadata};
 use super::types::{BaseType, TickType, UBaseType};

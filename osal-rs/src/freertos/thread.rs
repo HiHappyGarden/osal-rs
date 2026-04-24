@@ -31,7 +31,8 @@ use core::ptr::null_mut;
 use alloc::boxed::Box;
 use alloc::sync::Arc;
 
-use super::ffi::{INVALID, TaskStatus, ThreadHandle, pdPASS, pdTRUE, vTaskDelete, vTaskGetInfo, vTaskResume, vTaskSuspend, xTaskCreate, xTaskGetCurrentTaskHandle};
+use super::ffi::task::INVALID;
+use super::ffi::{ TaskStatus, ThreadHandle, pdPASS, pdTRUE, vTaskDelete, vTaskGetInfo, vTaskResume, vTaskSuspend, xTaskCreate, xTaskGetCurrentTaskHandle};
 use super::types::{StackType, UBaseType, BaseType, TickType};
 use super::thread::ThreadState::*;
 use crate::os::ThreadSimpleFnPtr;

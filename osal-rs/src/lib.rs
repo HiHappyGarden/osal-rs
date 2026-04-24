@@ -220,10 +220,6 @@
 
 #![cfg_attr(not(feature = "std"), no_std)]
 
-// Suppress warnings from FreeRTOS FFI bindings being included in multiple modules
-#![allow(clashing_extern_declarations)]
-#![allow(dead_code)]
-
 extern crate alloc;
 
 /// FreeRTOS implementation of OSAL traits.

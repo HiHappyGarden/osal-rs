@@ -181,6 +181,7 @@ const COLOR_GREEN: &str = "\x1b[32m";
 /// ANSI escape code for yellow text color
 const COLOR_YELLOW: &str = "\x1b[33m";
 /// ANSI escape code for blue text color
+#[allow(dead_code)]
 const COLOR_BLUE: &str = "\x1b[34m";
 /// ANSI escape code for magenta text color
 const COLOR_MAGENTA: &str = "\x1b[35m";

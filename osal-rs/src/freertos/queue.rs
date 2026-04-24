@@ -557,6 +557,7 @@ where
     /// let mut msg = MyMessage::default();
     /// queue.fetch_with_to_tick(&mut msg, Duration::from_millis(100))?;
     /// ```
+    #[allow(dead_code)]
     #[inline]
     fn fetch_with_to_tick(&self, buffer: &mut T, time: impl ToTick) -> Result<()> {
         self.fetch(buffer, time.to_ticks())
@@ -587,6 +588,7 @@ where
     /// queue.post_with_to_tick(&msg, Duration::from_millis(100))?;
     /// ```
     #[inline]
+    #[allow(dead_code)]
     fn post_with_to_tick(&self, item: &T, time: impl ToTick) -> Result<()> {
         self.post(item, time.to_ticks())
     }

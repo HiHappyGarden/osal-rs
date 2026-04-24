@@ -377,6 +377,8 @@ impl<T: ?Sized>  Mutex<T> {
     /// Internal helper to access the protected data mutably.
     /// 
     /// This is a private method used internally by the mutex implementation.
+    #[allow(dead_code)]
+    #[inline]
     fn get_mut(&mut self) -> &mut T {
         unsafe { &mut *self.data.get() }
     }

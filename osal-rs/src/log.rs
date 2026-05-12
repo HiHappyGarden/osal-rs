@@ -369,7 +369,7 @@ macro_rules! print {
 #[macro_export]
 macro_rules! println {
     () => {
-        $crate::print!("\r\n")
+        $crate::log::ffi::printf_on_uart!(b"\r\n")
     };
     ($fmt:expr) => {{
         unsafe {

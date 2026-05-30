@@ -328,10 +328,6 @@ pub mod os {
     #[global_allocator]
     pub static ALLOCATOR: Allocator = Allocator;
 
-    /// Duration type and time conversion utilities.
-    #[allow(unused_imports)]
-    pub use crate::osal::duration::*;
-    
     /// Event group synchronization primitives.
     pub use crate::osal::event_group::*;
     

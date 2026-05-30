@@ -63,6 +63,8 @@
 // - StackType: Stack allocation type
 include!(concat!(env!("OUT_DIR"), "/types_generated.rs"));    
 
+use core::ffi::c_void;
+
 /// FreeRTOS opaque handle types for OS primitives.
 ///
 /// These handles are opaque pointers used to reference FreeRTOS objects.
@@ -92,7 +94,12 @@ include!(concat!(env!("OUT_DIR"), "/types_generated.rs"));
 /// let thread = Thread::new("worker", 2048, 5).unwrap();
 /// // The handle is managed internally by the Thread wrapper
 /// ```
-pub use super::ffi::{ThreadHandle, QueueHandle, SemaphoreHandle, EventGroupHandle, TimerHandle, MutexHandle};
+pub type ThreadHandle = *const c_void;
+pub type QueueHandle = *const c_void;
+pub type SemaphoreHandle = *const c_void;
+pub type EventGroupHandle = *const c_void;
+pub type TimerHandle = *const c_void;
+pub type MutexHandle = *const c_void;
 
 /// Type alias for event group bits.
 ///

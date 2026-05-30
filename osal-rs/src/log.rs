@@ -166,10 +166,13 @@ pub mod ffi {
     }
 }
 
+#[cfg(not(feature = "std"))]
 use core::ffi::c_char;
 
+#[cfg(not(feature = "std"))]
 use crate::log::ffi::printf_on_uart;
 use crate::os::{System, SystemFn};
+#[cfg(not(feature = "std"))]
 use crate::utils::Bytes;
 
 pub const LOG_BUFFER_SIZE: usize = 256;
@@ -621,10 +624,7 @@ pub fn sys_log(tag: &str, log_type: u8, to_print: &str) {
 
         #[cfg(feature = "std")]
         {
-            print!("{}[{}] ", color, tag);
-            core::fmt::write(&mut core::fmt::Formatter::new(), args).unwrap();
-            print!("{}", COLOR_RESET);
-            print!("\r\n");
+            std::println!("{color}({}ms)[{tag}] {to_print}{color_reset}", now.as_millis());
         }
 
         BUSY = 0;

@@ -222,6 +222,12 @@
 
 extern crate alloc;
 
+#[cfg(all(feature = "posix", not(feature = "std")))]
+compile_error!("The `posix` backend requires the `std` feature.");
+
+#[cfg(not(any(feature = "freertos", feature = "std")))]
+compile_error!("Enable either the `freertos` backend or the `std` host backend.");
+
 /// FreeRTOS implementation of OSAL traits.
 ///
 /// This module contains the concrete implementation of all OSAL abstractions
@@ -237,7 +243,7 @@ mod freertos;
 /// Currently under development.
 ///
 /// Enabled with the `posix` feature flag.
-#[cfg(feature = "posix")]
+#[cfg(all(feature = "std", not(feature = "freertos")))]
 mod posix;
 
 pub mod log;
@@ -255,7 +261,7 @@ pub mod utils;
 use crate::freertos as osal;
 
 /// Select POSIX as the active OSAL backend.
-#[cfg(feature = "posix")]
+#[cfg(all(feature = "std", not(feature = "freertos")))]
 use crate::posix as osal;
 
 /// Main OSAL module re-exporting all OS abstractions and traits.
@@ -289,7 +295,7 @@ use crate::posix as osal;
 /// ```
 pub mod os {
 
-    #[cfg(not(feature = "disable_panic"))]
+    #[cfg(all(not(feature = "disable_panic"), feature = "freertos"))]
     use crate::osal::allocator::Allocator;
 
     /// Global allocator using the underlying RTOS heap.
@@ -324,20 +330,24 @@ pub mod os {
     /// let mut v = Vec::new();
     /// v.push(42);
     /// ```
-    #[cfg(not(feature = "disable_panic"))]
+    #[cfg(all(not(feature = "disable_panic"), feature = "freertos"))]
     #[global_allocator]
     pub static ALLOCATOR: Allocator = Allocator;
 
     /// Event group synchronization primitives.
+    #[allow(unused_imports)]
     pub use crate::osal::event_group::*;
     
     /// Mutex types and guards for mutual exclusion.
+    #[allow(unused_imports)]
     pub use crate::osal::mutex::*;
     
     /// Queue types for inter-task communication.
+    #[allow(unused_imports)]
     pub use crate::osal::queue::*;
     
     /// Semaphore types for signaling and resource management.
+    #[allow(unused_imports)]
     pub use crate::osal::semaphore::*;
     
     /// System-level functions (scheduler, timing, critical sections).
@@ -347,6 +357,7 @@ pub mod os {
     pub use crate::osal::thread::*;
     
     /// Software timer types for periodic and one-shot callbacks.
+    #[allow(unused_imports)]
     pub use crate::osal::timer::*;
     
     /// All OSAL trait definitions for advanced usage.

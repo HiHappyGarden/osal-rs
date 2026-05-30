@@ -63,70 +63,70 @@ use core::ptr;
 use super::types::{BaseType, StackType, UBaseType, TickType, EventBits};
 
 /// Opaque handle to a FreeRTOS task/thread
-pub type ThreadHandle = *const c_void;
+pub(super) type ThreadHandle = *const c_void;
 /// Opaque handle to a FreeRTOS queue
-pub type QueueHandle = *const c_void;
+pub(super) type QueueHandle = *const c_void;
 /// Opaque handle to a FreeRTOS semaphore
-pub type SemaphoreHandle = *const c_void;
+pub(super) type SemaphoreHandle = *const c_void;
 /// Opaque handle to a FreeRTOS event group
-pub type EventGroupHandle = *const c_void;
+pub(super) type EventGroupHandle = *const c_void;
 /// Opaque handle to a FreeRTOS timer
-pub type TimerHandle = *const c_void;
+pub(super) type TimerHandle = *const c_void;
 /// Opaque handle to a FreeRTOS mutex
-pub type MutexHandle = *const c_void;
+pub(super) type MutexHandle = *const c_void;
 /// Callback function type for timers
-pub type TimerCallback = unsafe extern "C" fn(timer: TimerHandle);
+pub(super) type TimerCallback = unsafe extern "C" fn(timer: TimerHandle);
 /// Task state enumeration
-pub type TaskState = c_uint;
+pub(super) type TaskState = c_uint;
 
 // Task states
-pub mod task {
+pub(super) mod task {
     use super::TaskState;
 
-    pub const RUNNING: TaskState = 0;
-    pub const READY: TaskState = 1;
-    pub const BLOCKED: TaskState = 2;
-    pub const SUSPENDED: TaskState = 3;
-    pub const DELETED: TaskState = 4;
-    pub const INVALID: TaskState = 5;
+    pub(in crate::freertos) const RUNNING: TaskState = 0;
+    pub(in crate::freertos) const READY: TaskState = 1;
+    pub(in crate::freertos) const BLOCKED: TaskState = 2;
+    pub(in crate::freertos) const SUSPENDED: TaskState = 3;
+    pub(in crate::freertos) const DELETED: TaskState = 4;
+    pub(in crate::freertos) const INVALID: TaskState = 5;
 }
 
 // Boolean/status constants
-pub const pdFALSE: BaseType = 0;
+pub(super) const pdFALSE: BaseType = 0;
 
-pub const pdTRUE: BaseType = 1;
+pub(super) const pdTRUE: BaseType = 1;
 
-pub const pdPASS: BaseType = pdTRUE;
+pub(super) const pdPASS: BaseType = pdTRUE;
 
-pub const pdFAIL: BaseType = pdFALSE;
+pub(super) const pdFAIL: BaseType = pdFALSE;
 
 // Task notification constants
-pub const tskDEFAULT_INDEX_TO_NOTIFY: UBaseType = 0;
+pub(super) const tskDEFAULT_INDEX_TO_NOTIFY: UBaseType = 0;
 
 // Semaphore constants
 // Queue constants
 #[allow(dead_code)]
-pub mod sem {
+pub(super) mod sem {
     use super::TickType;
 
-    pub const BINARY_SEMAPHORE_QUEUE_LENGTH: u8 = 1;
-    pub const SEMAPHORE_QUEUE_ITEM_LENGTH: u8 = 0;
-    pub const GIVE_BLOCK_TIME: TickType = 0;
+    pub(in crate::freertos) const BINARY_SEMAPHORE_QUEUE_LENGTH: u8 = 1;
+    pub(in crate::freertos) const SEMAPHORE_QUEUE_ITEM_LENGTH: u8 = 0;
+    pub(in crate::freertos) const GIVE_BLOCK_TIME: TickType = 0;
 }
 
 // Queue constants
 #[allow(dead_code)]
-pub mod queue {
+pub(super) mod queue {
     use crate::os::types::BaseType;
 
-    pub const SEND_TO_BACK: BaseType = 0;
-    pub const SEND_TO_FRONT: BaseType = 1;
-    pub const OVERWRITE: BaseType = 2;
-    pub const QUEUE_TYPE_BASE: u8 = 0;
-    pub const QUEUE_TYPE_MUTEX: u8 = 1;
-    pub const QUEUE_TYPE_COUNTING_SEMAPHORE: u8 = 2;
-    pub const QUEUE_TYPE_BINARY_SEMAPHORE: u8 = 3;
-    pub const QUEUE_TYPE_RECURSIVE_MUTEX: u8 = 4;
+    pub(in crate::freertos) const SEND_TO_BACK: BaseType = 0;
+    pub(in crate::freertos) const SEND_TO_FRONT: BaseType = 1;
+    pub(in crate::freertos) const OVERWRITE: BaseType = 2;
+    pub(in crate::freertos) const QUEUE_TYPE_BASE: u8 = 0;
+    pub(in crate::freertos) const QUEUE_TYPE_MUTEX: u8 = 1;
+    pub(in crate::freertos) const QUEUE_TYPE_COUNTING_SEMAPHORE: u8 = 2;
+    pub(in crate::freertos) const QUEUE_TYPE_BINARY_SEMAPHORE: u8 = 3;
+    pub(in crate::freertos) const QUEUE_TYPE_RECURSIVE_MUTEX: u8 = 4;
 }
 
 
@@ -138,25 +138,25 @@ pub mod queue {
 /// Contains detailed information about a task's state, priority, stack usage, etc.
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
-pub struct TaskStatus {
+pub(super) struct TaskStatus {
     /// Task handle
-    pub xHandle: ThreadHandle,
+    pub(super) xHandle: ThreadHandle,
     /// Task name (null-terminated C string)
-    pub pcTaskName: *const c_char,
+    pub(super) pcTaskName: *const c_char,
     /// Task number (unique ID)
-    pub xTaskNumber: UBaseType,
+    pub(super) xTaskNumber: UBaseType,
     /// Current task state
-    pub eCurrentState: TaskState,
+    pub(super) eCurrentState: TaskState,
     /// Current priority
-    pub uxCurrentPriority: UBaseType,
+    pub(super) uxCurrentPriority: UBaseType,
     /// Base priority (before priority inheritance)
-    pub uxBasePriority: UBaseType,
+    pub(super) uxBasePriority: UBaseType,
     /// Total runtime counter
-    pub ulRunTimeCounter: u32,
+    pub(super) ulRunTimeCounter: u32,
     /// Stack base address
-    pub pxStackBase: *mut StackType,
+    pub(super) pxStackBase: *mut StackType,
     /// Stack high water mark (minimum free stack)
-    pub usStackHighWaterMark: StackType
+    pub(super) usStackHighWaterMark: StackType
 }
 
 impl Default for TaskStatus {
@@ -175,7 +175,7 @@ impl Default for TaskStatus {
     }
 }
 
-pub type TaskFunction = Option<unsafe extern "C" fn(arg: *mut c_void)>;
+pub(super) type TaskFunction = Option<unsafe extern "C" fn(arg: *mut c_void)>;
 
 unsafe extern "C" {
     
@@ -187,52 +187,52 @@ unsafe extern "C" {
     /// 
     /// # Returns
     /// A pointer to the allocated memory, or null if allocation fails
-    pub fn pvPortMalloc(size: usize) -> *mut c_void;
+    pub(super) fn pvPortMalloc(size: usize) -> *mut c_void;
 
     /// Free memory previously allocated by pvPortMalloc
     /// 
     /// # Arguments
     /// * `pv` - Pointer to the memory to free
-    pub fn vPortFree(pv: *mut c_void);
+    pub(super) fn vPortFree(pv: *mut c_void);
 
-    pub fn vTaskDelay(xTicksToDelay: TickType);
+    pub(super) fn vTaskDelay(xTicksToDelay: TickType);
 
-    pub fn xTaskDelayUntil(
+    pub(super) fn xTaskDelayUntil(
         pxPreviousWakeTime: *mut TickType,
         xTimeIncrement: TickType,
     ) -> BaseType;
 
 
-    pub fn xTaskGetTickCount() -> TickType;
+    pub(super) fn xTaskGetTickCount() -> TickType;
 
-    pub fn vTaskStartScheduler();
+    pub(super) fn vTaskStartScheduler();
 
-    pub fn vTaskEndScheduler();
+    pub(super) fn vTaskEndScheduler();
 
-    pub fn vTaskSuspendAll();
+    pub(super) fn vTaskSuspendAll();
 
-    pub fn xTaskResumeAll() -> BaseType;
+    pub(super) fn xTaskResumeAll() -> BaseType;
 
-    pub fn xTaskGetCurrentTaskHandle() -> ThreadHandle;
+    pub(super) fn xTaskGetCurrentTaskHandle() -> ThreadHandle;
 
-    pub fn eTaskGetState(xTask: ThreadHandle) -> TaskState;
+    pub(super) fn eTaskGetState(xTask: ThreadHandle) -> TaskState;
 
-    pub fn uxTaskGetNumberOfTasks() -> UBaseType;
+    pub(super) fn uxTaskGetNumberOfTasks() -> UBaseType;
 
-    pub fn uxTaskGetSystemState(
+    pub(super) fn uxTaskGetSystemState(
         pxTaskStatusArray: *mut TaskStatus,
         uxArraySize: UBaseType,
         pulTotalRunTime: *mut u32,
     ) -> UBaseType;
 
-    pub fn osal_rs_task_enter_critical();
-    pub fn osal_rs_task_exit_critical();
+    pub(super) fn osal_rs_task_enter_critical();
+    pub(super) fn osal_rs_task_exit_critical();
 
-    pub fn osal_rs_task_enter_critical_from_isr() -> UBaseType;
-    pub fn osal_rs_task_exit_critical_from_isr(uxSavedInterruptStatus: UBaseType);
+    pub(super) fn osal_rs_task_enter_critical_from_isr() -> UBaseType;
+    pub(super) fn osal_rs_task_exit_critical_from_isr(uxSavedInterruptStatus: UBaseType);
 
 
-    pub fn xTaskCreate(
+    pub(super) fn xTaskCreate(
         pxTaskCode: TaskFunction,
         pcName: *const c_char,
         uxStackDepth: StackType,
@@ -241,13 +241,13 @@ unsafe extern "C" {
         pxCreatedTask: *mut ThreadHandle,
     ) -> BaseType;
 
-    pub fn vTaskDelete(xTaskToDelete: ThreadHandle);
+    pub(super) fn vTaskDelete(xTaskToDelete: ThreadHandle);
 
-    pub fn vTaskSuspend(xTaskToSuspend: ThreadHandle);
+    pub(super) fn vTaskSuspend(xTaskToSuspend: ThreadHandle);
 
-    pub fn vTaskResume(xTaskToResume: ThreadHandle);
+    pub(super) fn vTaskResume(xTaskToResume: ThreadHandle);
 
-    pub fn vTaskGetInfo(
+    pub(super) fn vTaskGetInfo(
         xTask: ThreadHandle,
         pxTaskStatus: *mut TaskStatus,
         xGetFreeStackSpace: BaseType,
@@ -257,7 +257,7 @@ unsafe extern "C" {
     // pub fn ulTaskGenericNotifyTake(uxIndexToWaitOn: UBaseType, xClearCountOnExit: BaseType, xTicksToWait: TickType) -> u32;
 
 
-    pub fn xTaskGenericNotifyWait(
+    pub(super) fn xTaskGenericNotifyWait(
         uxIndexToWaitOn: UBaseType,
         ulBitsToClearOnEntry: u32,
         ulBitsToClearOnExit: u32,
@@ -266,7 +266,7 @@ unsafe extern "C" {
     ) -> BaseType;
 
 
-    pub fn xTaskGenericNotify(
+    pub(super) fn xTaskGenericNotify(
         xTaskToNotify: ThreadHandle,
         uxIndexToNotify: UBaseType,
         ulValue: u32,
@@ -275,7 +275,7 @@ unsafe extern "C" {
     ) -> BaseType;
 
 
-    pub fn xTaskGenericNotifyFromISR(
+    pub(super) fn xTaskGenericNotifyFromISR(
         xTaskToNotify: ThreadHandle,
         uxIndexToNotify: UBaseType,
         ulValue: u32,
@@ -284,7 +284,7 @@ unsafe extern "C" {
         pxHigherPriorityTaskWoken: *mut BaseType,
     ) -> BaseType;
     
-    pub fn xEventGroupWaitBits(
+    pub(super) fn xEventGroupWaitBits(
         xEventGroup: EventGroupHandle,
         uxBitsToWaitFor: EventBits,
         xClearOnExit: BaseType,
@@ -292,99 +292,99 @@ unsafe extern "C" {
         xTicksToWait: TickType,
     ) -> EventBits;
 
-    pub fn xEventGroupClearBits(
+    pub(super) fn xEventGroupClearBits(
         xEventGroup: EventGroupHandle,
         uxBitsToClear: EventBits,
     ) -> EventBits;
 
-    pub fn xEventGroupClearBitsFromISR(
+    pub(super) fn xEventGroupClearBitsFromISR(
         xEventGroup: EventGroupHandle,
         uxBitsToClear: EventBits,
     ) -> BaseType;
 
-        pub fn xEventGroupSetBits(
+    pub(super) fn xEventGroupSetBits(
         xEventGroup: EventGroupHandle,
         uxBitsToSet: EventBits,
     ) -> EventBits;
 
 
-    pub fn xEventGroupSetBitsFromISR(
+    pub(super) fn xEventGroupSetBitsFromISR(
         xEventGroup: EventGroupHandle,
         uxBitsToSet: EventBits,
         pxHigherPriorityTaskWoken: *mut BaseType,
     ) -> BaseType;
 
-    pub fn xEventGroupGetBitsFromISR(xEventGroup: EventGroupHandle) -> EventBits;
+    pub(super) fn xEventGroupGetBitsFromISR(xEventGroup: EventGroupHandle) -> EventBits;
 
-    pub fn vEventGroupDelete(xEventGroup: EventGroupHandle);
+    pub(super) fn vEventGroupDelete(xEventGroup: EventGroupHandle);
 
-    pub fn xEventGroupCreate() -> EventGroupHandle;
+    pub(super) fn xEventGroupCreate() -> EventGroupHandle;
 
-    pub fn osal_rs_critical_section_enter();
+    pub(super) fn osal_rs_critical_section_enter();
 
-    pub fn osal_rs_critical_section_exit();
+    pub(super) fn osal_rs_critical_section_exit();
 
-    pub fn osal_rs_port_yield_from_isr(pxHigherPriorityTaskWoken: BaseType);
+    pub(super) fn osal_rs_port_yield_from_isr(pxHigherPriorityTaskWoken: BaseType);
 
-    pub fn osal_rs_port_end_switching_isr( xSwitchRequired: BaseType );
+    pub(super) fn osal_rs_port_end_switching_isr( xSwitchRequired: BaseType );
 
-    pub fn xQueueCreateMutex(ucQueueType: u8) -> QueueHandle;
+    pub(super) fn xQueueCreateMutex(ucQueueType: u8) -> QueueHandle;
     
-    pub fn xQueueCreateCountingSemaphore(
+    pub(super) fn xQueueCreateCountingSemaphore(
         uxMaxCount: UBaseType,
         uxInitialCount: UBaseType,
     ) -> QueueHandle;
 
-    pub fn xQueueSemaphoreTake(xQueue: QueueHandle, xTicksToWait: TickType) -> BaseType;
+    pub(super) fn xQueueSemaphoreTake(xQueue: QueueHandle, xTicksToWait: TickType) -> BaseType;
 
-    pub fn xQueueReceiveFromISR(
+    pub(super) fn xQueueReceiveFromISR(
         xQueue: QueueHandle,
         pvBuffer: *mut c_void,
         pxHigherPriorityTaskWoken: *mut BaseType,
     ) -> BaseType;
 
-    pub fn xQueueGenericSend(
+    pub(super) fn xQueueGenericSend(
         xQueue: QueueHandle,
         pvItemToQueue: *const c_void,
         xTicksToWait: TickType,
         xCopyPosition: BaseType,
     ) -> BaseType;
 
-    pub fn xQueueGiveFromISR(
+    pub(super) fn xQueueGiveFromISR(
         xQueue: QueueHandle,
         pxHigherPriorityTaskWoken: *mut BaseType,
     ) -> BaseType;
 
-     pub fn vQueueDelete(xQueue: QueueHandle);
+    pub(super) fn vQueueDelete(xQueue: QueueHandle);
 
-    pub fn xQueueGenericCreate(
+    pub(super) fn xQueueGenericCreate(
         uxQueueLength: UBaseType,
         uxItemSize: UBaseType,
         ucQueueType: u8,
     ) -> QueueHandle;
 
-    pub fn xQueueReceive(
+    pub(super) fn xQueueReceive(
         xQueue: QueueHandle,
         pvBuffer: *mut c_void,
         xTicksToWait: TickType,
     ) -> BaseType;
 
-    pub fn xQueueGenericSendFromISR(
+    pub(super) fn xQueueGenericSendFromISR(
         xQueue: QueueHandle,
         pvItemToQueue: *const c_void,
         pxHigherPriorityTaskWoken: *mut BaseType,
         xCopyPosition: BaseType,
     ) -> BaseType;
 
-    pub fn xQueueTakeMutexRecursive(xMutex: QueueHandle, xTicksToWait: TickType) -> BaseType;
+    pub(super) fn xQueueTakeMutexRecursive(xMutex: QueueHandle, xTicksToWait: TickType) -> BaseType;
 
-    pub fn xQueueGiveMutexRecursive(xMutex: QueueHandle) -> BaseType;
+    pub(super) fn xQueueGiveMutexRecursive(xMutex: QueueHandle) -> BaseType;
 
-    pub fn xPortGetFreeHeapSize() -> usize;
+    pub(super) fn xPortGetFreeHeapSize() -> usize;
 
     // pub fn xTimerCreateTimerTask() -> BaseType;
 
-    pub fn xTimerCreate(
+    pub(super) fn xTimerCreate(
         pcTimerName: *const c_char,
         xTimerPeriodInTicks: TickType,
         xAutoReload: BaseType,
@@ -392,21 +392,21 @@ unsafe extern "C" {
         pxCallbackFunction: Option<TimerCallback>,
     ) -> TimerHandle;
 
-    pub fn osal_rs_timer_start(xTimer: TimerHandle, xTicksToWait: TickType) -> BaseType;
+    pub(super) fn osal_rs_timer_start(xTimer: TimerHandle, xTicksToWait: TickType) -> BaseType;
 
-    pub fn osal_rs_timer_stop(xTimer: TimerHandle, xTicksToWait: TickType) -> BaseType;
+    pub(super) fn osal_rs_timer_stop(xTimer: TimerHandle, xTicksToWait: TickType) -> BaseType;
 
-    pub fn osal_rs_timer_reset(xTimer: TimerHandle, xTicksToWait: TickType) -> BaseType;
+    pub(super) fn osal_rs_timer_reset(xTimer: TimerHandle, xTicksToWait: TickType) -> BaseType;
 
-    pub fn osal_rs_timer_change_period(
+    pub(super) fn osal_rs_timer_change_period(
         xTimer: TimerHandle,
         xNewPeriodInTicks: TickType,
         xTicksToWait: TickType,
     ) -> BaseType;
 
-    pub fn osal_rs_timer_delete(xTimer: TimerHandle, xTicksToWait: TickType) -> BaseType;
+    pub(super) fn osal_rs_timer_delete(xTimer: TimerHandle, xTicksToWait: TickType) -> BaseType;
 
-    pub fn pvTimerGetTimerID(xTimer: TimerHandle) -> *mut c_void;
+    pub(super) fn pvTimerGetTimerID(xTimer: TimerHandle) -> *mut c_void;
 
     // pub fn printf(fmt: *const u8, ...) -> i32; 
 }

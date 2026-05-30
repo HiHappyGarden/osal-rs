@@ -144,34 +144,34 @@
 #[macro_use]
 mod ffi;
 
-pub mod allocator;
+pub(crate) mod allocator;
 
 /// FreeRTOS configuration constants and utilities.
 pub mod config;
 
 /// Duration type implementations for FreeRTOS tick conversion.
-pub mod duration;
+pub(crate) mod duration;
 
 /// Event group synchronization primitives.
-pub mod event_group;
+pub(crate) mod event_group;
 
 /// Mutex implementations with optional priority inheritance.
-pub mod mutex;
+pub(crate) mod mutex;
 
 /// Message queue implementations for inter-task communication.
-pub mod queue;
+pub(crate) mod queue;
 
 /// Binary and counting semaphore implementations.
-pub mod semaphore;
+pub(crate) mod semaphore;
 
 /// System-level RTOS control, timing, and scheduler management.
-pub mod system;
+pub(crate) mod system;
 
 /// Task/thread creation, management, and notifications.
-pub mod thread;
+pub(crate) mod thread;
 
 /// Software timer implementations for delayed and periodic callbacks.
-pub mod timer;
+pub(crate) mod timer;
 
 /// FreeRTOS-specific type definitions and aliases.
 pub mod types;

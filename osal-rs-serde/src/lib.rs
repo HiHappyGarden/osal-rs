@@ -350,9 +350,9 @@
 #[cfg(feature = "alloc")]
 extern crate alloc;
 
-pub mod error;
-pub mod ser;
-pub mod de;
+mod error;
+mod ser;
+mod de;
 
 use alloc::vec::Vec;
 pub use error::{Error, Result};

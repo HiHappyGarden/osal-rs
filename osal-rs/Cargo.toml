@@ -34,10 +34,10 @@ serde = ["osal-rs-serde"]
 
 
 [dependencies]
-osal-rs-serde = { version = "0.4", path = "../osal-rs-serde", features = ["derive"], optional = true }
+osal-rs-serde = { version = "0.5", path = "../osal-rs-serde", features = ["derive"], optional = true }
 
 [build-dependencies]
-osal-rs-build = { version = "0.4", path = "../osal-rs-build" }
+osal-rs-build = { version = "0.5", path = "../osal-rs-build" }
 
 
 [profile.dev]

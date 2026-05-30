@@ -5,6 +5,7 @@ use core::ptr::null_mut;
 use std::sync::Arc;
 use std::time::Duration;
 
+use osal_rs::log::{self, log_levels};
 use osal_rs::os::*;
 
 #[cfg(not(feature = "serde"))]
@@ -252,4 +253,45 @@ fn std_backend_exports_core_api_surface() {
     let _ = timer.reset_with_to_tick(Duration::ZERO);
     let _ = timer.change_period_with_to_tick(Duration::from_millis(1), Duration::ZERO);
     let _ = timer.delete_with_to_tick(Duration::ZERO);
+}
+
+#[test]
+fn std_backend_exports_logging_api_surface() {
+    let _log_buffer_size: usize = log::LOG_BUFFER_SIZE;
+    let _return: &str = log::RETURN;
+
+    let _flag_debug: u8 = log_levels::FLAG_DEBUG;
+    let _flag_info: u8 = log_levels::FLAG_INFO;
+    let _flag_warning: u8 = log_levels::FLAG_WARNING;
+    let _flag_error: u8 = log_levels::FLAG_ERROR;
+    let _flag_fatal: u8 = log_levels::FLAG_FATAL;
+    let _flag_color_on: u8 = log_levels::FLAG_COLOR_ON;
+    let _flag_state_on: u8 = log_levels::FLAG_STATE_ON;
+    let _level_debug: u8 = log_levels::LEVEL_DEBUG;
+    let _level_info: u8 = log_levels::LEVEL_INFO;
+    let _level_warning: u8 = log_levels::LEVEL_WARNING;
+    let _level_error: u8 = log_levels::LEVEL_ERROR;
+    let _level_fatal: u8 = log_levels::LEVEL_FATAL;
+
+    let _set_level_log: fn(u8) = log::set_level_log;
+    let _set_enable_log: fn(bool) = log::set_enable_log;
+    let _get_enable_log: fn() -> bool = log::get_enable_log;
+    let _is_enabled_log: fn(u8) -> bool = log::is_enabled_log;
+    let _get_level_log: fn() -> u8 = log::get_level_log;
+    let _set_enable_color: fn(bool) = log::set_enable_color;
+    let _sys_log: fn(&str, u8, &str) = log::sys_log;
+
+    log::set_level_log(log_levels::LEVEL_DEBUG);
+    log::set_enable_log(true);
+    log::set_enable_color(true);
+    let _ = log::get_enable_log();
+    let _ = log::is_enabled_log(log_levels::FLAG_INFO);
+    let _ = log::get_level_log();
+    log::sys_log("StdApiSurface", log_levels::FLAG_INFO, "logging api surface");
+
+    osal_rs::log_debug!("StdApiSurface", "debug {}", 3u8);
+    osal_rs::log_info!("StdApiSurface", "info {}", 4u8);
+    osal_rs::log_warning!("StdApiSurface", "warning {}", 5u8);
+    osal_rs::log_error!("StdApiSurface", "error {}", 6u8);
+    osal_rs::log_fatal!("StdApiSurface", "fatal {}", 7u8);
 }

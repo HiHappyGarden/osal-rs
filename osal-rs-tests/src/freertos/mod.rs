@@ -18,6 +18,7 @@
  *
  ***************************************************************************/
 
+pub mod api_surface;
 pub mod thread_tests;
 pub mod queue_tests;
 pub mod mutex_tests;

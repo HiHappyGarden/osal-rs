@@ -18,29 +18,18 @@
  *
  ***************************************************************************/
 
-#[cfg(feature = "std")]
-pub mod config;
+use core::ffi::c_void;
 
-#[cfg(feature = "std")]
-pub mod event_group;
+pub type TickType = u64;
+pub type BaseType = i64;
+pub type UBaseType = u64;
+pub type StackType = usize;
 
-#[cfg(feature = "std")]
-pub mod mutex;
+pub type ThreadHandle = *const c_void;
+pub type QueueHandle = *const c_void;
+pub type SemaphoreHandle = *const c_void;
+pub type EventGroupHandle = *const c_void;
+pub type TimerHandle = *const c_void;
+pub type MutexHandle = *const c_void;
 
-#[cfg(feature = "std")]
-pub mod queue;
-
-#[cfg(feature = "std")]
-pub mod semaphore;
-
-#[cfg(feature = "std")]
-pub mod system;
-
-#[cfg(feature = "std")]
-pub mod thread;
-
-#[cfg(feature = "std")]
-pub mod timer;
-
-#[cfg(feature = "std")]
-pub mod types;
+pub type EventBits = TickType;

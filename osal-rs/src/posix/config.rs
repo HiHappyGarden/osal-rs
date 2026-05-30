@@ -18,29 +18,4 @@
  *
  ***************************************************************************/
 
-#[cfg(feature = "std")]
-pub mod config;
-
-#[cfg(feature = "std")]
-pub mod event_group;
-
-#[cfg(feature = "std")]
-pub mod mutex;
-
-#[cfg(feature = "std")]
-pub mod queue;
-
-#[cfg(feature = "std")]
-pub mod semaphore;
-
-#[cfg(feature = "std")]
-pub mod system;
-
-#[cfg(feature = "std")]
-pub mod thread;
-
-#[cfg(feature = "std")]
-pub mod timer;
-
-#[cfg(feature = "std")]
-pub mod types;
+pub const TICK_PERIOD_MS: u64 = 1;

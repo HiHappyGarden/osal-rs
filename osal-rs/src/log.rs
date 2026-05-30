@@ -331,9 +331,9 @@ static mut MASK: u8 = log_levels::LEVEL_DEBUG | log_levels::FLAG_COLOR_ON | log_
 /// logging contention is infrequent.
 static mut BUSY: u8 = 0;
 
-/// Prints formatted text to UART without a newline.
+/// Prints formatted text without a newline.
 ///
-/// This macro is only available in no-std mode. In std mode, use the standard `print!` macro.
+/// In `std` mode this writes to standard output. In `no_std` mode this writes to UART.
 ///
 /// # Examples
 ///
@@ -343,21 +343,16 @@ static mut BUSY: u8 = 0;
 /// print!("Hello");
 /// print!(" World: {}", 42);
 /// ```
-#[cfg(not(feature = "std"))]
 #[macro_export]
 macro_rules! print {
     ($($arg:tt)*) => {{
-        unsafe {
-            let mut buf = $crate::utils::Bytes::<{$crate::log::LOG_BUFFER_SIZE}>::new();
-            buf.format(format_args!($($arg)*));
-            $crate::log::ffi::printf_on_uart(b"%s\0".as_ptr() as *const core::ffi::c_char, buf.as_cstr().as_ptr());
-        }
+        $crate::log::print_args(format_args!($($arg)*));
     }};
 }
 
-/// Prints formatted text to UART with a newline (\r\n).
+/// Prints formatted text with a newline (`\r\n`).
 ///
-/// This macro is only available in no-std mode. In std mode, use the standard `println!` macro.
+/// In `std` mode this writes to standard output. In `no_std` mode this writes to UART.
 ///
 /// # Examples
 ///
@@ -368,26 +363,48 @@ macro_rules! print {
 /// println!("Value: {}", 42);
 /// println!();  // Just a newline
 /// ```
-#[cfg(not(feature = "std"))]
 #[macro_export]
 macro_rules! println {
-    () => {
-        $crate::log::ffi::printf_on_uart!(b"\r\n")
-    };
+    () => {{
+        $crate::log::print_newline();
+    }};
     ($fmt:expr) => {{
-        unsafe {
-            let mut buf = $crate::utils::Bytes::<{$crate::log::LOG_BUFFER_SIZE}>::new();
-            buf.format(format_args!(concat!($fmt, "\r\n")));
-            $crate::log::ffi::printf_on_uart(b"%s\0".as_ptr() as *const core::ffi::c_char, buf.as_cstr().as_ptr());
-        }
+        $crate::log::print_args(format_args!(concat!($fmt, "\r\n")));
     }};
     ($fmt:expr, $($arg:tt)*) => {{
-        unsafe {
-            let mut buf = $crate::utils::Bytes::<{$crate::log::LOG_BUFFER_SIZE}>::new();
-            buf.format(format_args!(concat!($fmt, "\r\n"), $($arg)*));
-            $crate::log::ffi::printf_on_uart(b"%s\0".as_ptr() as *const core::ffi::c_char, buf.as_cstr().as_ptr());
-        }
+        $crate::log::print_args(format_args!(concat!($fmt, "\r\n"), $($arg)*));
     }};
+}
+
+#[doc(hidden)]
+pub fn print_args(args: core::fmt::Arguments<'_>) {
+    #[cfg(feature = "std")]
+    {
+        std::print!("{}", args);
+    }
+
+    #[cfg(not(feature = "std"))]
+    unsafe {
+        let mut buf = crate::utils::Bytes::<{ LOG_BUFFER_SIZE }>::new();
+        buf.format(args);
+        ffi::printf_on_uart(
+            b"%s\0".as_ptr() as *const core::ffi::c_char,
+            buf.as_cstr().as_ptr(),
+        );
+    }
+}
+
+#[doc(hidden)]
+pub fn print_newline() {
+    #[cfg(feature = "std")]
+    {
+        std::print!("{}", RETURN);
+    }
+
+    #[cfg(not(feature = "std"))]
+    unsafe {
+        ffi::printf_on_uart(b"\r\n\0".as_ptr() as *const core::ffi::c_char);
+    }
 }
 
 /// Sets the log level threshold.

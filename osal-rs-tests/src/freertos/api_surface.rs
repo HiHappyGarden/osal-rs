@@ -319,6 +319,7 @@ pub fn compile_logging_surface() {
     log::sys_log("CompileOnly", log_levels::FLAG_INFO, "logging api surface");
 
     osal_rs::print!("compile-only print {}", 1u8);
+    osal_rs::println!();
     osal_rs::println!("compile-only println {}", 2u8);
     osal_rs::log_debug!("CompileOnly", "debug {}", 3u8);
     osal_rs::log_info!("CompileOnly", "info {}", 4u8);

@@ -289,6 +289,9 @@ fn std_backend_exports_logging_api_surface() {
     let _ = log::get_level_log();
     log::sys_log("StdApiSurface", log_levels::FLAG_INFO, "logging api surface");
 
+    osal_rs::print!("std print {}", 1u8);
+    osal_rs::println!();
+    osal_rs::println!("std println {}", 2u8);
     osal_rs::log_debug!("StdApiSurface", "debug {}", 3u8);
     osal_rs::log_info!("StdApiSurface", "info {}", 4u8);
     osal_rs::log_warning!("StdApiSurface", "warning {}", 5u8);

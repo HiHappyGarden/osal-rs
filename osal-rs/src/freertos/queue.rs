@@ -42,6 +42,8 @@ use osal_rs_serde::{Serialize, Deserialize, to_bytes};
 
 pub trait StructSerde : Serialize + BytesHasLen + Deserialize {}
 
+impl<T> StructSerde for T where T: Serialize + BytesHasLen + Deserialize {}
+
 use crate::utils::{Result, Error};
 
 

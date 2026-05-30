@@ -18,32 +18,27 @@
  *
  ***************************************************************************/
 
-#[cfg(feature = "std")]
-pub mod config;
+use core::time::Duration;
 
-#[cfg(feature = "std")]
-pub(crate) mod duration;
+use crate::posix::config::TICK_PERIOD_MS;
+use crate::posix::types::TickType;
+use crate::traits::{FromTick, ToTick};
 
-#[cfg(feature = "std")]
-pub mod event_group;
+impl ToTick for Duration {
+    fn to_ticks(&self) -> TickType {
+        let millis = self.as_millis() as TickType;
+        let period = TICK_PERIOD_MS as TickType;
 
-#[cfg(feature = "std")]
-pub mod mutex;
+        if period == 0 {
+            TickType::MAX
+        } else {
+            millis / period
+        }
+    }
+}
 
-#[cfg(feature = "std")]
-pub mod queue;
-
-#[cfg(feature = "std")]
-pub mod semaphore;
-
-#[cfg(feature = "std")]
-pub mod system;
-
-#[cfg(feature = "std")]
-pub mod thread;
-
-#[cfg(feature = "std")]
-pub mod timer;
-
-#[cfg(feature = "std")]
-pub mod types;
+impl FromTick for Duration {
+    fn ticks(&mut self, tick: TickType) {
+        *self = Duration::from_millis(tick.saturating_mul(TICK_PERIOD_MS as TickType));
+    }
+}

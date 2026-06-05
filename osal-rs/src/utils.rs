@@ -82,7 +82,7 @@
 //! 3. **Handle errors explicitly**: Always check `Result` returns
 
 use core::ffi::{CStr, c_char, c_uchar, c_void};
-use core::str::{from_utf8_mut, FromStr};
+use core::str::{FromStr, from_utf8, from_utf8_mut};
 use core::fmt::{Debug, Display}; 
 use core::ops::{Deref, DerefMut};
 use core::time::Duration;
@@ -2005,11 +2005,7 @@ impl<const SIZE: usize> Bytes<SIZE> {
     /// This is an inherent method (no trait import required at the call site).
     #[inline]
     pub fn as_str(&self) -> &str {
-        unsafe {
-            CStr::from_ptr(self.0.as_ptr() as *const c_char)
-                .to_str()
-                .unwrap_or("Bytes::as_str() Conversion error - invalid UTF-8")
-        }
+        from_utf8(self.as_raw_bytes()).unwrap_or("Bytes::as_str() Conversion error - invalid UTF-8")
     }
 
     /// Overwrites the buffer with a formatted string, behaving like `alloc::format!`.

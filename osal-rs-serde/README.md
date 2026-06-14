@@ -64,7 +64,7 @@ Add to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-osal-rs-serde = { version = "0.4", features = ["derive"] }
+osal-rs-serde = { version = "0.5", features = ["derive"] }
 ```
 
 Available features:
@@ -76,7 +76,12 @@ Available features:
 For no-std environments without allocation:
 ```toml
 [dependencies]
-osal-rs-serde = { version = "0.4", default-features = false, features = ["derive"] }
+osal-rs-serde = { version = "0.5", default-features = false, features = ["derive"] }
+```
+
+For integration tests with derive macros:
+```bash
+cargo test --no-default-features --features std,derive --test integration_tests
 ```
 
 ## Project Structure

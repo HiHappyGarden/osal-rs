@@ -411,8 +411,8 @@ cargo build --release --target thumbv7em-none-eabihf --features freertos
 ### For native development/testing:
 
 ```bash
-# Build with POSIX support (when implemented)
-cargo build --features posix,std
+# Build with POSIX support
+cargo build --no-default-features --features posix
 ```
 
 ## Cargo Features
@@ -424,9 +424,7 @@ OSAL-RS provides several Cargo features to customize the build configuration for
 | Feature | Default | Description |
 |---------|---------|-------------|
 | `freertos` | ✅ | Enable FreeRTOS backend implementation. This is the default and fully implemented feature for embedded RTOS development. |
-| `posix` | ❌ | Enable POSIX backend implementation. Currently planned for future releases to support Linux/Unix-like systems. |
-| `std` | ❌ | Enable standard library support. Automatically enables `disable_panic`. Use this for native development and testing environments. |
-| `disable_panic` | ❌ | Disable custom panic handler. Enabled automatically when `std` feature is active. Useful when you want to use the default panic behavior. |
+| `posix` | ❌ | Enable POSIX/native backend implementation for host environments. |
 | `serde` | ❌ | Enable serialization/deserialization support via `osal-rs-serde`. Includes derive macros for automatic implementation. |
 
 ### Feature Combinations
@@ -441,14 +439,14 @@ cargo build --target thumbv7em-none-eabihf --features freertos
 cargo build --target thumbv7em-none-eabihf --features freertos,serde
 ```
 
-#### Native Development with Standard Library
+#### Native Development (POSIX)
 ```bash
-cargo build --features posix,std
+cargo build --no-default-features --features posix
 ```
 
 #### Native Development with Serialization
 ```bash
-cargo build --features posix,std,serde
+cargo build --no-default-features --features posix,serde
 ```
 
 ### Using Features in Cargo.toml

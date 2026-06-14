@@ -149,8 +149,7 @@
 //!
 //! - `freertos` - Enable FreeRTOS support (default)
 //! - `posix` - Enable POSIX support (planned)
-//! - `std` - Enable standard library support for testing
-//! - `disable_panic` - Disable the default panic handler and allocator
+//! - `posix` - Enable host/POSIX support (uses standard library)
 //!
 //! ## Requirements
 //!
@@ -218,15 +217,12 @@
 //!
 //! LGPL-2.1-or-later - See LICENSE file for details
 
-#![cfg_attr(not(feature = "std"), no_std)]
+#![cfg_attr(not(feature = "posix"), no_std)]
 
 extern crate alloc;
 
-#[cfg(all(feature = "posix", not(feature = "std")))]
-compile_error!("The `posix` backend requires the `std` feature.");
-
-#[cfg(not(any(feature = "freertos", feature = "std")))]
-compile_error!("Enable either the `freertos` backend or the `std` host backend.");
+#[cfg(not(any(feature = "freertos", feature = "posix")))]
+compile_error!("Enable either the `freertos` backend or the `posix` host backend.");
 
 /// FreeRTOS implementation of OSAL traits.
 ///
@@ -243,7 +239,7 @@ mod freertos;
 /// Currently under development.
 ///
 /// Enabled with the `posix` feature flag.
-#[cfg(all(feature = "std", not(feature = "freertos")))]
+#[cfg(all(feature = "posix", not(feature = "freertos")))]
 mod posix;
 
 pub mod log;
@@ -261,7 +257,7 @@ pub mod utils;
 use crate::freertos as osal;
 
 /// Select POSIX as the active OSAL backend.
-#[cfg(all(feature = "std", not(feature = "freertos")))]
+#[cfg(all(feature = "posix", not(feature = "freertos")))]
 use crate::posix as osal;
 
 /// Main OSAL module re-exporting all OS abstractions and traits.
@@ -295,7 +291,7 @@ use crate::posix as osal;
 /// ```
 pub mod os {
 
-    #[cfg(all(not(feature = "disable_panic"), feature = "freertos"))]
+    #[cfg(feature = "freertos")]
     use crate::osal::allocator::Allocator;
 
     /// Global allocator using the underlying RTOS heap.
@@ -312,8 +308,7 @@ pub mod os {
     ///
     /// # Feature Flag
     ///
-    /// - Active by default
-    /// - Disabled with `disable_panic` feature if you want to provide your own allocator
+    /// Active when using the `freertos` backend.
     ///
     /// # FreeRTOS Configuration
     ///
@@ -330,7 +325,7 @@ pub mod os {
     /// let mut v = Vec::new();
     /// v.push(42);
     /// ```
-    #[cfg(all(not(feature = "disable_panic"), feature = "freertos"))]
+    #[cfg(feature = "freertos")]
     #[global_allocator]
     pub static ALLOCATOR: Allocator = Allocator;
 
@@ -373,7 +368,7 @@ pub mod os {
 
 /// Default panic handler for `no_std` environments.
 ///
-/// This panic handler is active when the `disable_panic` feature is **not** enabled.
+/// This panic handler is active for the `freertos` backend.
 /// It prints panic information and enters an infinite loop to halt execution.
 ///
 /// # Behavior
@@ -383,9 +378,8 @@ pub mod os {
 ///
 /// # Feature Flag
 ///
-/// - Enabled by default in library mode
-/// - Disabled with `disable_panic` feature when users want to provide their own handler
-/// - Automatically disabled in examples that use `std`
+/// - Enabled for `freertos`
+/// - Automatically disabled when using `posix`
 ///
 /// # Safety
 ///
@@ -395,17 +389,7 @@ pub mod os {
 /// - Performing safe shutdown procedures
 /// - Resetting the system via watchdog
 ///
-/// # Custom Panic Handler
-///
-/// To provide your own panic handler, enable the `disable_panic` feature:
-///
-/// ```toml
-/// [dependencies]
-/// osal-rs = { version = "*", features = ["disable_panic"] }
-/// ```
-///
-/// Then define your own `#[panic_handler]` in your application.
-#[cfg(not(feature = "disable_panic"))]
+#[cfg(feature = "freertos")]
 #[panic_handler]
 fn panic(info: &core::panic::PanicInfo) -> ! {
     println!("Panic occurred: {}", info);

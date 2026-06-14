@@ -116,7 +116,7 @@
 //! 4. **Set production levels**: Use WARNING or ERROR level in production builds
 //! 5. **Never log from ISRs**: Defer to task context using queues or notifications
 
-#[cfg(not(feature = "std"))]
+#[cfg(not(feature = "posix"))]
 pub mod ffi {
     //! Foreign Function Interface (FFI) to C UART functions.
     //!
@@ -166,13 +166,13 @@ pub mod ffi {
     }
 }
 
-#[cfg(not(feature = "std"))]
+#[cfg(not(feature = "posix"))]
 use core::ffi::c_char;
 
-#[cfg(not(feature = "std"))]
+#[cfg(not(feature = "posix"))]
 use crate::log::ffi::printf_on_uart;
 use crate::os::{System, SystemFn};
-#[cfg(not(feature = "std"))]
+#[cfg(not(feature = "posix"))]
 use crate::utils::Bytes;
 
 pub const LOG_BUFFER_SIZE: usize = 256;
@@ -378,12 +378,12 @@ macro_rules! println {
 
 #[doc(hidden)]
 pub fn print_args(args: core::fmt::Arguments<'_>) {
-    #[cfg(feature = "std")]
+    #[cfg(feature = "posix")]
     {
         std::print!("{}", args);
     }
 
-    #[cfg(not(feature = "std"))]
+    #[cfg(not(feature = "posix"))]
     unsafe {
         let mut buf = crate::utils::Bytes::<{ LOG_BUFFER_SIZE }>::new();
         buf.format(args);
@@ -396,12 +396,12 @@ pub fn print_args(args: core::fmt::Arguments<'_>) {
 
 #[doc(hidden)]
 pub fn print_newline() {
-    #[cfg(feature = "std")]
+    #[cfg(feature = "posix")]
     {
         std::print!("{}", RETURN);
     }
 
-    #[cfg(not(feature = "std"))]
+    #[cfg(not(feature = "posix"))]
     unsafe {
         ffi::printf_on_uart(b"\r\n\0".as_ptr() as *const core::ffi::c_char);
     }
@@ -632,14 +632,14 @@ pub fn sys_log(tag: &str, log_type: u8, to_print: &str) {
         let now = System::get_current_time_us();
 
 
-        #[cfg(not(feature = "std"))]
+        #[cfg(not(feature = "posix"))]
         {
             let mut buf = Bytes::<512>::new();
             buf.format(format_args!("{color}({millis}ms)[{tag}] {to_print}{color_reset}{RETURN}", millis=now.as_millis()));
             printf_on_uart(b"%s\0".as_ptr() as *const c_char, buf.as_cstr().as_ptr());
         }
 
-        #[cfg(feature = "std")]
+        #[cfg(feature = "posix")]
         {
             std::println!("{color}({}ms)[{tag}] {to_print}{color_reset}", now.as_millis());
         }

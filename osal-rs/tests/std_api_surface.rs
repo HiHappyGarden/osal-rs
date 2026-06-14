@@ -1,4 +1,4 @@
-#![cfg(feature = "std")]
+#![cfg(feature = "posix")]
 
 use core::mem::size_of;
 use core::ptr::null_mut;

@@ -28,8 +28,6 @@ crate-type = ["staticlib", "rlib"]
 default = ["freertos"]
 freertos = []
 posix = []
-std = ["disable_panic"]
-disable_panic = []
 serde = ["osal-rs-serde"]
 
 

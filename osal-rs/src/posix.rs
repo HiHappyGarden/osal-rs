@@ -18,32 +18,32 @@
  *
  ***************************************************************************/
 
-#[cfg(feature = "std")]
+#[cfg(feature = "posix")]
 pub mod config;
 
-#[cfg(feature = "std")]
+#[cfg(feature = "posix")]
 pub(crate) mod duration;
 
-#[cfg(feature = "std")]
+#[cfg(feature = "posix")]
 pub mod event_group;
 
-#[cfg(feature = "std")]
+#[cfg(feature = "posix")]
 pub mod mutex;
 
-#[cfg(feature = "std")]
+#[cfg(feature = "posix")]
 pub mod queue;
 
-#[cfg(feature = "std")]
+#[cfg(feature = "posix")]
 pub mod semaphore;
 
-#[cfg(feature = "std")]
+#[cfg(feature = "posix")]
 pub mod system;
 
-#[cfg(feature = "std")]
+#[cfg(feature = "posix")]
 pub mod thread;
 
-#[cfg(feature = "std")]
+#[cfg(feature = "posix")]
 pub mod timer;
 
-#[cfg(feature = "std")]
+#[cfg(feature = "posix")]
 pub mod types;

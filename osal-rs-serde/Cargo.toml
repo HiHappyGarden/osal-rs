@@ -58,4 +58,4 @@ required-features = ["derive"]
 
 [[test]]
 name = "integration_tests"
-required-features = ["derive"]
+required-features = ["std", "derive"]

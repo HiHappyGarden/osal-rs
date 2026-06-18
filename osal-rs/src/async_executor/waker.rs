@@ -25,6 +25,7 @@
 //! the executor that is waiting on it.
 
 use core::task::{RawWaker, RawWakerVTable, Waker};
+use core::mem::forget;
 
 use alloc::sync::Arc;
 
@@ -40,25 +41,25 @@ static VTABLE: RawWakerVTable = RawWakerVTable::new(
 
 unsafe fn clone_waker(ptr: *const ()) -> RawWaker {
     // SAFETY: ptr was created from Arc::into_raw; incrementing is safe here.
-    unsafe { Arc::increment_strong_count(ptr as *const Semaphore) };
+    unsafe { Arc::increment_strong_count(&raw const ptr ) };
     RawWaker::new(ptr, &VTABLE)
 }
 
 unsafe fn wake_waker(ptr: *const ()) {
     // SAFETY: ptr was created from Arc::into_raw; this call consumes it.
-    let arc = unsafe { Arc::from_raw(ptr as *const Semaphore) };
+    let arc = unsafe { Arc::from_raw(&raw const ptr) };
     arc.signal();
 }
 
 unsafe fn wake_by_ref_waker(ptr: *const ()) {
     // SAFETY: ptr was created from Arc::into_raw; borrowed temporarily.
-    let arc = unsafe { Arc::from_raw(ptr as *const Semaphore) };
+    let arc = unsafe { Arc::from_raw(&raw const ptr) };
     arc.signal();
-    core::mem::forget(arc);
+    forget(arc);
 }
 
 unsafe fn drop_waker(ptr: *const ()) {
-    unsafe { drop(Arc::from_raw(ptr as *const Semaphore)) };
+    unsafe { drop(Arc::from_raw(&raw const ptr)) };
 }
 
 /// Creates a [`Waker`] that signals `sem` when woken.
@@ -66,7 +67,7 @@ unsafe fn drop_waker(ptr: *const ()) {
 /// Ownership of the `Arc` is transferred into the waker; the semaphore is
 /// kept alive as long as any clone of this waker exists.
 pub(crate) fn waker_from_semaphore(sem: Arc<Semaphore>) -> Waker {
-    let ptr = Arc::into_raw(sem) as *const ();
+    let ptr = &raw const Arc::into_raw(sem);
     // SAFETY: the vtable correctly manages the Arc refcount.
     unsafe { Waker::from_raw(RawWaker::new(ptr, &VTABLE)) }
 }

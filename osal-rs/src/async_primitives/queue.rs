@@ -30,8 +30,10 @@ use core::pin::Pin;
 use core::task::{Context, Poll};
 use core::time::Duration;
 
+
 use alloc::sync::Arc;
 
+use crate::os::types::{UBaseType, TickType};
 use crate::os::Queue;
 use crate::traits::QueueFn;
 use crate::utils::{Error, Result};
@@ -58,7 +60,7 @@ impl AsyncQueue {
     ///
     /// Returns the underlying OSAL error if the queue cannot be created.
     pub fn new(size: u32, message_size: u32) -> Result<Self> {
-        let inner = Queue::new(size as crate::os::types::UBaseType, message_size as crate::os::types::UBaseType)?;
+        let inner = Queue::new(size as UBaseType, message_size as UBaseType)?;
         Ok(Self {
             inner: Arc::new(inner),
             rx_waker: Arc::new(WakerSlot::new()),

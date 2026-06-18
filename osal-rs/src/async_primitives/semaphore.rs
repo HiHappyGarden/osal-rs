@@ -31,6 +31,7 @@ use core::time::Duration;
 use alloc::sync::Arc;
 
 use crate::os::Semaphore;
+use crate::os::types::UBaseType;
 use crate::traits::SemaphoreFn;
 use crate::utils::OsalRsBool;
 
@@ -50,8 +51,8 @@ impl AsyncSemaphore {
     /// Returns the underlying OSAL error if the semaphore cannot be created.
     pub fn new(max_count: u32, initial_count: u32) -> crate::utils::Result<Self> {
         let inner = Semaphore::new(
-            max_count as crate::os::types::UBaseType,
-            initial_count as crate::os::types::UBaseType,
+            max_count as UBaseType,
+            initial_count as UBaseType,
         )?;
         Ok(Self {
             inner: Arc::new(inner),

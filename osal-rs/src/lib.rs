@@ -37,6 +37,7 @@
 //! - **Time Management**: Duration-based timing with tick conversion
 //! - **No-std Support**: Works in bare-metal embedded environments
 //! - **Type Safety**: Leverages Rust's type system for correctness
+//! - **Async/Await**: Backend-agnostic `async`/`await` without Tokio (feature `async`)
 //!
 //! ## Quick Start
 //!
@@ -133,23 +134,52 @@
 //! timer.start_with_to_tick(Duration::from_millis(10));
 //! ```
 //!
+//! ### Async/Await Example (feature `async`)
+//!
+//! ```ignore
+//! use osal_rs::os::{block_on, AsyncMutex, AsyncQueue, AsyncSemaphore};
+//!
+//! // Drive a future to completion on the calling RTOS task — no Tokio needed.
+//! block_on(async {
+//!     let mutex = AsyncMutex::new(0u32);
+//!     {
+//!         let mut guard = mutex.lock().await;
+//!         *guard += 1;
+//!     }
+//!
+//!     let sem = AsyncSemaphore::new(1, 0).unwrap();
+//!     sem.signal();
+//!     sem.wait_async().await;
+//!
+//!     let queue = AsyncQueue::new(8, 4).unwrap();
+//!     queue.post_async(&[1u8, 2, 3, 4]).await.unwrap();
+//!     let mut buf = [0u8; 4];
+//!     queue.fetch_async(&mut buf).await.unwrap();
+//! });
+//! ```
+//!
 //! ## Module Organization
 //!
 //! - [`os`] - Main module containing all OS abstractions
 //!   - Threads, mutexes, semaphores, queues, event groups, timers
 //!   - System-level functions
 //!   - Type definitions
+//!   - `block_on`, `AsyncQueue`, `AsyncSemaphore`, `AsyncMutex` (feature `async`)
+//! - [`async_primitives`] - Async wrappers for OSAL primitives (feature `async`)
 //! - [`utils`] - Utility types and error definitions
 //! - [`log`] - Logging macros
 //! - `traits` - Private module defining the trait abstractions
 //! - `freertos` - Private FreeRTOS implementation (enabled with `freertos` feature)
-//! - `posix` - Private POSIX implementation (enabled with `posix` feature, planned)
+//! - `posix` - Private POSIX implementation (enabled with `posix` feature)
 //!
 //! ## Features
 //!
-//! - `freertos` - Enable FreeRTOS support (default)
-//! - `posix` - Enable POSIX support (planned)
-//! - `posix` - Enable host/POSIX support (uses standard library)
+//! | Feature | Default | Description |
+//! |---------|---------|-------------|
+//! | `freertos` | ✅ | FreeRTOS backend |
+//! | `posix` | ❌ | POSIX/host backend |
+//! | `async` | ❌ | Async/await without Tokio |
+//! | `serde` | ❌ | Serialization via `osal-rs-serde` |
 //!
 //! ## Requirements
 //!
@@ -212,6 +242,7 @@
 //! 4. **Semaphores**: Use binary semaphores for signaling, counting for resources
 //! 5. **ISR Handlers**: Keep ISR code minimal, defer work to tasks
 //! 6. **Error Handling**: Always check `Result` return values
+//! 7. **Async Tasks**: Call `block_on` once per RTOS task; do not nest executors
 //!
 //! ## License
 //!
@@ -251,6 +282,14 @@ pub mod log;
 mod traits;
 
 pub mod utils;
+
+/// Async executor (block_on).
+#[cfg(feature = "async")]
+mod async_executor;
+
+/// Async primitives (AsyncQueue, AsyncSemaphore, AsyncMutex).
+#[cfg(feature = "async")]
+pub mod async_primitives;
 
 /// Select FreeRTOS as the active OSAL backend.
 #[cfg(feature = "freertos")]
@@ -363,6 +402,14 @@ pub mod os {
     
     /// Type aliases and common types used throughout OSAL.
     pub use crate::osal::types as types;
+
+    /// Single-future async executor (backend-agnostic, no Tokio).
+    #[cfg(feature = "async")]
+    pub use crate::async_executor::block_on;
+
+    /// Async-capable wrappers for OSAL primitives.
+    #[cfg(feature = "async")]
+    pub use crate::async_primitives::*;
     
 }
 

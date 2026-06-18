@@ -70,13 +70,13 @@ impl AsyncQueue {
 
     /// Posts `item` synchronously and wakes any async task waiting to receive.
     pub fn post(&self, item: &[u8], timeout_ms: u64) -> Result<()> {
-        let ticks = crate::os::types::TickType::try_from(
+        let ticks = TickType::try_from(
             Duration::from_millis(timeout_ms)
                 .as_millis()
                 .try_into()
-                .unwrap_or(crate::os::types::TickType::MAX),
+                .unwrap_or(TickType::MAX),
         )
-        .unwrap_or(crate::os::types::TickType::MAX);
+        .unwrap_or(TickType::MAX);
         let result = self.inner.post(item, ticks);
         if result.is_ok() {
             self.rx_waker.wake();
@@ -86,13 +86,13 @@ impl AsyncQueue {
 
     /// Fetches an item synchronously and wakes any async task waiting to send.
     pub fn fetch(&self, buf: &mut [u8], timeout_ms: u64) -> Result<()> {
-        let ticks = crate::os::types::TickType::try_from(
+        let ticks = TickType::try_from(
             Duration::from_millis(timeout_ms)
                 .as_millis()
                 .try_into()
-                .unwrap_or(crate::os::types::TickType::MAX),
+                .unwrap_or(TickType::MAX),
         )
-        .unwrap_or(crate::os::types::TickType::MAX);
+        .unwrap_or(TickType::MAX);
         let result = self.inner.fetch(buf, ticks);
         if result.is_ok() {
             self.tx_waker.wake();

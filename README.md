@@ -96,7 +96,7 @@ osal-rs = { version = "0.5", default-features = false, features = ["posix", "asy
 
 ```bash
 # FreeRTOS embedded target
-cargo build --release --target thumbv7em-none-eabihf --features freertos,async
+cargo build --release --target thumbv8m.main-none-eabi --features freertos,async
 
 # POSIX host (for tests / simulation)
 cargo build --no-default-features --features posix,async
@@ -232,7 +232,7 @@ target_link_libraries(osal_rs_porting PUBLIC
 )
 
 # Configure Rust library
-set(RUST_TARGET "thumbv7em-none-eabihf")  # Adjust for your target
+set(RUST_TARGET "thumbv8m.main-none-eabi")  # Adjust for your target
 set(OSAL_RS_LIB "${CMAKE_CURRENT_SOURCE_DIR}/osal-rs/target/${RUST_TARGET}/release/libosal_rs.a")
 
 # Custom command to build Rust library
@@ -295,7 +295,7 @@ function(add_osal_rs_library TARGET_NAME RUST_TARGET CARGO_PROFILE)
 endfunction()
 
 # Use it in your project
-add_osal_rs_library(osal_rs "thumbv7em-none-eabihf" "release")
+add_osal_rs_library(osal_rs "thumbv8m.main-none-eabi" "release")
 ```
 
 ### Integration with Corrosion (Recommended)
@@ -366,7 +366,7 @@ set(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)
 set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)
 
 # Rust target
-set(RUST_TARGET "thumbv7em-none-eabihf")
+set(RUST_TARGET "thumbv8m.main-none-eabi")
 ```
 
 Use it with:
@@ -401,7 +401,7 @@ add_custom_command(
 ```bash
 # Set environment variable before building
 export FREERTOS_CONFIG_PATH="/path/to/your/FreeRTOSConfig.h"
-cargo build --release --target thumbv7em-none-eabihf --features freertos
+cargo build --release --target thumbv8m.main-none-eabi --features freertos
 ```
 
 #### Using with Corrosion
@@ -467,10 +467,10 @@ fn main() {
 
 ```bash
 # Install Rust target (example for ARM Cortex-M4F)
-rustup target add thumbv7em-none-eabihf
+rustup target add thumbv8m.main-none-eabi
 
 # Build with FreeRTOS support
-cargo build --release --target thumbv7em-none-eabihf --features freertos
+cargo build --release --target thumbv8m.main-none-eabi --features freertos
 ```
 
 ### For native development/testing:
@@ -497,17 +497,17 @@ OSAL-RS provides several Cargo features to customize the build configuration for
 
 #### FreeRTOS Embedded Development (Default)
 ```bash
-cargo build --target thumbv7em-none-eabihf --features freertos
+cargo build --target thumbv8m.main-none-eabi --features freertos
 ```
 
 #### FreeRTOS with Async Support
 ```bash
-cargo build --target thumbv7em-none-eabihf --features freertos,async
+cargo build --target thumbv8m.main-none-eabi --features freertos,async
 ```
 
 #### FreeRTOS with Serialization Support
 ```bash
-cargo build --target thumbv7em-none-eabihf --features freertos,serde
+cargo build --target thumbv8m.main-none-eabi --features freertos,serde
 ```
 
 #### Native Development (POSIX)

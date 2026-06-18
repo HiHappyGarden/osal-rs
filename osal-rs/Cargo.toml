@@ -29,6 +29,7 @@ default = ["freertos"]
 freertos = []
 posix = []
 serde = ["osal-rs-serde"]
+async = []
 
 
 [dependencies]

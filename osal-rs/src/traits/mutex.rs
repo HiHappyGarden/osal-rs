@@ -380,23 +380,27 @@ pub trait Mutex<T: ?Sized> {
 ///     // protected code here, lock released when `_lock` drops
 /// }
 /// ```
-pub struct RawMutexGuard<M: RawMutex + 'static>(&'static M);
+pub struct RawMutexGuard<M: RawMutex + 'static>(&'static M, bool);
 
 impl<M: RawMutex + 'static> RawMutexGuard<M> {
     /// Locks `mutex` and returns a guard that unlocks it on drop.
     pub fn acquire(mutex: &'static M) -> Self {
         mutex.lock();
-        Self(mutex)
+        Self(mutex, true)
     }
 
     pub fn acquire_from_isr(mutex: &'static M) -> Self {
         mutex.lock_from_isr();
-        Self(mutex)
+        Self(mutex, false)
     }
 }
 
 impl<M: RawMutex + 'static> Drop for RawMutexGuard<M> {
     fn drop(&mut self) {
-        self.0.unlock();
+        if !self.1 {
+            self.0.unlock();
+        } else {
+            self.0.unlock_from_isr();
+        }
     }
 }

@@ -161,6 +161,9 @@ pub use crate::traits::event_group::EventGroup as EventGroupFn;
 // Re-export mutex traits with Fn suffix (RawMutex, Mutex, MutexGuard)
 pub use crate::traits::mutex::{Mutex as MutexFn, MutexGuard as MutexGuardFn, RawMutex as RawMutexFn};
 
+// Re-export the generic RAII guard for `'static` raw mutexes
+pub use crate::traits::mutex::RawMutexGuard;
+
 // Re-export queue traits with Fn suffix (Queue for raw bytes, QueueStreamed for typed messages)
 pub use crate::traits::queue::{Queue as QueueFn, QueueStreamed as QueueStreamedFn};
 

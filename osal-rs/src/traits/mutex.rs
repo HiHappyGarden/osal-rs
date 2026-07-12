@@ -397,7 +397,7 @@ impl<M: RawMutex + 'static> RawMutexGuard<M> {
 
 impl<M: RawMutex + 'static> Drop for RawMutexGuard<M> {
     fn drop(&mut self) {
-        if !self.1 {
+        if self.1 {
             self.0.unlock();
         } else {
             self.0.unlock_from_isr();

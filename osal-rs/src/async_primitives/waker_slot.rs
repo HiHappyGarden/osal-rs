@@ -76,6 +76,8 @@ impl WakerSlot {
 }
 
 impl Default for WakerSlot {
+    
+    #[inline]
     fn default() -> Self {
         Self::new()
     }

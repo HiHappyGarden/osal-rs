@@ -51,6 +51,8 @@ impl FreeRtosTypeGenerator {
 
 #[cfg(target_os = "none")]
 impl Default for FreeRtosTypeGenerator {
+
+    #[inline]
     fn default() -> Self {
         Self::new()
     }
@@ -396,6 +398,8 @@ pub type StackType = {};
 
 #[cfg(not(target_os = "none"))]
 impl Default for FreeRtosTypeGenerator {
+
+    #[inline]
     fn default() -> Self {
         Self::new()
     }

@@ -36,6 +36,71 @@ OSAL-RS provides a unified API for developing multi-platform embedded applicatio
 - **Time Management**: Duration handling and tick-based timing
 - **System Control**: Scheduler control, task notifications, and system information
 - **No-std Support**: Fully compatible with bare-metal embedded systems
+- **🆕 Async/Await**: Backend-agnostic `async`/`await` support without Tokio (see below)
+
+### 🆕 Async/Await Support (feature `async`)
+
+OSAL-RS includes a **backend-agnostic async runtime** that works on both FreeRTOS and POSIX
+without Tokio or any external async runtime.
+
+#### Design
+
+| Component | Description |
+|-----------|-------------|
+| `block_on(future)` | Drives a `Future` to completion on the calling RTOS task |
+| `AsyncQueue` | Queue with `fetch_async` / `post_async` methods |
+| `AsyncSemaphore` | Semaphore with `wait_async` |
+| `AsyncMutex<T>` | Mutex whose `lock()` returns a `Future` |
+
+- **No Tokio, no `std`**: built on `core::future::Future` + OSAL semaphores as the blocking primitive.
+- **Per-task executor**: `block_on` runs on the calling RTOS task; no thread pool is needed.
+- **Lock-free waker storage**: `WakerSlot` uses `AtomicPtr<Waker>` — no RTOS overhead for waker updates.
+- **Race-condition safe**: the classic *store-waker-then-retry* double-check pattern is used in every `poll` implementation.
+
+#### Quick Example
+
+```rust
+use osal_rs::os::{block_on, AsyncMutex, AsyncQueue, AsyncSemaphore};
+
+// Run async code inside any RTOS task — no runtime setup required
+block_on(async {
+    // Async mutex
+    let mutex = AsyncMutex::new(0u32);
+    {
+        let mut guard = mutex.lock().await;
+        *guard += 1;
+    }
+
+    // Async semaphore (signal from another task or ISR)
+    let sem = AsyncSemaphore::new(1, 0).unwrap();
+    sem.signal();
+    sem.wait_async().await;
+
+    // Async queue
+    let queue = AsyncQueue::new(8, 4).unwrap();
+    queue.post_async(&[1, 2, 3, 4]).await.unwrap();
+    let mut buf = [0u8; 4];
+    queue.fetch_async(&mut buf).await.unwrap();
+});
+```
+
+#### Enable the feature
+
+```toml
+# Cargo.toml
+[dependencies]
+osal-rs = { version = "0.5", features = ["freertos", "async"] }
+# or for host development
+osal-rs = { version = "0.5", default-features = false, features = ["posix", "async"] }
+```
+
+```bash
+# FreeRTOS embedded target
+cargo build --release --target thumbv8m.main-none-eabi --features freertos,async
+
+# POSIX host (for tests / simulation)
+cargo build --no-default-features --features posix,async
+```
 
 ### 🆕 osal-rs-serde Features
 
@@ -167,7 +232,7 @@ target_link_libraries(osal_rs_porting PUBLIC
 )
 
 # Configure Rust library
-set(RUST_TARGET "thumbv7em-none-eabihf")  # Adjust for your target
+set(RUST_TARGET "thumbv8m.main-none-eabi")  # Adjust for your target
 set(OSAL_RS_LIB "${CMAKE_CURRENT_SOURCE_DIR}/osal-rs/target/${RUST_TARGET}/release/libosal_rs.a")
 
 # Custom command to build Rust library
@@ -230,7 +295,7 @@ function(add_osal_rs_library TARGET_NAME RUST_TARGET CARGO_PROFILE)
 endfunction()
 
 # Use it in your project
-add_osal_rs_library(osal_rs "thumbv7em-none-eabihf" "release")
+add_osal_rs_library(osal_rs "thumbv8m.main-none-eabi" "release")
 ```
 
 ### Integration with Corrosion (Recommended)
@@ -301,7 +366,7 @@ set(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)
 set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)
 
 # Rust target
-set(RUST_TARGET "thumbv7em-none-eabihf")
+set(RUST_TARGET "thumbv8m.main-none-eabi")
 ```
 
 Use it with:
@@ -336,7 +401,7 @@ add_custom_command(
 ```bash
 # Set environment variable before building
 export FREERTOS_CONFIG_PATH="/path/to/your/FreeRTOSConfig.h"
-cargo build --release --target thumbv7em-none-eabihf --features freertos
+cargo build --release --target thumbv8m.main-none-eabi --features freertos
 ```
 
 #### Using with Corrosion
@@ -402,10 +467,10 @@ fn main() {
 
 ```bash
 # Install Rust target (example for ARM Cortex-M4F)
-rustup target add thumbv7em-none-eabihf
+rustup target add thumbv8m.main-none-eabi
 
 # Build with FreeRTOS support
-cargo build --release --target thumbv7em-none-eabihf --features freertos
+cargo build --release --target thumbv8m.main-none-eabi --features freertos
 ```
 
 ### For native development/testing:
@@ -425,23 +490,34 @@ OSAL-RS provides several Cargo features to customize the build configuration for
 |---------|---------|-------------|
 | `freertos` | ✅ | Enable FreeRTOS backend implementation. This is the default and fully implemented feature for embedded RTOS development. |
 | `posix` | ❌ | Enable POSIX/native backend implementation for host environments. |
+| `async` | ❌ | Enable backend-agnostic async/await support (`block_on`, `AsyncQueue`, `AsyncSemaphore`, `AsyncMutex`). Works with both `freertos` and `posix`. No Tokio required. |
 | `serde` | ❌ | Enable serialization/deserialization support via `osal-rs-serde`. Includes derive macros for automatic implementation. |
 
 ### Feature Combinations
 
 #### FreeRTOS Embedded Development (Default)
 ```bash
-cargo build --target thumbv7em-none-eabihf --features freertos
+cargo build --target thumbv8m.main-none-eabi --features freertos
+```
+
+#### FreeRTOS with Async Support
+```bash
+cargo build --target thumbv8m.main-none-eabi --features freertos,async
 ```
 
 #### FreeRTOS with Serialization Support
 ```bash
-cargo build --target thumbv7em-none-eabihf --features freertos,serde
+cargo build --target thumbv8m.main-none-eabi --features freertos,serde
 ```
 
 #### Native Development (POSIX)
 ```bash
 cargo build --no-default-features --features posix
+```
+
+#### Native Development with Async Support
+```bash
+cargo build --no-default-features --features posix,async
 ```
 
 #### Native Development with Serialization

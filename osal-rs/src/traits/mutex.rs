@@ -358,3 +358,49 @@ pub trait Mutex<T: ?Sized> {
     /// ```
     fn get_mut(&mut self) -> &mut T;
 }
+
+/// RAII guard for a `'static` [`RawMutex`] implementation.
+///
+/// Locks the mutex on construction and unlocks it on drop, so callers only
+/// need to hold on to the guard for the duration of the critical section.
+/// This is intended for the common pattern of a module-level
+/// `static mut Option<M>` mutex guarding a module-level `static mut` resource,
+/// e.g. obtained via `access_static_option!`.
+///
+/// # Examples
+///
+/// ```ignore
+/// use osal_rs::traits::RawMutexGuard;
+/// use osal_rs::{access_static_option, os::RawMutex};
+///
+/// static mut MUTEX: Option<RawMutex> = None;
+///
+/// fn critical_section() {
+///     let _lock = RawMutexGuard::acquire(access_static_option!(MUTEX));
+///     // protected code here, lock released when `_lock` drops
+/// }
+/// ```
+pub struct RawMutexGuard<M: RawMutex + 'static>(&'static M, bool);
+
+impl<M: RawMutex + 'static> RawMutexGuard<M> {
+    /// Locks `mutex` and returns a guard that unlocks it on drop.
+    pub fn acquire(mutex: &'static M) -> Self {
+        mutex.lock();
+        Self(mutex, true)
+    }
+
+    pub fn acquire_from_isr(mutex: &'static M) -> Self {
+        mutex.lock_from_isr();
+        Self(mutex, false)
+    }
+}
+
+impl<M: RawMutex + 'static> Drop for RawMutexGuard<M> {
+    fn drop(&mut self) {
+        if self.1 {
+            self.0.unlock();
+        } else {
+            self.0.unlock_from_isr();
+        }
+    }
+}

@@ -36,9 +36,9 @@ OSAL-RS provides a unified API for developing multi-platform embedded applicatio
 - **Time Management**: Duration handling and tick-based timing
 - **System Control**: Scheduler control, task notifications, and system information
 - **No-std Support**: Fully compatible with bare-metal embedded systems
-- **🆕 Async/Await**: Backend-agnostic `async`/`await` support without Tokio (see below)
+- **🆕 _EXPERIMENTAL_ Async/Await**: Backend-agnostic `async`/`await` support without Tokio (see below)
 
-### 🆕 Async/Await Support (feature `async`)
+### 🆕 _EXPERIMENTAL_ Async/Await Support (feature `async`) 
 
 OSAL-RS includes a **backend-agnostic async runtime** that works on both FreeRTOS and POSIX
 without Tokio or any external async runtime.

@@ -18,20 +18,28 @@
  *
  ***************************************************************************/
 
-extern crate alloc;
+//! Ported 1:1 from osal-rs-tests' FreeRTOS suite (`thread_tests.rs`) to run
+//! against the POSIX backend. `posix::Thread::spawn`/`spawn_simple` are
+//! currently stubs — the callback is stored but never actually executed on
+//! a real OS thread — so assertions that depend on the callback running
+//! (`test_thread_with_param`, `test_thread_notification`,
+//! `test_thread_spawn_simple_with_shared_data`) fail until a real
+//! implementation lands in `src/posix/thread.rs`.
 
-use alloc::sync::Arc;
+#![cfg(feature = "posix")]
+
+use std::sync::Arc;
 use core::any::Any;
 use core::sync::atomic::{AtomicU32, Ordering};
 use core::time::Duration;
 use osal_rs::os::*;
-use osal_rs::os::ThreadNotification;
 use osal_rs::utils::Result;
 use osal_rs::{log_debug, log_info};
 
 const TAG: &str = "ThreadTests";
 
-pub fn test_thread_creation() -> Result<()> {
+#[test]
+fn test_thread_creation() -> Result<()> {
     log_info!(TAG, "Starting test_thread_creation");
     let thread = Thread::new(
         "test_thread",
@@ -48,7 +56,8 @@ pub fn test_thread_creation() -> Result<()> {
     Ok(())
 }
 
-pub fn test_thread_spawn() -> Result<()> {
+#[test]
+fn test_thread_spawn() -> Result<()> {
     log_info!(TAG, "Starting test_thread_spawn");
     let mut thread = Thread::new(
         "spawn_test",
@@ -60,7 +69,7 @@ pub fn test_thread_spawn() -> Result<()> {
         Ok(_param.unwrap_or_else(|| Arc::new(())))
     });
     assert!(result.is_ok());
-    
+
     if let Ok(spawned) = result {
         let metadata = spawned.get_metadata();
         log_debug!(TAG, "Spawned thread handle: {:?}", metadata.thread);
@@ -72,11 +81,12 @@ pub fn test_thread_spawn() -> Result<()> {
     Ok(())
 }
 
-pub fn test_thread_with_param() -> Result<()> {
+#[test]
+fn test_thread_with_param() -> Result<()> {
     log_info!(TAG, "Starting test_thread_with_param");
     let test_value: u32 = 42;
     let param: Arc<dyn Any + Send + Sync> = Arc::new(test_value);
-    
+
     let mut thread = Thread::new(
         "param_test",
         1024,
@@ -92,7 +102,7 @@ pub fn test_thread_with_param() -> Result<()> {
         Ok(param.unwrap_or_else(|| Arc::new(())))
     });
     assert!(result.is_ok());
-    
+
     if let Ok(spawned) = result {
         log_debug!(TAG, "Thread spawned with parameter");
         System::delay(Duration::from_millis(50).to_ticks());
@@ -102,7 +112,8 @@ pub fn test_thread_with_param() -> Result<()> {
     Ok(())
 }
 
-pub fn test_thread_suspend_resume() -> Result<()> {
+#[test]
+fn test_thread_suspend_resume() -> Result<()> {
     log_info!(TAG, "Starting test_thread_suspend_resume");
     let mut thread = Thread::new(
         "suspend_test",
@@ -114,7 +125,7 @@ pub fn test_thread_suspend_resume() -> Result<()> {
         System::delay(Duration::from_millis(100).to_ticks());
         Ok(_param.unwrap_or_else(|| Arc::new(())))
     })?;
-    
+
     log_debug!(TAG, "Suspending thread...");
     spawned.suspend();
     System::delay(Duration::from_millis(10).to_ticks());
@@ -126,7 +137,8 @@ pub fn test_thread_suspend_resume() -> Result<()> {
     Ok(())
 }
 
-pub fn test_thread_get_metadata() -> Result<()> {
+#[test]
+fn test_thread_get_metadata() -> Result<()> {
     log_info!(TAG, "Starting test_thread_get_metadata");
     let mut thread = Thread::new(
         "metadata_test",
@@ -138,19 +150,20 @@ pub fn test_thread_get_metadata() -> Result<()> {
         System::delay(Duration::from_millis(50).to_ticks());
         Ok(_param.unwrap_or_else(|| Arc::new(())))
     })?;
-    
+
     let metadata = spawned.get_metadata();
-    
+
     log_debug!(TAG, "Metadata - name: {}, priority: {}", metadata.name, metadata.priority);
     assert_eq!(metadata.name.as_str(), "metadata_test");
     assert_eq!(metadata.priority, 5);
-    
+
     spawned.delete();
     log_info!(TAG, "test_thread_get_metadata PASSED");
     Ok(())
 }
 
-pub fn test_thread_notification() -> Result<()> {
+#[test]
+fn test_thread_notification() -> Result<()> {
     log_info!(TAG, "Starting test_thread_notification");
     let mut thread = Thread::new(
         "notify_test",
@@ -164,19 +177,20 @@ pub fn test_thread_notification() -> Result<()> {
         assert_eq!(notification, 0x12345678);
         Ok(Arc::new(()))
     })?;
-    
+
     System::delay(Duration::from_millis(10).to_ticks());
     log_debug!(TAG, "Sending notification: 0x12345678");
     let notify_result = spawned.notify(ThreadNotification::SetValueWithOverwrite(0x12345678));
     assert!(notify_result.is_ok());
-    
+
     System::delay(Duration::from_millis(50).to_ticks());
     spawned.delete();
     log_info!(TAG, "test_thread_notification PASSED");
     Ok(())
 }
 
-pub fn test_thread_get_current() -> Result<()> {
+#[test]
+fn test_thread_get_current() -> Result<()> {
     log_info!(TAG, "Starting test_thread_get_current");
     let current = Thread::get_current();
     let metadata = current.get_metadata();
@@ -186,7 +200,8 @@ pub fn test_thread_get_current() -> Result<()> {
     Ok(())
 }
 
-pub fn test_thread_spawn_simple() -> Result<()> {
+#[test]
+fn test_thread_spawn_simple() -> Result<()> {
     log_info!(TAG, "Starting test_thread_spawn_simple");
     let mut thread = Thread::new(
         "simple_test",
@@ -198,9 +213,9 @@ pub fn test_thread_spawn_simple() -> Result<()> {
         log_debug!(TAG, "Simple thread executing");
         System::delay(Duration::from_millis(10).to_ticks());
     });
-    
+
     assert!(result.is_ok());
-    
+
     if let Ok(spawned) = result {
         log_debug!(TAG, "Simple thread spawned successfully");
         System::delay(Duration::from_millis(50).to_ticks());
@@ -210,12 +225,13 @@ pub fn test_thread_spawn_simple() -> Result<()> {
     Ok(())
 }
 
-pub fn test_thread_spawn_simple_with_shared_data() -> Result<()> {
+#[test]
+fn test_thread_spawn_simple_with_shared_data() -> Result<()> {
     log_info!(TAG, "Starting test_thread_spawn_simple_with_shared_data");
-    
+
     let counter = Mutex::new_arc(0u32);
     let counter_clone = Arc::clone(&counter);
-    
+
     let mut thread = Thread::new(
         "shared_data_test",
         1024,
@@ -229,35 +245,29 @@ pub fn test_thread_spawn_simple_with_shared_data() -> Result<()> {
             log_debug!(TAG, "Counter: {}", *num);
         }
     });
-    
+
     assert!(result.is_ok());
-    
+
     if let Ok(spawned) = result {
         System::delay(Duration::from_millis(100).to_ticks());
         spawned.delete();
     }
-    
+
     let final_count = *counter.lock().unwrap();
     log_debug!(TAG, "Final counter value: {}", final_count);
     assert_eq!(final_count, 5);
-    
+
     log_info!(TAG, "test_thread_spawn_simple_with_shared_data PASSED");
     Ok(())
 }
 
 /// Exercises real two-thread synchronization via `ThreadFn::notify` /
-/// `ThreadFn::wait_notification`, in both directions:
-///
-/// 1. The worker thread blocks on `wait_notification` until the main thread
-///    wakes it up with a specific value.
-/// 2. The worker stores the received value, then notifies the main thread
-///    back (rendezvous) with a different value.
-/// 3. The main thread blocks on its own `wait_notification` until the
-///    worker's reply arrives, and both values are checked.
-///
-/// This is a stronger check than `test_thread_notification`, which only
-/// verifies a one-way, fire-and-forget notification.
-pub fn test_thread_two_thread_notification_sync() -> Result<()> {
+/// `ThreadFn::wait_notification`, in both directions (see the FreeRTOS
+/// counterpart in osal-rs-tests). Requires `posix::Thread::spawn` to
+/// actually run the callback on a real thread, which it does not yet do —
+/// expected to fail until `src/posix/thread.rs` is implemented for real.
+#[test]
+fn test_thread_two_thread_notification_sync() -> Result<()> {
     log_info!(TAG, "Starting test_thread_two_thread_notification_sync");
     static WORKER_RECEIVED: AtomicU32 = AtomicU32::new(0);
 
@@ -290,21 +300,5 @@ pub fn test_thread_two_thread_notification_sync() -> Result<()> {
 
     spawned.delete();
     log_info!(TAG, "test_thread_two_thread_notification_sync PASSED");
-    Ok(())
-}
-
-pub fn run_all_tests() -> Result<()> {
-    log_info!(TAG, "========== Running Thread Tests ==========");
-    test_thread_creation()?;
-    test_thread_spawn()?;
-    test_thread_with_param()?;
-    test_thread_suspend_resume()?;
-    test_thread_get_metadata()?;
-    test_thread_notification()?;
-    test_thread_two_thread_notification_sync()?;
-    test_thread_get_current()?;
-    test_thread_spawn_simple()?;
-    test_thread_spawn_simple_with_shared_data()?;
-    log_info!(TAG, "========== All Thread Tests PASSED ==========");
     Ok(())
 }

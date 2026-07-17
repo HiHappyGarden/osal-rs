@@ -21,7 +21,7 @@
 extern crate alloc;
 
 use osal_rs::os::*;
-use osal_rs::utils::Result;
+use osal_rs::utils::{OsalRsBool, Result};
 use osal_rs::{log_debug, log_info};
 
 const TAG: &str = "MutexTests";
@@ -155,6 +155,65 @@ pub fn test_mutex_drop() -> Result<()> {
     Ok(())
 }
 
+pub fn test_raw_mutex_lifecycle() -> Result<()> {
+    log_info!(TAG, "Starting test_raw_mutex_lifecycle");
+    let mut raw_mutex = RawMutex::new()?;
+
+    let lock_result = raw_mutex.lock();
+    log_debug!(TAG, "RawMutex lock result: {:?}", lock_result);
+    assert_eq!(lock_result, OsalRsBool::True);
+
+    let unlock_result = raw_mutex.unlock();
+    log_debug!(TAG, "RawMutex unlock result: {:?}", unlock_result);
+    assert_eq!(unlock_result, OsalRsBool::True);
+
+    let isr_lock_result = raw_mutex.lock_from_isr();
+    log_debug!(TAG, "RawMutex lock_from_isr result: {:?}", isr_lock_result);
+    assert_eq!(isr_lock_result, OsalRsBool::True);
+
+    let isr_unlock_result = raw_mutex.unlock_from_isr();
+    log_debug!(TAG, "RawMutex unlock_from_isr result: {:?}", isr_unlock_result);
+    assert_eq!(isr_unlock_result, OsalRsBool::True);
+
+    raw_mutex.delete();
+    log_info!(TAG, "test_raw_mutex_lifecycle PASSED");
+    Ok(())
+}
+
+pub fn test_mutex_lock_from_isr_explicit() -> Result<()> {
+    log_info!(TAG, "Starting test_mutex_lock_from_isr_explicit");
+    let mutex = Mutex::new(7u32);
+
+    let guard = mutex.lock_from_isr_explicit()?;
+    log_debug!(TAG, "Locked from ISR, value: {}", *guard);
+    assert_eq!(*guard, 7);
+    drop(guard);
+
+    log_info!(TAG, "test_mutex_lock_from_isr_explicit PASSED");
+    Ok(())
+}
+
+pub fn test_mutex_get_mut() -> Result<()> {
+    log_info!(TAG, "Starting test_mutex_get_mut");
+    let mut mutex = Mutex::new(1u32);
+    *mutex.get_mut() = 99;
+    let guard = mutex.lock()?;
+    log_debug!(TAG, "Value after get_mut write: {}", *guard);
+    assert_eq!(*guard, 99);
+    log_info!(TAG, "test_mutex_get_mut PASSED");
+    Ok(())
+}
+
+pub fn test_mutex_into_inner() -> Result<()> {
+    log_info!(TAG, "Starting test_mutex_into_inner");
+    let mutex = Mutex::new(55u32);
+    let value = mutex.into_inner()?;
+    log_debug!(TAG, "Recovered inner value: {}", value);
+    assert_eq!(value, 55);
+    log_info!(TAG, "test_mutex_into_inner PASSED");
+    Ok(())
+}
+
 pub fn run_all_tests() -> Result<()> {
     log_info!(TAG, "========== Running Mutex Tests ==========");
     test_mutex_creation()?;
@@ -164,6 +223,10 @@ pub fn run_all_tests() -> Result<()> {
     test_mutex_guard_drop()?;
     test_mutex_with_struct()?;
     test_mutex_recursive()?;
+    test_raw_mutex_lifecycle()?;
+    test_mutex_lock_from_isr_explicit()?;
+    test_mutex_get_mut()?;
+    test_mutex_into_inner()?;
     test_mutex_drop()?;
     log_info!(TAG, "========== All Mutex Tests PASSED ==========");
     Ok(())

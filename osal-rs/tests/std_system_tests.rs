@@ -222,3 +222,34 @@ fn test_system_time_monotonic() -> Result<()> {
     log_info!(TAG, "test_system_time_monotonic PASSED");
     Ok(())
 }
+
+#[test]
+fn test_system_delay_with_to_tick() -> Result<()> {
+    log_info!(TAG, "Starting test_system_delay_with_to_tick");
+    let start = System::get_tick_count();
+    System::delay_with_to_tick(Duration::from_millis(10));
+    let end = System::get_tick_count();
+    log_debug!(TAG, "delay_with_to_tick: start={}, end={}", start, end);
+    assert!(end >= start);
+    log_info!(TAG, "test_system_delay_with_to_tick PASSED");
+    Ok(())
+}
+
+#[test]
+fn test_system_delay_until_with_to_tick() -> Result<()> {
+    log_info!(TAG, "Starting test_system_delay_until_with_to_tick");
+    let mut wake_time = System::get_tick_count();
+    System::delay_until_with_to_tick(&mut wake_time, Duration::from_millis(10));
+    log_debug!(TAG, "New wake time: {}", wake_time);
+    assert!(wake_time > 0);
+    log_info!(TAG, "test_system_delay_until_with_to_tick PASSED");
+    Ok(())
+}
+
+// NOTE: `System::start`/`stop`, `yield_from_isr`, `end_switching_isr`,
+// `enter_critical_from_isr`/`exit_critical_from_isr` are intentionally NOT
+// invoked here. On the FreeRTOS backend `start`/`stop` control the real
+// scheduler and calling them from an already-running task would hang or
+// corrupt the test run; the ISR-only functions are only meaningful from
+// actual interrupt context. All five are already signature-checked as
+// function pointers in `std_api_surface.rs`.

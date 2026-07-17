@@ -38,6 +38,14 @@ use osal_rs::{log_debug, log_info};
 
 const TAG: &str = "ThreadTests";
 
+struct FixedPriority(types::UBaseType);
+
+impl ToPriority for FixedPriority {
+    fn to_priority(&self) -> types::UBaseType {
+        self.0
+    }
+}
+
 #[test]
 fn test_thread_creation() -> Result<()> {
     log_info!(TAG, "Starting test_thread_creation");
@@ -300,5 +308,94 @@ fn test_thread_two_thread_notification_sync() -> Result<()> {
 
     spawned.delete();
     log_info!(TAG, "test_thread_two_thread_notification_sync PASSED");
+    Ok(())
+}
+
+#[test]
+fn test_thread_new_with_to_priority() -> Result<()> {
+    log_info!(TAG, "Starting test_thread_new_with_to_priority");
+    let mut thread = Thread::new_with_to_priority("priority_test", 1024, FixedPriority(3));
+
+    let spawned = thread.spawn_simple(|| {
+        System::delay(Duration::from_millis(50).to_ticks());
+    })?;
+
+    let metadata = spawned.get_metadata();
+    log_debug!(TAG, "Spawned priority: {}", metadata.priority);
+    assert_eq!(metadata.priority, 3);
+
+    spawned.delete();
+    log_info!(TAG, "test_thread_new_with_to_priority PASSED");
+    Ok(())
+}
+
+#[test]
+fn test_thread_handle_based_constructors() -> Result<()> {
+    log_info!(TAG, "Starting test_thread_handle_based_constructors");
+
+    let mut source = Thread::new("handle_source", 1024, 2);
+    let spawned = source.spawn_simple(|| {
+        System::delay(Duration::from_millis(50).to_ticks());
+    })?;
+    let handle = *spawned;
+
+    let wrapped = Thread::new_with_handle_and_to_priority(handle, "wrapped", 1024, FixedPriority(6))?;
+    assert_eq!(*wrapped, handle);
+
+    let null_handle: types::ThreadHandle = core::ptr::null();
+    let null_result = Thread::new_with_handle_and_to_priority(null_handle, "invalid", 128, FixedPriority(1));
+    assert!(null_result.is_err());
+
+    let metadata = Thread::get_metadata_from_handle(handle);
+    log_debug!(TAG, "Looked-up metadata for real handle: thread_null={}", metadata.thread.is_null());
+    assert!(!metadata.thread.is_null());
+
+    spawned.delete();
+    log_info!(TAG, "test_thread_handle_based_constructors PASSED");
+    Ok(())
+}
+
+#[test]
+fn test_thread_notify_from_isr_and_wait_with_to_tick() -> Result<()> {
+    log_info!(TAG, "Starting test_thread_notify_from_isr_and_wait_with_to_tick");
+    static WORKER_RECEIVED: AtomicU32 = AtomicU32::new(0);
+
+    let main_thread = Thread::get_current();
+
+    let mut thread = Thread::new("isr_notify_worker", 1024, 5);
+    let spawned = thread.spawn(None, move |_thread, param| {
+        let value = Thread::get_current().wait_notification_with_to_tick(0, 0xFFFFFFFF, Duration::from_millis(1000))?;
+        WORKER_RECEIVED.store(value, Ordering::SeqCst);
+        main_thread.notify(ThreadNotification::SetValueWithOverwrite(1))?;
+        Ok(param.unwrap_or_else(|| Arc::new(())))
+    })?;
+
+    let mut higher_priority_task_woken: types::BaseType = 0;
+    let notify_result = spawned.notify_from_isr(ThreadNotification::SetValueWithOverwrite(0x99), &mut higher_priority_task_woken);
+    log_debug!(TAG, "notify_from_isr ok: {}", notify_result.is_ok());
+    assert!(notify_result.is_ok());
+
+    let reply = Thread::get_current().wait_notification(0, 0xFFFFFFFF, Duration::from_millis(1000).to_ticks())?;
+    assert_eq!(reply, 1);
+    assert_eq!(WORKER_RECEIVED.load(Ordering::SeqCst), 0x99);
+
+    spawned.delete();
+    log_info!(TAG, "test_thread_notify_from_isr_and_wait_with_to_tick PASSED");
+    Ok(())
+}
+
+#[test]
+fn test_thread_join() -> Result<()> {
+    log_info!(TAG, "Starting test_thread_join");
+    let mut thread = Thread::new("join_test", 1024, 5);
+    let spawned = thread.spawn_simple(|| {
+        System::delay(Duration::from_millis(10).to_ticks());
+    })?;
+
+    let join_result = spawned.join(core::ptr::null_mut());
+    log_debug!(TAG, "join result: {:?}", join_result);
+    assert!(join_result.is_ok());
+
+    log_info!(TAG, "test_thread_join PASSED");
     Ok(())
 }

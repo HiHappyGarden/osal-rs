@@ -204,6 +204,36 @@ pub fn test_system_time_monotonic() -> Result<()> {
     Ok(())
 }
 
+pub fn test_system_delay_with_to_tick() -> Result<()> {
+    log_info!(TAG, "Starting test_system_delay_with_to_tick");
+    let start = System::get_tick_count();
+    System::delay_with_to_tick(Duration::from_millis(10));
+    let end = System::get_tick_count();
+    log_debug!(TAG, "delay_with_to_tick: start={}, end={}", start, end);
+    assert!(end >= start);
+    log_info!(TAG, "test_system_delay_with_to_tick PASSED");
+    Ok(())
+}
+
+pub fn test_system_delay_until_with_to_tick() -> Result<()> {
+    log_info!(TAG, "Starting test_system_delay_until_with_to_tick");
+    let mut wake_time = System::get_tick_count();
+    System::delay_until_with_to_tick(&mut wake_time, Duration::from_millis(10));
+    log_debug!(TAG, "New wake time: {}", wake_time);
+    assert!(wake_time > 0);
+    log_info!(TAG, "test_system_delay_until_with_to_tick PASSED");
+    Ok(())
+}
+
+// NOTE: `System::start`/`stop`, `yield_from_isr`, `end_switching_isr`,
+// `enter_critical_from_isr`/`exit_critical_from_isr` are intentionally NOT
+// invoked here (nor in `run_all_tests`). `start`/`stop` control the real
+// FreeRTOS scheduler (`vTaskStartScheduler`/`vTaskEndScheduler`) and calling
+// them from a task that is itself running under an already-started
+// scheduler would hang or corrupt the test run. The ISR-only functions are
+// only meaningful when called from actual interrupt context. All five are
+// already signature-checked as function pointers in `api_surface.rs`.
+
 pub fn run_all_tests() -> Result<()> {
     log_info!(TAG, "========== Running System Tests ==========");
     test_system_get_tick_count()?;
@@ -212,6 +242,8 @@ pub fn run_all_tests() -> Result<()> {
     test_system_get_all_threads()?;
     test_system_delay()?;
     test_system_delay_until()?;
+    test_system_delay_with_to_tick()?;
+    test_system_delay_until_with_to_tick()?;
     test_system_critical_section()?;
     test_system_suspend_resume_all()?;
     test_system_check_timer()?;

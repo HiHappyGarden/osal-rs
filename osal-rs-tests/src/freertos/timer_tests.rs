@@ -228,6 +228,42 @@ pub fn test_timer_delete() -> Result<()> {
     Ok(())
 }
 
+pub fn test_timer_with_to_tick_variants() -> Result<()> {
+    log_info!(TAG, "Starting test_timer_with_to_tick_variants");
+    let mut timer = Timer::new_with_to_tick(
+        "with_to_tick_timer",
+        Duration::from_millis(100),
+        false,
+        None,
+        |_timer, param| {
+            Ok(param.unwrap_or_else(|| Arc::new(())))
+        }
+    )?;
+
+    let start_result = timer.start_with_to_tick(Duration::from_millis(10));
+    log_debug!(TAG, "start_with_to_tick: {:?}", start_result);
+    assert_eq!(start_result, OsalRsBool::True);
+
+    let reset_result = timer.reset_with_to_tick(Duration::from_millis(10));
+    log_debug!(TAG, "reset_with_to_tick: {:?}", reset_result);
+    assert_eq!(reset_result, OsalRsBool::True);
+
+    let change_result = timer.change_period_with_to_tick(Duration::from_millis(200), Duration::from_millis(10));
+    log_debug!(TAG, "change_period_with_to_tick: {:?}", change_result);
+    assert_eq!(change_result, OsalRsBool::True);
+
+    let stop_result = timer.stop_with_to_tick(Duration::from_millis(10));
+    log_debug!(TAG, "stop_with_to_tick: {:?}", stop_result);
+    assert_eq!(stop_result, OsalRsBool::True);
+
+    let delete_result = timer.delete_with_to_tick(Duration::from_millis(10));
+    log_debug!(TAG, "delete_with_to_tick: {:?}", delete_result);
+    assert_eq!(delete_result, OsalRsBool::True);
+
+    log_info!(TAG, "test_timer_with_to_tick_variants PASSED");
+    Ok(())
+}
+
 pub fn run_all_tests() -> Result<()> {
     log_info!(TAG, "========== Running Timer Tests ==========");
     test_timer_creation()?;
@@ -237,6 +273,7 @@ pub fn run_all_tests() -> Result<()> {
     test_timer_reset()?;
     test_timer_change_period()?;
     test_timer_with_param()?;
+    test_timer_with_to_tick_variants()?;
     test_timer_delete()?;
     log_info!(TAG, "========== All Timer Tests PASSED ==========");
     Ok(())

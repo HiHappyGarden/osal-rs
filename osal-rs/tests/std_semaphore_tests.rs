@@ -165,3 +165,24 @@ fn test_semaphore_drop() -> Result<()> {
     log_info!(TAG, "test_semaphore_drop PASSED");
     Ok(())
 }
+
+#[test]
+fn test_semaphore_from_isr() -> Result<()> {
+    log_info!(TAG, "Starting test_semaphore_from_isr");
+    let semaphore = Semaphore::new(5, 0)?;
+
+    let signal_result = semaphore.signal_from_isr();
+    log_debug!(TAG, "signal_from_isr result: {:?}", signal_result);
+    assert_eq!(signal_result, OsalRsBool::True);
+
+    let wait_result = semaphore.wait_from_isr();
+    log_debug!(TAG, "wait_from_isr result: {:?}", wait_result);
+    assert_eq!(wait_result, OsalRsBool::True);
+
+    let empty_wait_result = semaphore.wait_from_isr();
+    log_debug!(TAG, "wait_from_isr on empty semaphore: {:?}", empty_wait_result);
+    assert_eq!(empty_wait_result, OsalRsBool::False);
+
+    log_info!(TAG, "test_semaphore_from_isr PASSED");
+    Ok(())
+}

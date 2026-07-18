@@ -17,6 +17,5 @@ exclude = [
 ]
 
 [features]
-default = ["freertos"]
 freertos = []
 posix = []

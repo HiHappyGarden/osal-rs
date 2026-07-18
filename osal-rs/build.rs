@@ -90,7 +90,7 @@
 //! - `osal-rs-build` crate for the type generation implementation
 //! - `FreeRTOSConfig.h` for FreeRTOS configuration options
 
-use osal_rs_build::FreeRtosTypeGenerator;
+use osal_rs_build::TypeGenerator;
 use std::env;
 use std::path::PathBuf;
 
@@ -163,7 +163,7 @@ fn main() {
     
     // Initialize the type generator with the FreeRTOS configuration file path.
     // This will parse FreeRTOSConfig.h and generate Rust type definitions and constants.
-    let generator = FreeRtosTypeGenerator::with_config_path(freertos_config);
+    let generator = TypeGenerator::with_config_path(freertos_config);
     
     // Generate all type mappings, configuration constants, and FFI bindings.
     // Generated files are written to the OUT_DIR and included by the main crate.

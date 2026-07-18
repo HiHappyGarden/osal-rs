@@ -20,19 +20,17 @@
  *
  ***************************************************************************/
 
-#[cfg(feature = "freertos")]
 use std::env;
-#[cfg(feature = "freertos")]
 use std::fs;
-#[cfg(feature = "freertos")]
 use std::path::PathBuf;
-#[cfg(feature = "freertos")]
 use std::process::Command;
+use std::convert::AsRef;
+use std::ffi::OsStr;
 
-#[cfg(not(feature = "freertos"))]
-pub struct FreeRtosTypeGenerator;
+#[cfg(feature = "posix")]
+pub struct TypeGenerator;
 
-#[cfg(not(feature = "freertos"))]
+#[cfg(feature = "posix")]
 impl TypeGenerator {
     pub fn new() -> Self {
         Self
@@ -61,31 +59,49 @@ impl Default for TypeGenerator {
 #[cfg(feature = "freertos")]
 pub struct TypeGenerator {
     out_dir: PathBuf,
-    config_path: Option<PathBuf>,
+    manifest_path: Option<PathBuf>,
 }
 
 #[cfg(feature = "freertos")]
 impl TypeGenerator {
-    pub fn new() -> Self {
-        let out_dir = PathBuf::from(env::var("OUT_DIR").expect("OUT_DIR not set"));
-        Self { 
-            out_dir,
-            config_path: None,
-        }
-    }
 
     /// Create a new generator with a custom FreeRTOSConfig.h path
-    pub fn with_config_path<P: Into<PathBuf>>(config_path: P) -> Self {
+    pub fn new<P>(manifest_path: P) -> Self
+    where P: Into<PathBuf> + AsRef<OsStr>
+    {
+        let manifest_path: PathBuf = manifest_path.into();
+
+        let workspace_root = manifest_path
+            .parent() // Go up to osal-rs/
+            .and_then(|p| p.parent()) // Go up to workspace root
+            .expect("Failed to find workspace root");
+
+        // Determine the path to FreeRTOSConfig.h.
+        // Priority: Environment variable > Default location
+        let _freertos_config = if let Ok(config_path) = env::var("FREERTOS_CONFIG_PATH") {
+            // Use the path specified in FREERTOS_CONFIG_PATH environment variable
+            PathBuf::from(config_path)
+        } else {
+            // Default: Look for FreeRTOSConfig.h in <workspace_root>/inc/
+            workspace_root.join("inc/FreeRTOSConfig.h")
+        };
+
         let out_dir = PathBuf::from(env::var("OUT_DIR").expect("OUT_DIR not set"));
         Self {
             out_dir,
-            config_path: Some(config_path.into()),
+            manifest_path: Some(manifest_path),
         }
     }
 
     /// Set the FreeRTOSConfig.h path
-    pub fn set_config_path<P: Into<PathBuf>>(&mut self, config_path: P) {
-        self.config_path = Some(config_path.into());
+    pub fn set_manifest_path<P: Into<PathBuf>>(&mut self, manifest_path: P) {
+        self.manifest_path = Some(manifest_path.into());
+    }
+
+
+    pub fn add_rerun_if_changed() {
+        println!("cargo:rerun-if-changed=../osal-rs-porting/freeretos/src/osal_rs_freertos.c");
+        println!("cargo:rerun-if-changed=../osal-rs-porting/freeretos/inc/osal_rs_freertos.h");
     }
 
     /// Query FreeRTOS type sizes and generate Rust type mappings
@@ -248,11 +264,11 @@ pub type StackType = {};
 
 }
 
-#[cfg(feature = "freertos")]
-impl Default for TypeGenerator {
+// #[cfg(feature = "freertos")]
+// impl Default for TypeGenerator {
 
-    #[inline]
-    fn default() -> Self {
-        Self::new()
-    }
-}
+//     #[inline]
+//     fn default() -> Self {
+//         Self::new()
+//     }
+// }

@@ -20,20 +20,20 @@
  *
  ***************************************************************************/
 
-#[cfg(not(target_os = "none"))]
+#[cfg(feature = "freertos")]
 use std::env;
-#[cfg(not(target_os = "none"))]
+#[cfg(feature = "freertos")]
 use std::fs;
-#[cfg(not(target_os = "none"))]
+#[cfg(feature = "freertos")]
 use std::path::PathBuf;
-#[cfg(not(target_os = "none"))]
+#[cfg(feature = "freertos")]
 use std::process::Command;
 
-#[cfg(target_os = "none")]
+#[cfg(not(feature = "freertos"))]
 pub struct FreeRtosTypeGenerator;
 
-#[cfg(target_os = "none")]
-impl FreeRtosTypeGenerator {
+#[cfg(not(feature = "freertos"))]
+impl TypeGenerator {
     pub fn new() -> Self {
         Self
     }
@@ -49,8 +49,8 @@ impl FreeRtosTypeGenerator {
     pub fn generate_all(&self) {}
 }
 
-#[cfg(target_os = "none")]
-impl Default for FreeRtosTypeGenerator {
+#[cfg(not(feature = "freertos"))]
+impl Default for TypeGenerator {
 
     #[inline]
     fn default() -> Self {
@@ -58,14 +58,14 @@ impl Default for FreeRtosTypeGenerator {
     }
 }
 
-#[cfg(not(target_os = "none"))]
-pub struct FreeRtosTypeGenerator {
+#[cfg(feature = "freertos")]
+pub struct TypeGenerator {
     out_dir: PathBuf,
     config_path: Option<PathBuf>,
 }
 
-#[cfg(not(target_os = "none"))]
-impl FreeRtosTypeGenerator {
+#[cfg(feature = "freertos")]
+impl TypeGenerator {
     pub fn new() -> Self {
         let out_dir = PathBuf::from(env::var("OUT_DIR").expect("OUT_DIR not set"));
         Self { 
@@ -396,8 +396,8 @@ pub type StackType = {};
 //     }
 }
 
-#[cfg(not(target_os = "none"))]
-impl Default for FreeRtosTypeGenerator {
+#[cfg(feature = "freertos")]
+impl Default for TypeGenerator {
 
     #[inline]
     fn default() -> Self {

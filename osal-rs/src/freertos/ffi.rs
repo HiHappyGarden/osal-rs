@@ -225,11 +225,11 @@ unsafe extern "C" {
         pulTotalRunTime: *mut u32,
     ) -> UBaseType;
 
-    pub(super) fn osal_rs_task_enter_critical();
-    pub(super) fn osal_rs_task_exit_critical();
+    pub(super) fn osal_rs_enter_critical_section();
+    pub(super) fn osal_rs_exit_critical_section();
 
-    pub(super) fn osal_rs_task_enter_critical_from_isr() -> UBaseType;
-    pub(super) fn osal_rs_task_exit_critical_from_isr(uxSavedInterruptStatus: UBaseType);
+    pub(super) fn osal_rs_enter_critical_section_from_isr() -> UBaseType;
+    pub(super) fn osal_rs_exit_critical_section_from_isr(uxSavedInterruptStatus: UBaseType);
 
 
     pub(super) fn xTaskCreate(
@@ -319,10 +319,6 @@ unsafe extern "C" {
     pub(super) fn vEventGroupDelete(xEventGroup: EventGroupHandle);
 
     pub(super) fn xEventGroupCreate() -> EventGroupHandle;
-
-    pub(super) fn osal_rs_critical_section_enter();
-
-    pub(super) fn osal_rs_critical_section_exit();
 
     pub(super) fn osal_rs_port_yield_from_isr(pxHigherPriorityTaskWoken: BaseType);
 

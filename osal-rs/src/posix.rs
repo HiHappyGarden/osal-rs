@@ -18,32 +18,38 @@
  *
  ***************************************************************************/
 
-#[cfg(feature = "posix")]
+/// POSIX FFI (Foreign Function Interface) bindings.
+///
+/// This module is private and contains unsafe C bindings to the POSIX/pthread API.
+#[macro_use]
+mod ffi;
+
+/// POSIX configuration constants and utilities.
 pub mod config;
 
-#[cfg(feature = "posix")]
+/// Duration type implementations for POSIX clock/time conversion.
 pub(crate) mod duration;
 
-#[cfg(feature = "posix")]
-pub mod event_group;
+/// Event group synchronization primitives.
+pub(crate) mod event_group;
 
-#[cfg(feature = "posix")]
-pub mod mutex;
+/// Mutex implementations with optional priority inheritance.
+pub(crate) mod mutex;
 
-#[cfg(feature = "posix")]
-pub mod queue;
+/// Message queue implementations for inter-task communication.
+pub(crate) mod queue;
 
-#[cfg(feature = "posix")]
-pub mod semaphore;
+/// Binary and counting semaphore implementations.
+pub(crate) mod semaphore;
 
-#[cfg(feature = "posix")]
-pub mod system;
+/// System-level control, timing, and scheduler management.
+pub(crate) mod system;
 
-#[cfg(feature = "posix")]
-pub mod thread;
+/// Task/thread creation, management, and notifications.
+pub(crate) mod thread;
 
-#[cfg(feature = "posix")]
-pub mod timer;
+/// Software timer implementations for delayed and periodic callbacks.
+pub(crate) mod timer;
 
-#[cfg(feature = "posix")]
+/// POSIX-specific type definitions and aliases.
 pub mod types;

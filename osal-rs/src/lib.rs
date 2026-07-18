@@ -261,7 +261,7 @@ compile_error!("Enable either the `freertos` backend or the `posix` host backend
 /// for FreeRTOS, including threads, mutexes, queues, timers, etc.
 ///
 /// Enabled with the `freertos` feature flag (on by default).
-#[cfg(feature = "freertos")]
+#[cfg(all(not(feature = "posix"), feature = "freertos"))]
 mod freertos;
 
 /// POSIX implementation of OSAL traits (planned).
@@ -292,7 +292,7 @@ mod async_executor;
 pub mod async_primitives;
 
 /// Select FreeRTOS as the active OSAL backend.
-#[cfg(feature = "freertos")]
+#[cfg(all(not(feature = "posix"), feature = "freertos"))]
 use crate::freertos as osal;
 
 /// Select POSIX as the active OSAL backend.
@@ -330,7 +330,7 @@ use crate::posix as osal;
 /// ```
 pub mod os {
 
-    #[cfg(feature = "freertos")]
+    #[cfg(all(not(feature = "posix"), feature = "freertos"))]
     use crate::osal::allocator::Allocator;
 
     /// Global allocator using the underlying RTOS heap.
@@ -364,7 +364,7 @@ pub mod os {
     /// let mut v = Vec::new();
     /// v.push(42);
     /// ```
-    #[cfg(feature = "freertos")]
+    #[cfg(all(not(feature = "posix"), feature = "freertos"))]
     #[global_allocator]
     pub static ALLOCATOR: Allocator = Allocator;
 
@@ -436,7 +436,7 @@ pub mod os {
 /// - Performing safe shutdown procedures
 /// - Resetting the system via watchdog
 ///
-#[cfg(feature = "freertos")]
+#[cfg(all(not(feature = "posix"), feature = "freertos"))]
 #[panic_handler]
 fn panic(info: &core::panic::PanicInfo) -> ! {
     println!("Panic occurred: {}", info);

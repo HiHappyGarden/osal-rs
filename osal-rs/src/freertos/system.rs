@@ -35,7 +35,7 @@ use alloc::vec::Vec;
 
 use super::ffi::task::{BLOCKED, DELETED, READY, RUNNING, SUSPENDED};
 use super::ffi::{
-    TaskStatus, eTaskGetState, osal_rs_critical_section_enter, osal_rs_critical_section_exit, osal_rs_port_end_switching_isr, osal_rs_port_yield_from_isr, uxTaskGetNumberOfTasks, uxTaskGetSystemState, vTaskDelay, vTaskEndScheduler, vTaskStartScheduler, vTaskSuspendAll, xPortGetFreeHeapSize, xTaskDelayUntil, xTaskGetCurrentTaskHandle, xTaskGetTickCount, xTaskResumeAll, osal_rs_task_enter_critical, osal_rs_task_enter_critical_from_isr, osal_rs_task_exit_critical, osal_rs_task_exit_critical_from_isr
+    TaskStatus, eTaskGetState, osal_rs_port_end_switching_isr, osal_rs_port_yield_from_isr, uxTaskGetNumberOfTasks, uxTaskGetSystemState, vTaskDelay, vTaskEndScheduler, vTaskStartScheduler, vTaskSuspendAll, xPortGetFreeHeapSize, xTaskDelayUntil, xTaskGetCurrentTaskHandle, xTaskGetTickCount, xTaskResumeAll, osal_rs_enter_critical_section, osal_rs_enter_critical_section_from_isr, osal_rs_exit_critical_section, osal_rs_exit_critical_section_from_isr
 };
 use super::thread::{ThreadState, ThreadMetadata};
 use super::types::{BaseType, TickType, UBaseType};
@@ -540,10 +540,10 @@ impl SystemFn for System {
     /// ```
     fn critical_section_enter() {
         unsafe {
-            osal_rs_critical_section_enter();
+            osal_rs_enter_critical_section();
         }
     }
-    
+
     /// Exits a critical section.
     ///
     /// Re-enables interrupts or decrements the scheduler lock nesting count.
@@ -555,8 +555,8 @@ impl SystemFn for System {
     /// ```
     fn critical_section_exit() {
         unsafe {
-            osal_rs_critical_section_exit();
-        }   
+            osal_rs_exit_critical_section();
+        }
     }
     
     /// Checks if a timer has elapsed.
@@ -679,7 +679,7 @@ impl SystemFn for System {
     /// ```
     fn enter_critical() {
         unsafe {
-            osal_rs_task_enter_critical();
+            osal_rs_enter_critical_section();
         }
     }
 
@@ -699,7 +699,7 @@ impl SystemFn for System {
     /// ```
     fn exit_critical() {
         unsafe {
-            osal_rs_task_exit_critical();
+            osal_rs_exit_critical_section();
         }
     }
 
@@ -725,7 +725,7 @@ impl SystemFn for System {
     /// ```
     fn enter_critical_from_isr() -> UBaseType {
         unsafe {
-            osal_rs_task_enter_critical_from_isr()
+            osal_rs_enter_critical_section_from_isr()
         }
     }
 
@@ -749,7 +749,7 @@ impl SystemFn for System {
     /// ```
     fn exit_critical_from_isr(saved_interrupt_status: UBaseType) {
         unsafe {
-            osal_rs_task_exit_critical_from_isr(saved_interrupt_status);
+            osal_rs_exit_critical_section_from_isr(saved_interrupt_status);
         }
     }
 

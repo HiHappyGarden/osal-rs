@@ -91,9 +91,7 @@
 //! - `FreeRTOSConfig.h` for FreeRTOS configuration options
 
 use osal_rs_build::TypeGenerator;
-#[cfg(feature = "freertos")]
 use std::env;
-#[cfg(feature = "freertos")]
 use std::path::PathBuf;
 
 /// Main entry point for the build script.
@@ -141,19 +139,19 @@ fn main() {
     // This ensures the generated bindings stay synchronized with the FFI implementation.
     println!("cargo:rerun-if-changed=build.rs");
 
+    // Get the workspace root directory by navigating up from the manifest directory.
+    // Manifest dir is typically: <workspace>/osal-rs/osal-rs
+    // Workspace root is: <workspace>
+    let manifest_dir = env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR not set");
+    
+
+    // Initialize the type generator with the FreeRTOS configuration file path.
+    // This will parse FreeRTOSConfig.h and generate Rust type definitions and constants.
+    let generator = TypeGenerator::new(&PathBuf::from(manifest_dir));
+
     #[cfg(feature = "freertos")]
     {
         TypeGenerator::add_rerun_if_changed();
-
-        // Get the workspace root directory by navigating up from the manifest directory.
-        // Manifest dir is typically: <workspace>/osal-rs/osal-rs
-        // Workspace root is: <workspace>
-        let manifest_dir = env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR not set");
-        let manifest_path = PathBuf::from(manifest_dir);
-
-        // Initialize the type generator with the FreeRTOS configuration file path.
-        // This will parse FreeRTOSConfig.h and generate Rust type definitions and constants.
-        let generator = TypeGenerator::new(&manifest_path);
 
         // Generate all type mappings, configuration constants, and FFI bindings.
         // Generated files are written to the OUT_DIR and included by the main crate.
@@ -162,7 +160,11 @@ fn main() {
 
     #[cfg(all(feature = "posix", not(feature = "freertos")))]
     {
-        let generator = TypeGenerator::new();
+        // Generate all type mappings, configuration constants, and FFI bindings.
+        // Generated files are written to the OUT_DIR and included by the main crate.
         generator.generate_all();
     }
+
+    #[cfg(all(not(feature = "posix"), not(feature = "freertos")))]
+    compile_error!("Either the \"posix\" or the \"freertos\" feature must be enabled");
 }

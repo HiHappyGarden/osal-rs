@@ -20,6 +20,7 @@
 
 use core::ops::Deref;
 use core::time::Duration;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use alloc::vec;
 use alloc::vec::Vec;
@@ -30,6 +31,8 @@ use crate::posix::thread::{ThreadMetadata, ThreadState};
 use crate::posix::types::{BaseType, TickType, UBaseType};
 use crate::traits::{SystemFn, ToTick};
 use crate::utils::OsalRsBool;
+
+static RUN: AtomicBool = AtomicBool::new(true);
 
 #[derive(Debug, Clone)]
 pub struct SystemState {
@@ -70,7 +73,13 @@ impl System {
 }
 
 impl SystemFn for System {
-    fn start() {}
+    fn start() {
+        loop {
+            if !RUN.load(Ordering::Acquire) {
+                break;
+            }
+        }
+    } 
 
     fn get_state() -> ThreadState {
         ThreadState::Running
@@ -82,7 +91,9 @@ impl SystemFn for System {
         0
     }
 
-    fn stop() {}
+    fn stop() {
+        RUN.store(false, Ordering::Release);
+    }
 
     fn get_tick_count() -> TickType {
         Self::elapsed().as_millis().min(TickType::MAX as u128) as TickType
@@ -106,7 +117,7 @@ impl SystemFn for System {
 
         SystemState {
             tasks: vec![thread],
-            total_run_time: Self::get_tick_count().min(u32::MAX as TickType) as u32,
+            total_run_time: Self::get_tick_count().min(TickType::MAX) as u32,
         }
     }
 

@@ -145,11 +145,9 @@ fn main() {
     let manifest_dir = env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR not set");
     
 
-    // Initialize the type generator with the FreeRTOS configuration file path.
-    // This will parse FreeRTOSConfig.h and generate Rust type definitions and constants.
     let generator = TypeGenerator::new(&PathBuf::from(manifest_dir));
 
-    #[cfg(feature = "freertos")]
+    #[cfg(all(not(feature = "posix"), feature = "freertos"))]
     {
         TypeGenerator::add_rerun_if_changed();
 
@@ -160,6 +158,8 @@ fn main() {
 
     #[cfg(all(feature = "posix", not(feature = "freertos")))]
     {
+        TypeGenerator::add_rerun_if_changed();
+        
         // Generate all type mappings, configuration constants, and FFI bindings.
         // Generated files are written to the OUT_DIR and included by the main crate.
         generator.generate_all();
@@ -167,4 +167,7 @@ fn main() {
 
     #[cfg(all(not(feature = "posix"), not(feature = "freertos")))]
     compile_error!("Either the \"posix\" or the \"freertos\" feature must be enabled");
+
+    #[cfg(all(feature = "posix", feature = "freertos"))]
+    compile_error!("Only one backend must be enabled");
 }

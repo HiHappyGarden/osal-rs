@@ -35,22 +35,35 @@ impl TypeGenerator {
     pub fn new<P>(manifest_path: P) -> Self
     where P: Into<PathBuf> + AsRef<OsStr>
     {
-        let manifest_path: PathBuf = manifest_path.into();
+        #[cfg(feature = "posix")]
+        {
+            //Avoid unused_variables
+            let _ = manifest_path;
+        }
 
-        let workspace_root = manifest_path
-            .parent() // Go up to osal-rs/
-            .and_then(|p| p.parent()) // Go up to workspace root
-            .expect("Failed to find workspace root");
+        #[cfg(feature = "freertos")]
+        {
+            // Initialize the type generator with the FreeRTOS configuration file path.
+            // This will parse FreeRTOSConfig.h and generate Rust type definitions and constants.
 
-        // Determine the path to FreeRTOSConfig.h.
-        // Priority: Environment variable > Default location
-        let _freertos_config = if let Ok(config_path) = env::var("FREERTOS_CONFIG_PATH") {
-            // Use the path specified in FREERTOS_CONFIG_PATH environment variable
-            PathBuf::from(config_path)
-        } else {
-            // Default: Look for FreeRTOSConfig.h in <workspace_root>/inc/
-            workspace_root.join("inc/FreeRTOSConfig.h")
-        };
+            let manifest_path: PathBuf = manifest_path.into();
+
+            let workspace_root = manifest_path
+                .parent() // Go up to osal-rs/
+                .and_then(|p| p.parent()) // Go up to workspace root
+                .expect("Failed to find workspace root");
+
+
+            // Determine the path to FreeRTOSConfig.h.
+            // Priority: Environment variable > Default location
+            let _freertos_config = if let Ok(config_path) = env::var("FREERTOS_CONFIG_PATH") {
+                // Use the path specified in FREERTOS_CONFIG_PATH environment variable
+                PathBuf::from(config_path)
+            } else {
+                // Default: Look for FreeRTOSConfig.h in <workspace_root>/inc/
+                workspace_root.join("inc/FreeRTOSConfig.h")
+            };
+        }
 
         let out_dir = PathBuf::from(env::var("OUT_DIR").expect("OUT_DIR not set"));
         Self (
@@ -102,14 +115,35 @@ pub type StackType = {};
         fs::write(&types_rs, generated_code).expect("Failed to write generated types");
     }
 
+    /// Convert a size to the corresponding Rust type
+    fn size_to_type(size: u16, signed: bool) -> &'static str {
+        match (size, signed) {
+            (1, false) => "u8",
+            (1, true) => "i8",
+            (2, false) => "u16",
+            (2, true) => "i16",
+            (4, false) => "u32",
+            (4, true) => "i32",
+            (8, false) => "u64",
+            (8, true) => "i64",
+            // Default to u32 for unknown sizes
+            _ => if signed { "i32" } else { "u32" },
+        }
+    }
+
 }
 
 
 #[cfg(feature = "posix")]
 impl TypeGenerator {
 
+    pub fn add_rerun_if_changed() {
+        println!("cargo:rerun-if-changed=../osal-rs-porting/posix/src/osal_rs.c");
+        println!("cargo:rerun-if-changed=../osal-rs-porting/posix/inc/osal_rs.h");
+    }
+
     pub fn generate_types(&self) {
-        println!("cargo:warning=----->PIPPO<----"); 
+
         let query_program = r#"
 #include <stdio.h>
 #include <sys/utsname.h>
@@ -145,9 +179,39 @@ int main() {
             for line in stdout.lines() {
                 //println!("cargo:warning=line:{line}"); 
                 match line {
-                "x86_64" | "amd64" | "aarch64" | "arm64" | "riscv64" => {} 
-                "i586" | "i686" | "armv7l" | "armv6l" | "arm" | "riscv32" => {}
-                _ => {} 
+                    "x86_64" | "amd64" | "aarch64" | "arm64" | "riscv64" => {
+                        // 64-bit architectures: native word size is 8 bytes
+                        let tick_size: u16 = 8;
+                        let u_base_size: u16 = 8;
+                        let base_size: u16 = 8;
+                        let base_signed = true;
+                        let stack_size: u16 = 8;
+
+                        let tick_type = Self::size_to_type(tick_size, false);
+                        let u_base_type = Self::size_to_type(u_base_size, false);
+                        let base_type = Self::size_to_type(base_size, base_signed);
+                        let stack_type = Self::size_to_type(stack_size, true);
+
+                        self.write_generated_types(tick_size, tick_type, u_base_size, u_base_type, base_size, base_type, stack_size, stack_type);
+                    }
+                    "i586" | "i686" | "armv7l" | "armv6l" | "arm" | "riscv32" => {
+                        // 32-bit architectures: native word size is 4 bytes
+                        let tick_size: u16 = 4;
+                        let u_base_size: u16 = 4;
+                        let base_size: u16 = 4;
+                        let base_signed = true;
+                        let stack_size: u16 = 4;
+
+                        let tick_type = Self::size_to_type(tick_size, false);
+                        let u_base_type = Self::size_to_type(u_base_size, false);
+                        let base_type = Self::size_to_type(base_size, base_signed);
+                        let stack_type = Self::size_to_type(stack_size, true);
+
+                        self.write_generated_types(tick_size, tick_type, u_base_size, u_base_type, base_size, base_type, stack_size, stack_type);
+                    }
+                    //TODO: mac
+                    //TODO: freebsd
+                    other => panic!("osal-rs-build: unsupported POSIX architecture '{other}'"),
                 }
             }
             
@@ -158,8 +222,47 @@ int main() {
 
     }
 
+    /// Compile the POSIX porting C source (osal_rs.c) and archive it into a
+    /// static library, then instruct cargo to link it into the crate.
+    pub fn compile_sources(&self) {
+        let src = "../osal-rs-porting/posix/src/osal_rs.c";
+        let inc_dir = "../osal-rs-porting/posix/inc";
+
+        let obj = self.0.join("osal_rs.o");
+        let compile_status = Command::new("gcc")
+            .arg("-c")
+            .arg(src)
+            .arg("-I")
+            .arg(inc_dir)
+            .arg("-o")
+            .arg(&obj)
+            .status()
+            .expect("Failed to invoke gcc to compile osal_rs.c");
+
+        if !compile_status.success() {
+            panic!("osal-rs-build: failed to compile {src}");
+        }
+
+        let lib = self.0.join("libosal_rs_posix.a");
+        let archive_status = Command::new("ar")
+            .arg("crs")
+            .arg(&lib)
+            .arg(&obj)
+            .status()
+            .expect("Failed to invoke ar to archive osal_rs.o");
+
+        if !archive_status.success() {
+            panic!("osal-rs-build: failed to archive osal_rs.o into libosal_rs_posix.a");
+        }
+
+        println!("cargo:rustc-link-search=native={}", self.0.display());
+        println!("cargo:rustc-link-lib=static=osal_rs_posix");
+    }
+
+    #[inline]
     pub fn generate_all(&self) {
         self.generate_types();
+        self.compile_sources();
     }
 }
 
@@ -169,8 +272,8 @@ impl TypeGenerator {
 
 
     pub fn add_rerun_if_changed() {
-        println!("cargo:rerun-if-changed=../osal-rs-porting/freeretos/src/osal_rs_freertos.c");
-        println!("cargo:rerun-if-changed=../osal-rs-porting/freeretos/inc/osal_rs_freertos.h");
+        println!("cargo:rerun-if-changed=../osal-rs-porting/freeretos/src/osal_rs.c");
+        println!("cargo:rerun-if-changed=../osal-rs-porting/freeretos/inc/osal_rs.h");
     }
 
     /// Query FreeRTOS type sizes and generate Rust type mappings
@@ -190,6 +293,7 @@ impl TypeGenerator {
     }
 
     /// Generate both types and config
+    #[inline]
     pub fn generate_all(&self) {
         self.generate_types();
         // self.generate_config();
@@ -269,23 +373,6 @@ int main() {
         } else {
             // Default values for 32-bit ARM Cortex-M (typical for Raspberry Pi Pico)
             (4, 4, 4, true, 4)
-        }
-    }
-
-
-    /// Convert a size to the corresponding Rust type
-    fn size_to_type(size: u16, signed: bool) -> &'static str {
-        match (size, signed) {
-            (1, false) => "u8",
-            (1, true) => "i8",
-            (2, false) => "u16",
-            (2, true) => "i16",
-            (4, false) => "u32",
-            (4, true) => "i32",
-            (8, false) => "u64",
-            (8, true) => "i64",
-            // Default to u32 for unknown sizes
-            _ => if signed { "i32" } else { "u32" },
         }
     }
 }

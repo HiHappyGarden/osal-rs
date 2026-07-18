@@ -91,7 +91,9 @@
 //! - `FreeRTOSConfig.h` for FreeRTOS configuration options
 
 use osal_rs_build::TypeGenerator;
+#[cfg(feature = "freertos")]
 use std::env;
+#[cfg(feature = "freertos")]
 use std::path::PathBuf;
 
 /// Main entry point for the build script.
@@ -138,34 +140,29 @@ fn main() {
     // Tell cargo to rerun this build script if any of these files change.
     // This ensures the generated bindings stay synchronized with the FFI implementation.
     println!("cargo:rerun-if-changed=build.rs");
-    println!("cargo:rerun-if-changed=../osal-rs-build/osal-rs-ffi-freertos/src/osal_rs_ffi_freertos.c");
-    println!("cargo:rerun-if-changed=../osal-rs-build/osal-rs-ffi-freertos/inc/osal_rs_ffi_freertos.h");
-    
-    // Get the workspace root directory by navigating up from the manifest directory.
-    // Manifest dir is typically: <workspace>/osal-rs/osal-rs
-    // Workspace root is: <workspace>
-    let manifest_dir = env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR not set");
-    let manifest_path = PathBuf::from(manifest_dir);
-    let workspace_root = manifest_path
-        .parent() // Go up to osal-rs/
-        .and_then(|p| p.parent()) // Go up to workspace root
-        .expect("Failed to find workspace root");
-    
-    // Determine the path to FreeRTOSConfig.h.
-    // Priority: Environment variable > Default location
-    let freertos_config = if let Ok(config_path) = env::var("FREERTOS_CONFIG_PATH") {
-        // Use the path specified in FREERTOS_CONFIG_PATH environment variable
-        PathBuf::from(config_path)
-    } else {
-        // Default: Look for FreeRTOSConfig.h in <workspace_root>/inc/
-        workspace_root.join("inc/FreeRTOSConfig.h")
-    };
-    
-    // Initialize the type generator with the FreeRTOS configuration file path.
-    // This will parse FreeRTOSConfig.h and generate Rust type definitions and constants.
-    let generator = TypeGenerator::with_config_path(freertos_config);
-    
-    // Generate all type mappings, configuration constants, and FFI bindings.
-    // Generated files are written to the OUT_DIR and included by the main crate.
-    generator.generate_all();
+
+    #[cfg(feature = "freertos")]
+    {
+        TypeGenerator::add_rerun_if_changed();
+
+        // Get the workspace root directory by navigating up from the manifest directory.
+        // Manifest dir is typically: <workspace>/osal-rs/osal-rs
+        // Workspace root is: <workspace>
+        let manifest_dir = env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR not set");
+        let manifest_path = PathBuf::from(manifest_dir);
+
+        // Initialize the type generator with the FreeRTOS configuration file path.
+        // This will parse FreeRTOSConfig.h and generate Rust type definitions and constants.
+        let generator = TypeGenerator::new(&manifest_path);
+
+        // Generate all type mappings, configuration constants, and FFI bindings.
+        // Generated files are written to the OUT_DIR and included by the main crate.
+        generator.generate_all();
+    }
+
+    #[cfg(all(feature = "posix", not(feature = "freertos")))]
+    {
+        let generator = TypeGenerator::new();
+        generator.generate_all();
+    }
 }

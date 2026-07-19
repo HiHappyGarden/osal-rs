@@ -36,7 +36,7 @@
 
 #![allow(non_camel_case_types)]
 
-use core::ffi::{c_char, c_int, c_void};
+use core::ffi::{c_char, c_int, c_long, c_void};
 
 use crate::os::types::ThreadHandle;
 
@@ -151,6 +151,13 @@ pub(super) struct sched_param {
     pub(super) sched_priority: c_int,
 }
 
+/// `sysconf(3)` parameter names (`<bits/confname.h>`). Like [`SIGRTMIN`'s
+/// accessor](__libc_current_sigrtmin), these are glibc's own generic
+/// namespace, stable across every architecture it supports — not a
+/// kernel/arch ABI detail.
+pub(super) const _SC_PAGESIZE: c_int = 30;
+pub(super) const _SC_AVPHYS_PAGES: c_int = 86;
+
 unsafe extern "C" {
 
 
@@ -227,4 +234,8 @@ unsafe extern "C" {
     /// Install `handler` as the action for `signum`, returning the previous
     /// handler (`signal(2)`).
     pub(super) fn signal(signum: c_int, handler: sighandler_t) -> sighandler_t;
+
+    /// Query a system configuration value (`sysconf(3)`), e.g. [`_SC_PAGESIZE`]
+    /// or [`_SC_AVPHYS_PAGES`].
+    pub(super) fn sysconf(name: c_int) -> c_long;
 }

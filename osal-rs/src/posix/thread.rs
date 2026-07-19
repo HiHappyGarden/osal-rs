@@ -24,7 +24,6 @@ use core::ops::Deref;
 use core::ptr::null_mut;
 use core::time::Duration;
 use std::collections::HashMap;
-use std::ptr::null;
 use std::sync::{Condvar, Mutex, Once, OnceLock};
 use std::time::Instant;
 
@@ -150,6 +149,50 @@ fn forget_notify_slot(handle: ThreadHandle) {
     if let Ok(mut registry) = notify_registry().lock() {
         registry.remove(&handle);
     }
+}
+
+/// Process-wide table of threads spawned through this crate's `Thread` API,
+/// keyed by `pthread_t`.
+///
+/// pthreads exposes no enumeration API of its own, so `System::get_all_thread()`
+/// and `System::count_threads()` are backed by this registry instead: every
+/// successful `spawn()`/`spawn_simple()` adds an entry, and `join()`/`delete()`
+/// remove it once the thread is known to be gone.
+fn thread_registry() -> &'static Mutex<HashMap<ThreadHandle, ThreadMetadata>> {
+    static REGISTRY: OnceLock<Mutex<HashMap<ThreadHandle, ThreadMetadata>>> = OnceLock::new();
+
+    REGISTRY.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+/// Records `metadata` under `metadata.thread` for [`System::get_all_thread()`].
+fn register_thread(metadata: ThreadMetadata) {
+    if let Ok(mut registry) = thread_registry().lock() {
+        registry.insert(metadata.thread, metadata);
+    }
+}
+
+/// Drops `handle`'s registry entry, if any (see [`forget_notify_slot`] for why).
+fn forget_thread(handle: ThreadHandle) {
+    if let Ok(mut registry) = thread_registry().lock() {
+        registry.remove(&handle);
+    }
+}
+
+/// Snapshot of every thread currently registered via `spawn()`/`spawn_simple()`.
+///
+/// Used by [`crate::posix::system::System::get_all_thread`].
+pub(crate) fn all_registered_threads() -> Vec<ThreadMetadata> {
+    thread_registry()
+        .lock()
+        .map(|registry| registry.values().cloned().collect())
+        .unwrap_or_default()
+}
+
+/// Number of threads currently registered via `spawn()`/`spawn_simple()`.
+///
+/// Used by [`crate::posix::system::System::count_threads`].
+pub(crate) fn registered_thread_count() -> usize {
+    thread_registry().lock().map(|registry| registry.len()).unwrap_or(0)
 }
 
 /// Applies a [`ThreadNotification`] action to `state`, FreeRTOS-`xTaskNotify`-style.
@@ -347,21 +390,20 @@ impl Thread {
     }
 
     pub fn get_metadata(thread: &Thread) -> ThreadMetadata {
-        if thread.handle == 0 {
-            ThreadMetadata::default()
-        } else {
-            ThreadMetadata {
-                thread: thread.handle,
-                name: thread.name.clone(),
-                stack_depth: thread.stack_depth,
-                priority: thread.priority,
-                thread_number: 0,
-                state: ThreadState::Ready,
-                current_priority: thread.priority,
-                base_priority: thread.priority,
-                run_time_counter: 0,
-                stack_high_water_mark: 0,
-            }
+        // Name/stack/priority reflect what was passed to `new()` regardless of
+        // whether the thread has been spawned yet; only `state`/`thread` depend
+        // on there being a live `pthread_t` behind it.
+        ThreadMetadata {
+            thread: thread.handle,
+            name: thread.name.clone(),
+            stack_depth: thread.stack_depth,
+            priority: thread.priority,
+            thread_number: 0,
+            state: if thread.is_null() { ThreadState::Invalid } else { ThreadState::Ready },
+            current_priority: thread.priority,
+            base_priority: thread.priority,
+            run_time_counter: 0,
+            stack_high_water_mark: 0,
         }
     }
 
@@ -401,17 +443,17 @@ unsafe extern "C" fn callback_c_wrapper(param_ptr: *mut c_void) -> *mut c_void {
 
     thread_instance.as_mut().handle = unsafe { pthread_self() };
 
-    let thread = *thread_instance.clone();
-
     let param_arc: Option<ThreadParam> = thread_instance.param.clone();
 
+    // Note: intentionally does *not* call `Thread::delete()`/`join()` here —
+    // that would have this thread call `pthread_join()` on its own ID, which
+    // is undefined behavior (self-join). Reaping/cleanup is left to whichever
+    // other thread eventually calls `join()`/`delete()` on this handle.
     let ret = if let Some(callback) = &thread_instance.callback.clone() {
         callback(thread_instance, param_arc)
     } else {
         Err(Error::NullPtr)
     };
-
-    thread.delete();
 
     Box::into_raw(Box::new(ret)) as *mut c_void
 }
@@ -440,6 +482,11 @@ unsafe extern "C" fn simple_callback_c_wrapper(param_ptr: *mut c_void) -> *mut c
 }
 
 impl ThreadFn for Thread {
+
+    fn is_null(&self) -> bool {
+        self.handle == 0
+    }
+
     fn spawn<F>(&mut self, param: Option<ThreadParam>, callback: F) -> Result<Self>
     where
         F: Fn(Box<dyn ThreadFn>, Option<ThreadParam>) -> Result<ThreadParam>,
@@ -489,6 +536,19 @@ impl ThreadFn for Thread {
         unsafe {
             pthread_setname_np(self.handle, self.name.as_cstr().as_ptr());
         }
+
+        register_thread(ThreadMetadata {
+            thread: self.handle,
+            name: self.name.clone(),
+            stack_depth: self.stack_depth,
+            priority: self.priority,
+            thread_number: 0,
+            state: ThreadState::Ready,
+            current_priority: self.priority,
+            base_priority: self.priority,
+            run_time_counter: 0,
+            stack_high_water_mark: 0,
+        });
 
         Ok(Self {
             handle: self.handle,
@@ -547,6 +607,19 @@ impl ThreadFn for Thread {
             pthread_setname_np(self.handle, self.name.as_cstr().as_ptr());
         }
 
+        register_thread(ThreadMetadata {
+            thread: self.handle,
+            name: self.name.clone(),
+            stack_depth: self.stack_depth,
+            priority: self.priority,
+            thread_number: 0,
+            state: ThreadState::Ready,
+            current_priority: self.priority,
+            base_priority: self.priority,
+            run_time_counter: 0,
+            stack_high_water_mark: 0,
+        });
+
         Ok(Self {
             handle: self.handle,
             name: self.name.clone(),
@@ -560,10 +633,11 @@ impl ThreadFn for Thread {
     fn delete(&self) {
         let _ = unsafe { pthread_join(self.handle, null_mut()) };
         forget_notify_slot(self.handle);
+        forget_thread(self.handle);
     }
 
     fn suspend(&self) {
-        if self.handle == 0 {
+        if self.is_null() {
             return;
         }
 
@@ -575,7 +649,7 @@ impl ThreadFn for Thread {
     }
 
     fn resume(&self) {
-        if self.handle == 0 {
+        if self.is_null() {
             return;
         }
 
@@ -587,7 +661,7 @@ impl ThreadFn for Thread {
     }
 
     fn join(&self, ret_val: DoublePtr) -> Result<i32> {
-        if self.handle == 0 {
+        if self.is_null() {
             return Err(Error::NullPtr);
         }
 
@@ -597,6 +671,7 @@ impl ThreadFn for Thread {
             Err(Error::ReturnWithCode(ret))
         } else {
             forget_notify_slot(self.handle);
+            forget_thread(self.handle);
             Ok(0)
         }
     }
@@ -625,7 +700,7 @@ impl ThreadFn for Thread {
     }
 
     fn notify(&self, notification: ThreadNotification) -> Result<()> {
-        if self.handle == 0 {
+        if self.is_null() {
             return Err(Error::NullPtr);
         }
 
@@ -653,7 +728,7 @@ impl ThreadFn for Thread {
     }
 
     fn wait_notification(&self, bits_to_clear_on_entry: u32, bits_to_clear_on_exit: u32, timeout_ticks: TickType) -> Result<u32> {
-        if self.handle == 0 {
+        if self.is_null() {
             return Err(Error::NullPtr);
         }
 

@@ -224,7 +224,14 @@ fn std_backend_exports_core_api_surface() {
     spawned.suspend();
     spawned.resume();
     let _ = spawned.join(null_mut()).unwrap();
-    spawned.delete();
+
+    // Exercises `delete()` on its own thread — `spawned` above was already
+    // reaped via `join()`, and joining/deleting the same handle twice is UB.
+    let mut delete_worker = Thread::new("worker_delete", 128, 1);
+    let spawned_for_delete = delete_worker
+        .spawn(None, |_thread, param| Ok(param.unwrap_or_else(|| Arc::new(0u32) as ThreadParam)))
+        .unwrap();
+    spawned_for_delete.delete();
 
     let mut simple_thread = Thread::new("simple", 128, 1);
     let _ = simple_thread.spawn_simple(|| Ok(Arc::new(()))).unwrap();

@@ -155,7 +155,7 @@ pub fn test_system_get_state() -> Result<()> {
 pub fn test_system_time_conversion() -> Result<()> {
     log_info!(TAG, "Starting test_system_time_conversion");
     let duration = Duration::from_millis(100);
-    let ticks = System::get_us_from_tick(&duration);
+    let ticks = System::get_ms_from_tick(&duration);
     log_debug!(TAG, "100ms = {} ticks", ticks);
     assert!(ticks > 0);
     log_info!(TAG, "test_system_time_conversion PASSED");

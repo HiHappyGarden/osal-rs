@@ -106,7 +106,7 @@ pub fn compile_system_surface() {
     let _stop: fn() = <System as SystemFn>::stop;
     let _get_tick_count: fn() -> types::TickType = <System as SystemFn>::get_tick_count;
     let _get_current_time_us: fn() -> Duration = <System as SystemFn>::get_current_time_us;
-    let _get_us_from_tick: fn(&Duration) -> types::TickType = <System as SystemFn>::get_us_from_tick;
+    let _get_ms_from_tick: fn(&Duration) -> types::TickType = <System as SystemFn>::get_ms_from_tick;
     let _count_threads: fn() -> usize = <System as SystemFn>::count_threads;
     let _get_all_thread: fn() -> SystemState = <System as SystemFn>::get_all_thread;
     let _delay: fn(types::TickType) = <System as SystemFn>::delay;

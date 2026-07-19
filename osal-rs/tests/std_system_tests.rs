@@ -171,7 +171,7 @@ fn test_system_get_state() -> Result<()> {
 fn test_system_time_conversion() -> Result<()> {
     log_info!(TAG, "Starting test_system_time_conversion");
     let duration = Duration::from_millis(100);
-    let ticks = System::get_us_from_tick(&duration);
+    let ticks = System::get_ms_from_tick(&duration);
     log_debug!(TAG, "100ms = {} ticks", ticks);
     assert!(ticks > 0);
     log_info!(TAG, "test_system_time_conversion PASSED");
@@ -184,7 +184,7 @@ fn test_system_thread_metadata() -> Result<()> {
     let state = System::get_all_thread();
 
     for thread_meta in state.tasks.iter() {
-        assert!(!thread_meta.thread.is_null());
+        assert!(thread_meta.thread != 0);
         assert!(!thread_meta.name.is_empty());
         assert!(thread_meta.priority > 0);
     }

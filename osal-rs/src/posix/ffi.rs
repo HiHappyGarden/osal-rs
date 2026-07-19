@@ -158,6 +158,24 @@ pub(super) struct sched_param {
 pub(super) const _SC_PAGESIZE: c_int = 30;
 pub(super) const _SC_AVPHYS_PAGES: c_int = 86;
 
+/// Clock identifier for `clock_gettime(2)`: time since an unspecified
+/// starting point that never jumps backward or with wall-clock adjustments.
+/// Value is glibc's generic `<bits/time.h>` namespace, stable across every
+/// architecture it supports.
+pub(super) const CLOCK_MONOTONIC: c_int = 1;
+
+/// Mirrors `struct timespec` (`<time.h>`).
+///
+/// glibc declares both fields as `long`, which matches the architecture's
+/// native word size on every target this crate supports (same reasoning as
+/// [`ThreadHandle`](crate::os::types::ThreadHandle)'s `c_ulong`).
+#[repr(C)]
+#[derive(Copy, Clone, Default)]
+pub(super) struct timespec {
+    pub(super) tv_sec: c_long,
+    pub(super) tv_nsec: c_long,
+}
+
 unsafe extern "C" {
 
 
@@ -238,4 +256,17 @@ unsafe extern "C" {
     /// Query a system configuration value (`sysconf(3)`), e.g. [`_SC_PAGESIZE`]
     /// or [`_SC_AVPHYS_PAGES`].
     pub(super) fn sysconf(name: c_int) -> c_long;
+
+    /// Get the current time of `clock_id` (e.g. [`CLOCK_MONOTONIC`]) into
+    /// `tp` (`clock_gettime(2)`).
+    pub(super) fn clock_gettime(clock_id: c_int, tp: *mut timespec) -> c_int;
+
+    /// Suspend the calling thread until `req` has elapsed. If interrupted by
+    /// a signal, returns -1 and (when `rem` is non-null) writes the time
+    /// left to sleep to `rem` (`nanosleep(2)`).
+    pub(super) fn nanosleep(req: *const timespec, rem: *mut timespec) -> c_int;
+
+    /// Relinquish the processor to another thread ready to run, without
+    /// blocking the caller (`sched_yield(2)`).
+    pub(super) fn sched_yield() -> c_int;
 }

@@ -103,7 +103,7 @@ impl SystemFn for System {
         Self::elapsed()
     }
 
-    fn get_us_from_tick(duration: &Duration) -> TickType {
+    fn get_ms_from_tick(duration: &Duration) -> TickType {
         duration.as_millis().min(TickType::MAX as u128) as TickType
     }
 

@@ -81,7 +81,7 @@ fn test_thread_spawn() -> Result<()> {
     if let Ok(spawned) = result {
         let metadata = spawned.get_metadata();
         log_debug!(TAG, "Spawned thread handle: {:?}", metadata.thread);
-        assert!(!metadata.thread.is_null());
+        assert!(metadata.thread != 0);
         spawned.delete();
         log_debug!(TAG, "Thread deleted successfully");
     }
@@ -203,7 +203,7 @@ fn test_thread_get_current() -> Result<()> {
     let current = Thread::get_current();
     let metadata = current.get_metadata();
     log_debug!(TAG, "Current thread: {}", metadata.name);
-    assert!(!metadata.thread.is_null());
+    assert!(metadata.thread != 0);
     log_info!(TAG, "test_thread_get_current PASSED");
     Ok(())
 }
@@ -220,6 +220,7 @@ fn test_thread_spawn_simple() -> Result<()> {
     let result = thread.spawn_simple(|| {
         log_debug!(TAG, "Simple thread executing");
         System::delay(Duration::from_millis(10).to_ticks());
+        Ok(Arc::new(()))
     });
 
     assert!(result.is_ok());
@@ -252,6 +253,7 @@ fn test_thread_spawn_simple_with_shared_data() -> Result<()> {
             *num += 1;
             log_debug!(TAG, "Counter: {}", *num);
         }
+        Ok(Arc::new(()))
     });
 
     assert!(result.is_ok());
@@ -318,6 +320,7 @@ fn test_thread_new_with_to_priority() -> Result<()> {
 
     let spawned = thread.spawn_simple(|| {
         System::delay(Duration::from_millis(50).to_ticks());
+        Ok(Arc::new(()))
     })?;
 
     let metadata = spawned.get_metadata();
@@ -336,19 +339,20 @@ fn test_thread_handle_based_constructors() -> Result<()> {
     let mut source = Thread::new("handle_source", 1024, 2);
     let spawned = source.spawn_simple(|| {
         System::delay(Duration::from_millis(50).to_ticks());
+        Ok(Arc::new(()))
     })?;
     let handle = *spawned;
 
     let wrapped = Thread::new_with_handle_and_to_priority(handle, "wrapped", 1024, FixedPriority(6))?;
     assert_eq!(*wrapped, handle);
 
-    let null_handle: types::ThreadHandle = core::ptr::null();
+    let null_handle: types::ThreadHandle = 0;
     let null_result = Thread::new_with_handle_and_to_priority(null_handle, "invalid", 128, FixedPriority(1));
     assert!(null_result.is_err());
 
     let metadata = Thread::get_metadata_from_handle(handle);
-    log_debug!(TAG, "Looked-up metadata for real handle: thread_null={}", metadata.thread.is_null());
-    assert!(!metadata.thread.is_null());
+    log_debug!(TAG, "Looked-up metadata for real handle: thread_null={}", metadata.thread == 0);
+    assert!(metadata.thread != 0);
 
     spawned.delete();
     log_info!(TAG, "test_thread_handle_based_constructors PASSED");
@@ -390,6 +394,7 @@ fn test_thread_join() -> Result<()> {
     let mut thread = Thread::new("join_test", 1024, 5);
     let spawned = thread.spawn_simple(|| {
         System::delay(Duration::from_millis(10).to_ticks());
+        Ok(Arc::new(()))
     })?;
 
     let join_result = spawned.join(core::ptr::null_mut());

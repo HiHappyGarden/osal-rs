@@ -372,10 +372,10 @@ impl SystemFn for System {
         Duration::from_millis( 1_000 * ticks as u64 / tick_period_ms!() as u64 )
     }
 
-    /// Converts a `Duration` to microsecond ticks.
+    /// Converts a `Duration` to tick count.
     ///
     /// Helper function for converting duration values to system tick counts
-    /// in microsecond resolution.
+    /// based on the configured tick rate.
     ///
     /// # Parameters
     ///
@@ -383,18 +383,18 @@ impl SystemFn for System {
     ///
     /// # Returns
     ///
-    /// Equivalent tick count in microseconds
+    /// Equivalent tick count
     ///
     /// # Examples
     ///
     /// ```ignore
     /// use osal_rs::os::{System, SystemFn};
     /// use core::time::Duration;
-    /// 
+    ///
     /// let duration = Duration::from_millis(100);
-    /// let us_ticks = System::get_us_from_tick(&duration);
+    /// let ticks = System::get_ms_from_tick(&duration);
     /// ```
-    fn get_us_from_tick(duration: &Duration) -> TickType {
+    fn get_ms_from_tick(duration: &Duration) -> TickType {
         let millis = duration.as_millis() as TickType;
         millis / (1_000 * tick_period_ms!() as TickType) 
     }

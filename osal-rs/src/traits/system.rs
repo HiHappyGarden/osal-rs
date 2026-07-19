@@ -276,10 +276,10 @@ pub trait System {
     /// use osal_rs::os::System;
     /// 
     /// let duration = Duration::from_millis(100);
-    /// let ticks = System::get_us_from_tick(&duration);
+    /// let ticks = System::get_ms_from_tick(&duration);
     /// System::delay(ticks);
     /// ```
-    fn get_us_from_tick(duration: &Duration) -> TickType;
+    fn get_ms_from_tick(duration: &Duration) -> TickType;
     
     /// Gets the number of threads in the system.
     ///

@@ -478,15 +478,19 @@ unsafe extern "C" fn callback_c_wrapper(param_ptr: *mut c_void) {
 /// - Performs raw pointer conversions
 /// - Is called from C code (FreeRTOS)
 /// - Directly calls vTaskDelete after execution
+///
+/// The callback's `Result<ThreadParam>` is discarded, matching `callback_c_wrapper`:
+/// FreeRTOS task functions are `void`, so there is no exit-value channel for `join()`
+/// to retrieve it through.
 unsafe extern "C" fn simple_callback_wrapper(param_ptr: *mut c_void) {
     if param_ptr.is_null() {
         return;
     }
 
     let func: Box<Arc<ThreadSimpleFnPtr>> = unsafe { Box::from_raw(param_ptr as *mut _) };
-    func();
+    let _ = func();
 
-    unsafe { vTaskDelete( xTaskGetCurrentTaskHandle()); } 
+    unsafe { vTaskDelete( xTaskGetCurrentTaskHandle()); }
 }
 
 
@@ -562,7 +566,7 @@ impl ThreadFn for Thread {
     /// ```
     fn spawn_simple<F>(&mut self, callback: F) -> Result<Self>
     where
-        F: Fn() + Send + Sync + 'static,
+        F: Fn() -> Result<ThreadParam> + Send + Sync + 'static,
     {
         let func: Arc<ThreadSimpleFnPtr> = Arc::new(callback);
         let boxed_func = Box::new(func);

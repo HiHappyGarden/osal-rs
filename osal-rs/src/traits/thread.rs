@@ -140,7 +140,7 @@ pub type ThreadFnPtr = dyn Fn(Box<dyn Thread>, Option<ThreadParam>) -> Result<Th
 ///     }
 /// }).unwrap();
 /// ```
-pub type ThreadSimpleFnPtr = dyn Fn() + Send + Sync + 'static;
+pub type ThreadSimpleFnPtr = dyn Fn() -> Result<ThreadParam> + Send + Sync + 'static;
 
 /// Thread notification actions.
 ///
@@ -330,7 +330,7 @@ pub trait Thread {
     /// ```
     fn spawn_simple<F>(&mut self, callback: F) -> Result<Self>
     where
-        F: Fn() + Send + Sync + 'static,
+        F: Fn() -> Result<ThreadParam> + Send + Sync + 'static,
         Self: Sized;
 
     /// Deletes the thread and frees its resources.

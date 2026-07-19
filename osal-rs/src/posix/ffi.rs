@@ -94,6 +94,41 @@ impl Default for pthread_attr_t {
 /// Thread entry point matching the C signature `void *(*)(void *)`.
 pub(super) type ThreadStartRoutine = unsafe extern "C" fn(arg: *mut c_void) -> *mut c_void;
 
+/// Size (in bytes) of glibc's `sigset_t` (`bits/sigset.h`).
+///
+/// Unlike [`pthread_attr_t`], this is the same on every architecture: glibc
+/// defines it as `1024 / (8 * sizeof(unsigned long int))` words, which is
+/// 128 bytes whether `sizeof(unsigned long)` is 4 (32-bit targets) or 8
+/// (64-bit targets).
+const SIGSET_T_SIZE: usize = 128;
+
+/// Opaque storage for `sigset_t`.
+///
+/// As with [`pthread_attr_t`], Rust never reads/writes its fields directly;
+/// only its address is handed to `sig*set`/`sigsuspend`, so a correctly
+/// sized-and-aligned byte buffer is a valid stand-in for the real glibc
+/// struct.
+#[repr(C, align(8))]
+#[derive(Copy, Clone)]
+pub(super) struct sigset_t {
+    _opaque: [u8; SIGSET_T_SIZE],
+}
+
+impl Default for sigset_t {
+    fn default() -> Self {
+        Self {
+            _opaque: [0u8; SIGSET_T_SIZE],
+        }
+    }
+}
+
+/// Signal handler function pointer, as accepted/returned by `signal(2)`.
+///
+/// Represented as `usize` rather than a Rust fn-pointer type (mirroring the
+/// `libc` crate's `sighandler_t`) so `SIG_DFL`/`SIG_IGN`/`SIG_ERR` — which
+/// are sentinel integer values, not real code addresses — round-trip
+/// without needing an `Option<fn>` niche that only fits a null handler.
+pub(super) type sighandler_t = usize;
 
 /// Scheduling policy: real-time first-in-first-out (`<sched.h>`).
 ///
@@ -159,4 +194,37 @@ unsafe extern "C" {
 
     /// Set the name (glibc extension, `<= 15` chars + NUL) of an existing thread.
     pub(super) fn pthread_setname_np(thread: ThreadHandle, name: *const c_char) -> c_int;
+
+    /// Send signal `sig` to `thread` (`pthread_kill(3)`).
+    ///
+    /// Used to implement [`suspend`](crate::posix::thread::Thread)/`resume`,
+    /// since pthreads has no native suspend/resume API of its own.
+    pub(super) fn pthread_kill(thread: ThreadHandle, sig: c_int) -> c_int;
+
+    /// Return the first real-time signal number glibc has not reserved for
+    /// its own internal use (`SIGRTMIN(3)`).
+    ///
+    /// The kernel's raw `SIGRTMIN` is reserved by NPTL for thread
+    /// cancellation/setuid bookkeeping; glibc exposes the first
+    /// application-usable one through this function rather than a fixed
+    /// constant, since the number of signals it reserves is an
+    /// implementation detail that could change.
+    pub(super) fn __libc_current_sigrtmin() -> c_int;
+
+    /// Set `set` to contain every signal (`sigfillset(3)`).
+    pub(super) fn sigfillset(set: *mut sigset_t) -> c_int;
+
+    /// Remove `signum` from `set` (`sigdelset(3)`).
+    pub(super) fn sigdelset(set: *mut sigset_t, signum: c_int) -> c_int;
+
+    /// Atomically replace the calling thread's signal mask with `mask` and
+    /// suspend it until a signal is delivered (`sigsuspend(3)`).
+    ///
+    /// Always returns -1/`EINTR`; the original mask is restored once the
+    /// signal's handler returns.
+    pub(super) fn sigsuspend(mask: *const sigset_t) -> c_int;
+
+    /// Install `handler` as the action for `signum`, returning the previous
+    /// handler (`signal(2)`).
+    pub(super) fn signal(signum: c_int, handler: sighandler_t) -> sighandler_t;
 }

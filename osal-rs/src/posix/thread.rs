@@ -18,25 +18,165 @@
  *
  ***************************************************************************/
 
-use core::ffi::c_void;
+use core::ffi::{c_int, c_void};
 use core::fmt::{Debug, Display, Formatter};
 use core::ops::Deref;
 use core::ptr::null_mut;
+use core::time::Duration;
+use std::collections::HashMap;
+use std::ptr::null;
+use std::sync::{Condvar, Mutex, Once, OnceLock};
+use std::time::Instant;
 
 use alloc::sync::Arc;
 
 use crate::os::ThreadSimpleFnPtr;
+use crate::posix::config::TICK_PERIOD_MS;
 #[cfg(feature = "sched_fifo")]
 use crate::posix::ffi::{PTHREAD_EXPLICIT_SCHED, SCHED_FIFO, pthread_attr_setinheritsched, pthread_attr_setschedparam, pthread_attr_setschedpolicy, sched_param};
-use crate::posix::ffi::{get_pthread_stack_min, pthread_attr_init, pthread_attr_setstacksize, pthread_attr_t, pthread_create, pthread_join, pthread_self, pthread_setname_np};
+use crate::posix::ffi::{__libc_current_sigrtmin, get_pthread_stack_min, pthread_attr_init, pthread_attr_setstacksize, pthread_attr_t, pthread_create, pthread_join, pthread_kill, pthread_self, pthread_setname_np, sigdelset, sigfillset, sigset_t, signal, sigsuspend};
 use crate::posix::types::{BaseType, StackType, ThreadHandle, TickType, UBaseType};
 use crate::traits::{ThreadFn, ThreadFnPtr, ThreadNotification, ThreadParam, ToPriority, ToTick};
 use crate::utils::{Bytes, DoublePtr, Error, Result};
 
 const MAX_TASK_NAME_LEN: usize = 16;
 
-fn dummy_thread_handle() -> ThreadHandle {
-    todo!("To remove");
+/// Real-time signal sent to a thread to ask it to suspend itself; see
+/// [`suspend_signal_handler`].
+fn suspend_signal() -> c_int {
+    unsafe { __libc_current_sigrtmin() }
+}
+
+/// Real-time signal sent to a thread parked in [`suspend_signal_handler`] to
+/// wake it back up. Always `suspend_signal() + 1`, so it lands on the next
+/// glibc-usable real-time signal.
+fn resume_signal() -> c_int {
+    suspend_signal() + 1
+}
+
+/// Handler for [`suspend_signal`]: parks the calling thread until [`resume_signal`] arrives.
+///
+/// pthreads has no native suspend/resume, so this crate emulates it with a
+/// pair of real-time signals. `sigsuspend()` atomically swaps in a mask that
+/// blocks every signal except the resume one and blocks the thread until a
+/// signal is delivered; since nothing else can get through, that signal can
+/// only be the resume one. When `sigsuspend()` returns, this handler returns
+/// too, and the thread it interrupted simply continues from wherever it was
+/// — that's what makes the suspension transparent to the thread's own code.
+///
+/// # Caveat
+///
+/// If `resume()` runs before the target thread has actually reached
+/// `sigsuspend()` below (the suspend signal was sent but not yet delivered),
+/// the resume signal is delivered with nothing waiting for it and is lost,
+/// leaving the thread suspended until a further `resume()` call. Callers
+/// needing a hard guarantee should pair `suspend()`/`resume()` with their
+/// own synchronization.
+extern "C" fn suspend_signal_handler(_sig: c_int) {
+    let mut mask: sigset_t = Default::default();
+
+    unsafe {
+        sigfillset(&mut mask);
+        sigdelset(&mut mask, resume_signal());
+        sigsuspend(&mask);
+    }
+}
+
+/// No-op handler for [`resume_signal`].
+///
+/// Its only purpose is to exist: installing a handler is what lets this
+/// signal interrupt `sigsuspend()` in [`suspend_signal_handler`] instead of
+/// being blocked, and — since this is a real-time signal — it avoids the
+/// default action of terminating the process.
+extern "C" fn resume_signal_handler(_sig: c_int) {}
+
+/// Installs [`suspend_signal_handler`]/[`resume_signal_handler`], once per process.
+fn ensure_suspend_signal_handlers() {
+    static INIT: Once = Once::new();
+
+    INIT.call_once(|| unsafe {
+        signal(suspend_signal(), suspend_signal_handler as *const () as usize);
+        signal(resume_signal(), resume_signal_handler as *const () as usize);
+    });
+}
+
+/// A thread's pending task-notification value, plus whether one is pending.
+///
+/// Mirrors the single-slot notification FreeRTOS keeps directly on its task
+/// control block: `pending` is what `wait_notification()` blocks on, and
+/// `value` is what it hands back once woken.
+#[derive(Default)]
+struct NotifyState {
+    value: u32,
+    pending: bool,
+}
+
+/// The synchronization primitives backing one thread's notification slot.
+#[derive(Default)]
+struct NotifySlot {
+    state: Mutex<NotifyState>,
+    cv: Condvar,
+}
+
+/// Process-wide table of notification slots, keyed by `pthread_t`.
+///
+/// pthreads has nothing resembling FreeRTOS's per-task notification value,
+/// so this crate keeps its own, addressed by thread handle rather than
+/// stored on `Thread` itself — `Thread` is freely cloned, but a notification
+/// belongs to the underlying OS thread, not to any one Rust handle to it.
+fn notify_registry() -> &'static Mutex<HashMap<ThreadHandle, Arc<NotifySlot>>> {
+    static REGISTRY: OnceLock<Mutex<HashMap<ThreadHandle, Arc<NotifySlot>>>> = OnceLock::new();
+
+    REGISTRY.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+/// Returns `handle`'s notification slot, creating it on first use.
+fn notify_slot(handle: ThreadHandle) -> Arc<NotifySlot> {
+    notify_registry()
+        .lock()
+        .unwrap()
+        .entry(handle)
+        .or_insert_with(|| Arc::new(NotifySlot::default()))
+        .clone()
+}
+
+/// Drops `handle`'s notification slot, if any.
+///
+/// glibc recycles `pthread_t` values once a thread has been joined, so a
+/// slot left behind after that point could be silently inherited by an
+/// unrelated future thread. Called once a thread is known to be gone
+/// (`delete()`/`join()` returning successfully).
+fn forget_notify_slot(handle: ThreadHandle) {
+    if let Ok(mut registry) = notify_registry().lock() {
+        registry.remove(&handle);
+    }
+}
+
+/// Applies a [`ThreadNotification`] action to `state`, FreeRTOS-`xTaskNotify`-style.
+///
+/// Every action except [`ThreadNotification::SetValueWithoutOverwrite`]
+/// always succeeds. That one only updates `value` if no notification is
+/// currently pending (i.e. the previous one was consumed by
+/// `wait_notification()`); if one is already pending, it fails without
+/// touching `value`, matching FreeRTOS's `xTaskNotify(eSetValueWithoutOverwrite)`
+/// returning `pdFAIL`.
+fn apply_notification(state: &mut NotifyState, notification: ThreadNotification) -> Result<()> {
+    use ThreadNotification::*;
+    match notification {
+        NoAction => {}
+        SetBits(bits) => state.value |= bits,
+        Increment => state.value = state.value.wrapping_add(1),
+        SetValueWithOverwrite(value) => state.value = value,
+        SetValueWithoutOverwrite(value) => {
+            if state.pending {
+                return Err(Error::QueueFull);
+            }
+            state.value = value;
+        }
+    }
+
+    state.pending = true;
+    Ok(())
 }
 
 /// Represents the possible states of a FreeRTOS task/thread.
@@ -280,6 +420,9 @@ unsafe extern "C" fn callback_c_wrapper(param_ptr: *mut c_void) -> *mut c_void {
 ///
 /// Unpacks the boxed `Arc<ThreadSimpleFnPtr>` and invokes it directly; unlike
 /// [`callback_c_wrapper`] there is no `Thread` instance to reconstruct here.
+/// The callback's `Result<ThreadParam>` is boxed and returned as the raw
+/// `void *` exit value, the same way `callback_c_wrapper` does, so `Thread::join()`
+/// works identically for threads spawned with `spawn_simple()`.
 ///
 /// # Safety
 ///
@@ -291,9 +434,9 @@ unsafe extern "C" fn simple_callback_c_wrapper(param_ptr: *mut c_void) -> *mut c
     }
 
     let func: Box<Arc<ThreadSimpleFnPtr>> = unsafe { Box::from_raw(param_ptr as *mut _) };
-    func();
+    let ret = func();
 
-    null_mut()
+    Box::into_raw(Box::new(ret)) as *mut c_void
 }
 
 impl ThreadFn for Thread {
@@ -359,7 +502,7 @@ impl ThreadFn for Thread {
 
     fn spawn_simple<F>(&mut self, callback: F) -> Result<Self>
     where
-        F: Fn() + Send + Sync + 'static,
+        F: Fn() -> Result<ThreadParam> + Send + Sync + 'static,
         Self: Sized,
     {
         let func: Arc<ThreadSimpleFnPtr> = Arc::new(callback);
@@ -414,22 +557,46 @@ impl ThreadFn for Thread {
         })
     }
 
-    fn delete(&self) {}
+    fn delete(&self) {
+        let _ = unsafe { pthread_join(self.handle, null_mut()) };
+        forget_notify_slot(self.handle);
+    }
 
-    fn suspend(&self) {}
+    fn suspend(&self) {
+        if self.handle == 0 {
+            return;
+        }
 
-    fn resume(&self) {}
+        ensure_suspend_signal_handlers();
 
-    fn join(&self, retval: DoublePtr) -> Result<i32> {
+        unsafe {
+            pthread_kill(self.handle, suspend_signal());
+        }
+    }
+
+    fn resume(&self) {
+        if self.handle == 0 {
+            return;
+        }
+
+        ensure_suspend_signal_handlers();
+
+        unsafe {
+            pthread_kill(self.handle, resume_signal());
+        }
+    }
+
+    fn join(&self, ret_val: DoublePtr) -> Result<i32> {
         if self.handle == 0 {
             return Err(Error::NullPtr);
         }
 
-        let ret = unsafe { pthread_join(self.handle, retval) };
+        let ret = unsafe { pthread_join(self.handle, ret_val) };
 
         if ret != 0 {
             Err(Error::ReturnWithCode(ret))
         } else {
+            forget_notify_slot(self.handle);
             Ok(0)
         }
     }
@@ -442,8 +609,13 @@ impl ThreadFn for Thread {
     where
         Self: Sized,
     {
+        // `pthread_self()` returns whichever thread calls it, so this is
+        // correct whether `get_current()` runs on the "main" thread or from
+        // inside a callback running on a thread this crate spawned (see
+        // `callback_c_wrapper`, which relies on the same call for the same
+        // reason).
         Self {
-            handle: dummy_thread_handle(),
+            handle: unsafe { pthread_self() },
             name: Bytes::from_str("current"),
             stack_depth: 0,
             priority: 0,
@@ -452,30 +624,71 @@ impl ThreadFn for Thread {
         }
     }
 
-    fn notify(&self, _notification: ThreadNotification) -> Result<()> {
+    fn notify(&self, notification: ThreadNotification) -> Result<()> {
         if self.handle == 0 {
-            Err(Error::NullPtr)
-        } else {
-            Ok(())
+            return Err(Error::NullPtr);
         }
+
+        let slot = notify_slot(self.handle);
+
+        let result = {
+            let mut state = slot.state.lock().unwrap();
+            apply_notification(&mut state, notification)
+        };
+
+        if result.is_ok() {
+            // Wake a thread blocked in wait_notification() below; a no-op if none is.
+            slot.cv.notify_all();
+        }
+
+        result
     }
 
-    fn notify_from_isr(&self, _notification: ThreadNotification, higher_priority_task_woken: &mut BaseType) -> Result<()> {
+    fn notify_from_isr(&self, notification: ThreadNotification, higher_priority_task_woken: &mut BaseType) -> Result<()> {
+        // No real interrupt context on POSIX, and thus no scheduler decision
+        // to report back — matches `System`'s other `_from_isr` stand-ins.
         *higher_priority_task_woken = 0;
 
-        if self.handle == 0 {
-            Err(Error::NullPtr)
-        } else {
-            Ok(())
-        }
+        self.notify(notification)
     }
 
-    fn wait_notification(&self, _bits_to_clear_on_entry: u32, _bits_to_clear_on_exit: u32, _timeout_ticks: TickType) -> Result<u32> {
+    fn wait_notification(&self, bits_to_clear_on_entry: u32, bits_to_clear_on_exit: u32, timeout_ticks: TickType) -> Result<u32> {
         if self.handle == 0 {
-            Err(Error::NullPtr)
-        } else {
-            Err(Error::Timeout)
+            return Err(Error::NullPtr);
         }
+
+        let slot = notify_slot(self.handle);
+        let mut state = slot.state.lock().unwrap();
+
+        state.value &= !bits_to_clear_on_entry;
+
+        if !state.pending {
+            if timeout_ticks == TickType::MAX {
+                while !state.pending {
+                    state = slot.cv.wait(state).unwrap();
+                }
+            } else {
+                let deadline = Instant::now() + Duration::from_millis((timeout_ticks as u64).saturating_mul(TICK_PERIOD_MS));
+
+                while !state.pending {
+                    let Some(remaining) = deadline.checked_duration_since(Instant::now()) else {
+                        break;
+                    };
+
+                    state = slot.cv.wait_timeout(state, remaining).unwrap().0;
+                }
+            }
+        }
+
+        if !state.pending {
+            return Err(Error::Timeout);
+        }
+
+        state.pending = false;
+        let value = state.value;
+        state.value &= !bits_to_clear_on_exit;
+
+        Ok(value)
     }
 }
 

@@ -388,7 +388,7 @@ impl Thread {
     /// println!("Stack high water mark: {}", metadata.stack_high_water_mark);
     /// ```
     pub fn get_metadata(thread: &Thread) -> ThreadMetadata {
-        if thread.handle.is_null() {
+        if thread.is_null() {
             return ThreadMetadata::default();
         }
         Self::get_metadata_from_handle(thread.handle)
@@ -424,7 +424,7 @@ impl Thread {
     /// ```
     #[inline]
     pub fn wait_notification_with_to_tick(&self, bits_to_clear_on_entry: u32, bits_to_clear_on_exit: u32 , timeout_ticks: impl ToTick) -> Result<u32> {
-        if self.handle.is_null() {
+        if self.is_null() {
             return Err(Error::NullPtr);
         }
         self.wait_notification(bits_to_clear_on_entry, bits_to_clear_on_exit, timeout_ticks.to_ticks())
@@ -613,8 +613,8 @@ impl ThreadFn for Thread {
     /// thread.delete();
     /// ```
     fn delete(&self) {
-        if !self.handle.is_null() {
-            unsafe { vTaskDelete( self.handle ); } 
+        if !self.is_null() {
+            unsafe { vTaskDelete( self.handle ); }
         }
     }
 
@@ -634,8 +634,8 @@ impl ThreadFn for Thread {
     /// thread.resume();
     /// ```
     fn suspend(&self) {
-        if !self.handle.is_null() {
-            unsafe { vTaskSuspend( self.handle ); } 
+        if !self.is_null() {
+            unsafe { vTaskSuspend( self.handle ); }
         }
     }
 
@@ -647,8 +647,8 @@ impl ThreadFn for Thread {
     /// thread.resume();
     /// ```
     fn resume(&self) {
-        if !self.handle.is_null() {
-            unsafe { vTaskResume( self.handle ); } 
+        if !self.is_null() {
+            unsafe { vTaskResume( self.handle ); }
         }
     }
 
@@ -658,8 +658,8 @@ impl ThreadFn for Thread {
     ///
     /// Always returns `Ok(0)`
     fn join(&self, _retval: DoublePtr) -> Result<i32> {
-        if !self.handle.is_null() {
-            unsafe { vTaskDelete( self.handle ); } 
+        if !self.is_null() {
+            unsafe { vTaskDelete( self.handle ); }
         }
         Ok(0)
     }
@@ -727,7 +727,7 @@ impl ThreadFn for Thread {
     /// thread.notify(ThreadNotification::SetValueWithOverwrite(42)).unwrap();
     /// ```
     fn notify(&self, notification: ThreadNotification) -> Result<()> {
-        if self.handle.is_null() {
+        if self.is_null() {
             return Err(Error::NullPtr);
         }
 
@@ -768,7 +768,7 @@ impl ThreadFn for Thread {
     /// thread.notify_from_isr(ThreadNotification::Increment, &mut woken).ok();
     /// ```
     fn notify_from_isr(&self, notification: ThreadNotification, higher_priority_task_woken: &mut BaseType) -> Result<()> {
-        if self.handle.is_null() {
+        if self.is_null() {
             return Err(Error::NullPtr);
         }
 
@@ -814,7 +814,7 @@ impl ThreadFn for Thread {
     /// }
     /// ```
     fn wait_notification(&self, bits_to_clear_on_entry: u32, bits_to_clear_on_exit: u32 , timeout_ticks: TickType) -> Result<u32> {
-        if self.handle.is_null() {
+        if self.is_null() {
             return Err(Error::NullPtr);
         }
 

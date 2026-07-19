@@ -205,6 +205,7 @@ pub fn test_thread_spawn_simple() -> Result<()> {
     let result = thread.spawn_simple(|| {
         log_debug!(TAG, "Simple thread executing");
         System::delay(Duration::from_millis(10).to_ticks());
+        Ok(Arc::new(()))
     });
     
     assert!(result.is_ok());
@@ -236,6 +237,7 @@ pub fn test_thread_spawn_simple_with_shared_data() -> Result<()> {
             *num += 1;
             log_debug!(TAG, "Counter: {}", *num);
         }
+        Ok(Arc::new(()))
     });
     
     assert!(result.is_ok());
@@ -307,6 +309,7 @@ pub fn test_thread_new_with_to_priority() -> Result<()> {
 
     let spawned = thread.spawn_simple(|| {
         System::delay(Duration::from_millis(50).to_ticks());
+        Ok(Arc::new(()))
     })?;
 
     let metadata = spawned.get_metadata();
@@ -328,6 +331,7 @@ pub fn test_thread_handle_based_constructors() -> Result<()> {
     let mut source = Thread::new("handle_source", 1024, 2);
     let spawned = source.spawn_simple(|| {
         System::delay(Duration::from_millis(50).to_ticks());
+        Ok(Arc::new(()))
     })?;
     let handle = *spawned;
 
@@ -387,6 +391,7 @@ pub fn test_thread_join() -> Result<()> {
     let mut thread = Thread::new("join_test", 1024, 5);
     let spawned = thread.spawn_simple(|| {
         System::delay(Duration::from_millis(10).to_ticks());
+        Ok(Arc::new(()))
     })?;
 
     let join_result = spawned.join(core::ptr::null_mut());

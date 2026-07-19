@@ -179,7 +179,7 @@ int main() {
             for line in stdout.lines() {
                 //println!("cargo:warning=line:{line}"); 
                 match line {
-                    "x86_64" | "amd64" | "aarch64" | "arm64" | "riscv64" => {
+                    "x86_64" | "aarch64" | "riscv64" => {
                         // 64-bit architectures: native word size is 8 bytes
                         let tick_size: u16 = 8;
                         let u_base_size: u16 = 8;
@@ -194,7 +194,7 @@ int main() {
 
                         self.write_generated_types(tick_size, tick_type, u_base_size, u_base_type, base_size, base_type, stack_size, stack_type);
                     }
-                    "i586" | "i686" | "armv7l" | "armv6l" | "arm" | "riscv32" => {
+                    "x86" | "arm" | "riscv32" => {
                         // 32-bit architectures: native word size is 4 bytes
                         let tick_size: u16 = 4;
                         let u_base_size: u16 = 4;

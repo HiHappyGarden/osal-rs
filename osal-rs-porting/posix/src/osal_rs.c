@@ -20,3 +20,9 @@
 
 #include "osal_rs.h"
 
+#include <pthread.h>
+
+
+size_t get_pthread_stack_min(void) {
+    return PTHREAD_STACK_MIN;
+}

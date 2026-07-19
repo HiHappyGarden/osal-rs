@@ -54,13 +54,20 @@
 include!(concat!(env!("OUT_DIR"), "/types_generated.rs"));
 
 use core::ffi::c_void;
+use std::ffi::c_ulong;
 
 /// POSIX opaque handle types for OS primitives.
 ///
 /// These handles are opaque pointers used to reference POSIX/pthread-backed
 /// objects. They should not be dereferenced directly; instead, use the safe
 /// wrappers provided by this crate (e.g., `Thread`, `Queue`, `Semaphore`, etc.).
-pub type ThreadHandle = *const c_void;
+
+
+/// Opaque POSIX thread identifier (`pthread_t`).
+///
+/// glibc defines `pthread_t` as `unsigned long int`, so `c_ulong` has the
+/// correct size/representation on every target this crate builds for.
+pub type ThreadHandle = c_ulong;
 pub type QueueHandle = *const c_void;
 pub type SemaphoreHandle = *const c_void;
 pub type EventGroupHandle = *const c_void;

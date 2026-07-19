@@ -17,3 +17,146 @@
  * License along with this library; if not, see <https://www.gnu.org/licenses/>.
  *
  ***************************************************************************/
+
+//! Foreign Function Interface (FFI) bindings for POSIX threads (pthreads).
+//!
+//! This module provides raw FFI declarations for the pthread functions that
+//! back the safe Rust wrappers in the rest of the `posix` module. It talks
+//! directly to the platform's `libpthread`/`libc` with hand-written
+//! declarations — no `libc` crate, no `bindgen`, nothing external.
+//!
+//! # Safety
+//!
+//! All items in this module are `unsafe` and require careful handling:
+//! - `attr` pointers must reference a validly sized/aligned [`pthread_attr_t`]
+//! - `thread` pointers must be valid for writes of a [`pthread_t`]
+//! - `start_routine`/`arg` must satisfy the same contract as `pthread_create(3)`
+//!
+//! Use the safe wrappers in parent modules instead of calling these directly.
+
+#![allow(non_camel_case_types)]
+
+use core::ffi::{c_char, c_int, c_void};
+
+use crate::os::types::ThreadHandle;
+
+// Size (in bytes) of glibc's opaque `pthread_attr_t`, taken from
+// `bits/pthreadtypes-arch.h` (`__SIZEOF_PTHREAD_ATTR_T`) for each
+// architecture this crate supports (same architecture set as
+// `osal_rs_build::TypeGenerator::generate_types`):
+// - 64-bit: x86_64/amd64, aarch64/arm64, riscv64
+// - 32-bit: i586/i686, armv7l/armv6l/arm, riscv32
+#[cfg(target_arch = "x86_64")]
+const PTHREAD_ATTR_T_SIZE: usize = 56;
+#[cfg(target_arch = "x86")]
+const PTHREAD_ATTR_T_SIZE: usize = 36;
+#[cfg(target_arch = "aarch64")]
+const PTHREAD_ATTR_T_SIZE: usize = 64;
+#[cfg(target_arch = "arm")]
+const PTHREAD_ATTR_T_SIZE: usize = 36;
+#[cfg(target_arch = "riscv64")]
+const PTHREAD_ATTR_T_SIZE: usize = 56;
+#[cfg(target_arch = "riscv32")]
+const PTHREAD_ATTR_T_SIZE: usize = 32;
+
+#[cfg(not(any(
+    target_arch = "x86_64",
+    target_arch = "x86",
+    target_arch = "aarch64",
+    target_arch = "arm",
+    target_arch = "riscv64",
+    target_arch = "riscv32",
+)))]
+compile_error!(
+    "osal-rs: pthread_attr_t layout is not known for this target_arch; add its \
+     bits/pthreadtypes-arch.h __SIZEOF_PTHREAD_ATTR_T value to posix/ffi.rs"
+);
+
+/// Opaque storage for `pthread_attr_t`.
+///
+/// Rust never reads/writes its fields directly; only its address is handed
+/// to `pthread_attr_*`/`pthread_create`, so a correctly sized-and-aligned
+/// byte buffer is a valid stand-in for the real glibc struct.
+#[repr(C, align(8))]
+#[derive(Copy, Clone)]
+pub(super) struct pthread_attr_t {
+    _opaque: [u8; PTHREAD_ATTR_T_SIZE],
+}
+
+impl Default for pthread_attr_t {
+    fn default() -> Self {
+        Self {
+            _opaque: [0u8; PTHREAD_ATTR_T_SIZE],
+        }
+    }
+}
+
+/// Thread entry point matching the C signature `void *(*)(void *)`.
+pub(super) type ThreadStartRoutine = unsafe extern "C" fn(arg: *mut c_void) -> *mut c_void;
+
+
+/// Scheduling policy: real-time first-in-first-out (`<sched.h>`).
+///
+/// Value is stable across every glibc-supported architecture (defined in
+/// the generic `bits/sched.h`, not per-arch).
+#[cfg(feature = "sched_fifo")]
+pub(super) const SCHED_FIFO: c_int = 1;
+
+/// Scheduling-inheritance attribute: use the policy/priority set on the
+/// `pthread_attr_t` itself instead of inheriting the creating thread's.
+#[cfg(feature = "sched_fifo")]
+pub(super) const PTHREAD_EXPLICIT_SCHED: c_int = 1;
+
+/// Mirrors glibc's `struct sched_param` (`<bits/sched.h>`), which on Linux
+/// has no fields beyond `sched_priority`.
+#[cfg(feature = "sched_fifo")]
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub(super) struct sched_param {
+    pub(super) sched_priority: c_int,
+}
+
+unsafe extern "C" {
+
+
+    pub(super) fn get_pthread_stack_min() -> usize;
+
+    /// Initialize a thread attributes object with default values.
+    pub(super) fn pthread_attr_init(attr: *mut pthread_attr_t) -> c_int;
+
+    /// Set the stack size attribute, in bytes.
+    pub(super) fn pthread_attr_setstacksize(attr: *mut pthread_attr_t, stacksize: usize) -> c_int;
+
+    /// Set whether a thread inherits the creating thread's scheduling
+    /// policy/priority (`PTHREAD_INHERIT_SCHED`) or uses `attr`'s own,
+    /// explicitly-set policy/priority (`PTHREAD_EXPLICIT_SCHED`).
+    #[cfg(feature = "sched_fifo")]
+    pub(super) fn pthread_attr_setinheritsched(attr: *mut pthread_attr_t, inheritsched: c_int) -> c_int;
+
+    /// Set the scheduling policy attribute (e.g. [`SCHED_FIFO`]).
+    #[cfg(feature = "sched_fifo")]
+    pub(super) fn pthread_attr_setschedpolicy(attr: *mut pthread_attr_t, policy: c_int) -> c_int;
+
+    /// Set the scheduling parameters (priority) attribute.
+    #[cfg(feature = "sched_fifo")]
+    pub(super) fn pthread_attr_setschedparam(attr: *mut pthread_attr_t, param: *const sched_param) -> c_int;
+
+    /// Create a new thread running `start_routine(arg)`, writing its ID to `thread`.
+    pub(super) fn pthread_create(
+        thread: *mut ThreadHandle,
+        attr: *const pthread_attr_t,
+        start_routine: Option<ThreadStartRoutine>,
+        arg: *mut c_void,
+    ) -> c_int;
+
+    /// Return the calling thread's own ID (`pthread_self(3)`).
+    pub(super) fn pthread_self() -> ThreadHandle;
+
+    /// Wait for `thread` to terminate. If `retval` is non-null, the value
+    /// passed to `pthread_exit(3)` (or returned by the start routine) by the
+    /// target thread is stored in `*retval`.
+    pub(super) fn pthread_join(thread: ThreadHandle, retval: *mut *mut c_void) -> c_int;
+
+    /// Set the name (glibc extension, `<= 15` chars + NUL) of an existing thread.
+    pub(super) fn pthread_setname_np(thread: ThreadHandle, name: *const c_char) -> c_int;
+}

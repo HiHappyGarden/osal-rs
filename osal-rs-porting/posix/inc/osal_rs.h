@@ -21,5 +21,8 @@
 #ifndef OSAL_RS_POSIX_H
 #define OSAL_RS_POSIX_H
 
+#include <stddef.h>
+
+size_t get_pthread_stack_min(void);
 
 #endif /* OSAL_RS_POSIX_H */

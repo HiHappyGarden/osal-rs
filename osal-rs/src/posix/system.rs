@@ -22,15 +22,15 @@ use core::ops::Deref;
 use core::time::Duration;
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use alloc::vec;
 use alloc::vec::Vec;
 use std::sync::OnceLock;
 use std::time::Instant;
 
-use crate::posix::thread::{ThreadMetadata, ThreadState};
+use crate::posix::ffi::{_SC_AVPHYS_PAGES, _SC_PAGESIZE, pthread_self, sysconf};
+use crate::posix::thread::{ThreadMetadata, ThreadState, all_registered_threads, registered_thread_count};
 use crate::posix::types::{BaseType, TickType, UBaseType};
 use crate::traits::{SystemFn, ToTick};
-use crate::utils::OsalRsBool;
+use crate::utils::{Bytes, OsalRsBool};
 
 static RUN: AtomicBool = AtomicBool::new(true);
 
@@ -108,15 +108,34 @@ impl SystemFn for System {
     }
 
     fn count_threads() -> usize {
-        1
+        // +1 for the calling thread itself, which `get_all_thread()` below
+        // always reports even when it wasn't spawned through this crate's API.
+        1 + registered_thread_count()
     }
 
     fn get_all_thread() -> SystemState {
-        let mut thread = ThreadMetadata::default();
-        thread.state = ThreadState::Running;
+        let mut tasks = all_registered_threads();
+
+        let current_handle = unsafe { pthread_self() };
+        if !tasks.iter().any(|task| task.thread == current_handle) {
+            tasks.push(ThreadMetadata {
+                thread: current_handle,
+                name: Bytes::from_str("current"),
+                stack_depth: 0,
+                // Not spawned through `Thread::new()`, so there's no configured
+                // priority to report; use the lowest valid one as a placeholder.
+                priority: 1,
+                thread_number: 0,
+                state: ThreadState::Running,
+                current_priority: 1,
+                base_priority: 1,
+                run_time_counter: 0,
+                stack_high_water_mark: 0,
+            });
+        }
 
         SystemState {
-            tasks: vec![thread],
+            tasks,
             total_run_time: Self::get_tick_count().min(TickType::MAX) as u32,
         }
     }
@@ -173,6 +192,16 @@ impl SystemFn for System {
     fn exit_critical_from_isr(_saved_interrupt_status: UBaseType) {}
 
     fn get_free_heap_size() -> usize {
-        0
+        // POSIX processes don't have a fixed heap the way FreeRTOS does (the
+        // allocator can keep extending it via mmap/brk), so this reports
+        // available physical memory as the closest analogue.
+        let page_size = unsafe { sysconf(_SC_PAGESIZE) };
+        let avail_pages = unsafe { sysconf(_SC_AVPHYS_PAGES) };
+
+        if page_size <= 0 || avail_pages <= 0 {
+            0
+        } else {
+            (page_size as usize).saturating_mul(avail_pages as usize)
+        }
     }
 }

@@ -52,7 +52,7 @@ use alloc::sync::Arc;
 
 use crate::os::{ThreadMetadata};
 use crate::os::types::{BaseType, TickType, UBaseType};
-use crate::utils::{Result, DoublePtr};
+use crate::utils::{DoublePtr, Result};
 
 /// Type-erased parameter that can be passed to thread callbacks.
 ///
@@ -261,6 +261,9 @@ impl Into<(u32, u32)> for ThreadNotification {
 /// }).unwrap();
 /// ```
 pub trait Thread {
+
+    fn is_null(&self) -> bool;
+
     /// Spawns a thread with a callback function and optional parameter.
     ///
     /// Creates and starts a new thread that executes the provided callback function.

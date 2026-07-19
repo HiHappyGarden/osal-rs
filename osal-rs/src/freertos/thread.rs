@@ -497,6 +497,10 @@ unsafe extern "C" fn simple_callback_wrapper(param_ptr: *mut c_void) {
 
 impl ThreadFn for Thread {
 
+    fn is_null(&self) -> bool {
+        self.handle.is_null()
+    }
+
     /// Spawns a new thread with a callback.
     /// 
     /// # Important

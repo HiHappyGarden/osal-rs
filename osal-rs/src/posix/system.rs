@@ -18,15 +18,17 @@
  *
  ***************************************************************************/
 
+use core::ffi::c_long;
 use core::ops::Deref;
 use core::time::Duration;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use alloc::vec::Vec;
 use std::sync::OnceLock;
-use std::time::Instant;
 
-use crate::posix::ffi::{_SC_AVPHYS_PAGES, _SC_PAGESIZE, pthread_self, sysconf};
+use crate::posix::ffi::{
+    CLOCK_MONOTONIC, _SC_AVPHYS_PAGES, _SC_PAGESIZE, clock_gettime, nanosleep, pthread_self, sched_yield, sysconf, timespec,
+};
 use crate::posix::thread::{ThreadMetadata, ThreadState, all_registered_threads, registered_thread_count};
 use crate::posix::types::{BaseType, TickType, UBaseType};
 use crate::traits::{SystemFn, ToTick};
@@ -61,14 +63,21 @@ impl System {
         Self::delay_until(previous_wake_time, time_increment.to_ticks());
     }
 
-    fn start_time() -> &'static Instant {
-        static START_TIME: OnceLock<Instant> = OnceLock::new();
+    fn monotonic_now() -> Duration {
+        let mut ts = timespec::default();
+        unsafe { clock_gettime(CLOCK_MONOTONIC, &mut ts) };
 
-        START_TIME.get_or_init(Instant::now)
+        Duration::new(ts.tv_sec as u64, ts.tv_nsec as u32)
+    }
+
+    fn start_time() -> Duration {
+        static START_TIME: OnceLock<Duration> = OnceLock::new();
+
+        *START_TIME.get_or_init(Self::monotonic_now)
     }
 
     fn elapsed() -> Duration {
-        Self::start_time().elapsed()
+        Self::monotonic_now().checked_sub(Self::start_time()).unwrap_or_default()
     }
 }
 
@@ -141,7 +150,28 @@ impl SystemFn for System {
     }
 
     fn delay(ticks: TickType) {
-        std::thread::sleep(Duration::from_millis(ticks));
+        let mut req = timespec {
+            tv_sec: (ticks / 1000) as c_long,
+            tv_nsec: ((ticks % 1000) as c_long) * 1_000_000,
+        };
+
+        loop {
+            let mut rem = timespec::default();
+
+            if unsafe { nanosleep(&req, &mut rem) } == 0 {
+                break;
+            }
+
+            // Interrupted by a signal before `req` elapsed: `rem` holds the
+            // time still left to sleep, so resume with that. If the kernel
+            // left `rem` untouched (a real error, not EINTR), it'll be zero
+            // and the loop exits instead of spinning forever.
+            if rem.tv_sec == 0 && rem.tv_nsec == 0 {
+                break;
+            }
+
+            req = rem;
+        }
     }
 
     fn delay_until(previous_wake_time: &mut TickType, time_increment: TickType) {
@@ -171,13 +201,17 @@ impl SystemFn for System {
 
     fn yield_from_isr(higher_priority_task_woken: BaseType) {
         if higher_priority_task_woken != 0 {
-            std::thread::yield_now();
+            unsafe {
+                sched_yield();
+            }
         }
     }
 
     fn end_switching_isr(switch_required: BaseType) {
         if switch_required != 0 {
-            std::thread::yield_now();
+            unsafe {
+                sched_yield();
+            }
         }
     }
 
@@ -189,7 +223,7 @@ impl SystemFn for System {
         0
     }
 
-    fn exit_critical_from_isr(_saved_interrupt_status: UBaseType) {}
+    fn exit_critical_from_isr(_: UBaseType) {}
 
     fn get_free_heap_size() -> usize {
         // POSIX processes don't have a fixed heap the way FreeRTOS does (the

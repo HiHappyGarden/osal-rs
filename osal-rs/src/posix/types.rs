@@ -53,10 +53,10 @@
 // - StackType: Stack allocation type
 include!(concat!(env!("OUT_DIR"), "/types_generated.rs"));
 
-use core::ffi::c_void;
-use std::ffi::c_ulong;
+use core::ffi::{ c_ulong, c_void };
+use core::fmt::Debug;
 
-use crate::posix::ffi::pthread_mutex_t;
+use crate::posix::ffi::{pthread_cond_t, pthread_mutex_t};
 
 /// POSIX opaque handle types for OS primitives.
 ///
@@ -71,7 +71,27 @@ use crate::posix::ffi::pthread_mutex_t;
 /// correct size/representation on every target this crate builds for.
 pub type ThreadHandle = c_ulong;
 pub type QueueHandle = *const c_void;
-pub type SemaphoreHandle = *const c_void;
+
+#[derive(Default)]
+pub struct SemaphoreHandle (
+    pub(in crate::posix) pthread_mutex_t, 
+    pub(in crate::posix) pthread_cond_t,
+);
+
+impl Debug for SemaphoreHandle {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("SemaphoreHandle")
+            .field("handle", &(&raw const self).addr())
+            .finish()
+    }
+}
+
+impl SemaphoreHandle {
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty() && self.1.is_empty() 
+    }
+}
+
 pub type EventGroupHandle = *const c_void;
 pub type TimerHandle = *const c_void;
 pub type MutexHandle = pthread_mutex_t;

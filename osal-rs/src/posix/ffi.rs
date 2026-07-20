@@ -168,12 +168,6 @@ impl Default for pthread_mutexattr_t {
     }
 }
 
-impl pthread_mutexattr_t {
-    pub(super) fn is_empty(&self) -> bool {
-        self._opaque.iter().all(|&b| b == 0)
-    }
-}
-
 /// Size (in bytes) of glibc's opaque `pthread_cond_t` (`__SIZEOF_PTHREAD_COND_T`).
 ///
 /// Unlike [`PTHREAD_MUTEX_T_SIZE`], glibc keeps this the same 48 bytes on
@@ -242,11 +236,6 @@ impl Default for pthread_condattr_t {
     }
 }
 
-impl pthread_condattr_t {
-    pub(super) fn is_empty(&self) -> bool {
-        self._opaque.iter().all(|&b| b == 0)
-    }
-}
 
 /// One-time initialization control (`pthread_once_t`, `<pthread.h>`).
 ///

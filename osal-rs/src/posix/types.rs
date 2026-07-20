@@ -56,6 +56,8 @@ include!(concat!(env!("OUT_DIR"), "/types_generated.rs"));
 use core::ffi::c_void;
 use std::ffi::c_ulong;
 
+use crate::posix::ffi::pthread_mutex_t;
+
 /// POSIX opaque handle types for OS primitives.
 ///
 /// These handles are opaque pointers used to reference POSIX/pthread-backed
@@ -72,7 +74,7 @@ pub type QueueHandle = *const c_void;
 pub type SemaphoreHandle = *const c_void;
 pub type EventGroupHandle = *const c_void;
 pub type TimerHandle = *const c_void;
-pub type MutexHandle = *const c_void;
+pub type MutexHandle = pthread_mutex_t;
 
 /// Type alias for event group bits.
 ///

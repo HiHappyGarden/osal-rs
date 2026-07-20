@@ -93,14 +93,6 @@ impl EventGroup {
 		Ok(Self(UnsafeCell::new(ClockMonotonicHandle(mutex, cond)), UnsafeCell::new(0)))
 	}
 
-	// "Null" means never-initialized-or-already-deleted. Unlike
-	// `Semaphore::is_null`, the bits themselves are not part of this check:
-	// an event group legitimately sits at `0` bits whenever nothing has been
-	// set yet, so that can't be used to detect deletion.
-	fn is_null(&self) -> bool {
-		unsafe { (*self.0.get()).is_empty() }
-	}
-
 	// Raw pointers into the `UnsafeCell`s, needed because the pthread FFI
 	// takes `*mut`. `bits_ptr()` must only be dereferenced while holding
 	// `mutex_ptr()` locked, except for the racy peek in `get_from_isr()`.
@@ -118,6 +110,14 @@ impl EventGroup {
 }
 
 impl EventGroupFn for EventGroup {
+	// "Null" means never-initialized-or-already-deleted. Unlike
+	// `Semaphore::is_null`, the bits themselves are not part of this check:
+	// an event group legitimately sits at `0` bits whenever nothing has been
+	// set yet, so that can't be used to detect deletion.
+	fn is_null(&self) -> bool {
+		unsafe { (*self.0.get()).is_empty() }
+	}
+
 	fn set(&self, bits: EventBits) -> EventBits {
 		if self.is_null() {
 			return 0;

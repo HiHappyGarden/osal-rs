@@ -242,6 +242,12 @@ pub type TimerFnPtr = dyn Fn(Box<dyn Timer>, Option<TimerParam>) -> Result<Timer
 /// // Runs every 100ms until stopped
 /// ```
 pub trait Timer {
+
+    /// Returns `true` if the underlying OS handle is null, i.e. the mutex
+    /// has not been created yet or has already been deleted.
+    fn is_null(&self) -> bool;
+
+
     /// Starts or restarts the timer.
     ///
     /// If the timer is already running, this command resets it to its full

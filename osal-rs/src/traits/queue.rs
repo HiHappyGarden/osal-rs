@@ -109,6 +109,11 @@ use crate::utils::Result;
 /// assert_eq!(&buffer[..4], &[1, 2, 3, 4]);
 /// ```
 pub trait Queue {
+
+    /// Returns `true` if the underlying OS handle is null, i.e. the mutex
+    /// has not been created yet or has already been deleted.
+    fn is_null(&self) -> bool;
+
     /// Fetches a message from the queue (blocking).
     ///
     /// Removes and retrieves the oldest message from the queue (FIFO order).

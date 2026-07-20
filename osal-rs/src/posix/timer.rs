@@ -92,6 +92,10 @@ impl Timer {
 }
 
 impl TimerFn for Timer {
+	fn is_null(&self) -> bool {
+		self.handle.is_null()
+	}
+
 	fn start(&self, _ticks_to_wait: TickType) -> OsalRsBool {
 		OsalRsBool::True
 	}

@@ -91,7 +91,7 @@ impl ClockMonotonicHandle {
 }
 
 pub type ThreadHandle = c_ulong;
-pub type QueueHandle = *const c_void;
+pub type QueueHandle = ClockMonotonicHandle;
 pub type SemaphoreHandle = ClockMonotonicHandle;
 pub type EventGroupHandle = ClockMonotonicHandle;
 pub type TimerHandle = *const c_void;

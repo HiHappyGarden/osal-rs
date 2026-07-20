@@ -470,6 +470,12 @@ impl Timer {
 
 impl TimerFn for Timer {
 
+    /// Returns `true` if the underlying OS handle is null, i.e. the timer
+    /// has not been created yet or has already been deleted.
+    fn is_null(&self) -> bool {
+        self.handle.is_null()
+    }
+
     /// Starts the timer.
     /// 
     /// Sends a command to the timer daemon to start the timer. If the timer
@@ -643,6 +649,9 @@ impl TimerFn for Timer {
 /// `delete(0)` when the timer is dropped.
 impl Drop for Timer {
     fn drop(&mut self) {
+        if self.is_null() {
+            return;
+        }
         self.delete(0);
     }
 }

@@ -72,6 +72,11 @@ use crate::os::types::{EventBits, TickType};
 /// events.set(0b0011);
 /// ```
 pub trait EventGroup {
+    /// Returns `true` if the underlying OS handle is null, i.e. the mutex
+    /// has not been created yet or has already been deleted.
+    fn is_null(&self) -> bool;
+
+
     /// Sets the specified event bits.
     ///
     /// Any tasks waiting for these bits will be unblocked if their

@@ -218,6 +218,12 @@ impl EventGroup {
 }
 impl EventGroupFn for EventGroup {
 
+    /// Returns `true` if the underlying OS handle is null, i.e. the event
+    /// group has not been created yet or has already been deleted.
+    fn is_null(&self) -> bool {
+        self.0.is_null()
+    }
+
     /// Sets specified event bits.
     /// 
     /// This function sets (raises) the specified event bits in the event group.
@@ -463,7 +469,7 @@ impl EventGroupFn for EventGroup {
 /// This ensures proper cleanup of FreeRTOS resources.
 impl Drop for EventGroup {
     fn drop(&mut self) {
-        if self.0.is_null() {
+        if self.is_null() {
             return;
         }
         self.delete();

@@ -113,6 +113,7 @@ impl RawMutexFn for RawMutex {
 			pthread_mutex_destroy(self.0.get());
 		}
 
+		*self.0.get_mut() = MutexHandle::default();
 	}
 }
 

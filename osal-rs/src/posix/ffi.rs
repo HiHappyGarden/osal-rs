@@ -130,7 +130,7 @@ impl Default for pthread_mutex_t {
 
 impl pthread_mutex_t {
     pub(super) fn is_empty(&self) -> bool {
-        self._opaque.is_empty()
+        self._opaque.iter().all(|&b| b == 0)
     }
 }
 

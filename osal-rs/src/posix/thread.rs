@@ -18,22 +18,26 @@
  *
  ***************************************************************************/
 
-use core::ffi::{c_int, c_void};
+use core::cell::UnsafeCell;
+use core::ffi::{c_int, c_long, c_void};
 use core::fmt::{Debug, Display, Formatter};
 use core::ops::Deref;
 use core::ptr::null_mut;
 use core::time::Duration;
 use std::collections::HashMap;
-use std::sync::{Condvar, Mutex, Once, OnceLock};
-use std::time::Instant;
 
 use alloc::sync::Arc;
 
-use crate::os::ThreadSimpleFnPtr;
+use crate::os::{Mutex, MutexFn, MutexGuard, ThreadSimpleFnPtr};
 use crate::posix::config::TICK_PERIOD_MS;
 #[cfg(feature = "sched_fifo")]
 use crate::posix::ffi::{PTHREAD_EXPLICIT_SCHED, SCHED_FIFO, pthread_attr_setinheritsched, pthread_attr_setschedparam, pthread_attr_setschedpolicy, sched_param};
-use crate::posix::ffi::{__libc_current_sigrtmin, get_pthread_stack_min, pthread_attr_init, pthread_attr_setstacksize, pthread_attr_t, pthread_create, pthread_join, pthread_kill, pthread_self, pthread_setname_np, sigdelset, sigfillset, sigset_t, signal, sigsuspend};
+use crate::posix::ffi::{
+	__libc_current_sigrtmin, CLOCK_MONOTONIC, ETIMEDOUT, PTHREAD_ONCE_INIT, clock_gettime, get_pthread_stack_min, pthread_attr_init, pthread_attr_setstacksize, pthread_attr_t,
+	pthread_cond_broadcast, pthread_cond_destroy, pthread_cond_init, pthread_cond_t, pthread_cond_timedwait, pthread_cond_wait, pthread_condattr_init, pthread_condattr_setclock,
+	pthread_condattr_t, pthread_create, pthread_join, pthread_kill, pthread_once, pthread_once_t, pthread_self, pthread_setname_np, sigdelset, sigfillset, sigset_t, signal, sigsuspend,
+	timespec,
+};
 use crate::posix::types::{BaseType, StackType, ThreadHandle, TickType, UBaseType};
 use crate::traits::{ThreadFn, ThreadFnPtr, ThreadNotification, ThreadParam, ToPriority, ToTick};
 use crate::utils::{Bytes, DoublePtr, Error, Result};
@@ -91,12 +95,100 @@ extern "C" fn resume_signal_handler(_sig: c_int) {}
 
 /// Installs [`suspend_signal_handler`]/[`resume_signal_handler`], once per process.
 fn ensure_suspend_signal_handlers() {
-    static INIT: Once = Once::new();
+    static mut ONCE: pthread_once_t = PTHREAD_ONCE_INIT;
 
-    INIT.call_once(|| unsafe {
-        signal(suspend_signal(), suspend_signal_handler as *const () as usize);
-        signal(resume_signal(), resume_signal_handler as *const () as usize);
-    });
+    extern "C" fn init() {
+        unsafe {
+            signal(suspend_signal(), suspend_signal_handler as *const () as usize);
+            signal(resume_signal(), resume_signal_handler as *const () as usize);
+        }
+    }
+
+    unsafe {
+        pthread_once(&raw mut ONCE, Some(init));
+    }
+}
+
+/// Condition variable backing [`NotifySlot`]'s wait/wake, and [`ensure_suspend_signal_handlers`]'s
+/// [`pthread_once_t`]-based sibling for one-time initialization.
+///
+/// Backed directly by `pthread_cond_t` rather than `std::sync::Condvar`:
+/// the latter's `wait`/`wait_timeout` only accept `std::sync::MutexGuard`,
+/// which can't pair with [`crate::os::Mutex`]'s own guard type.
+struct RawCondvar(UnsafeCell<pthread_cond_t>);
+
+unsafe impl Send for RawCondvar {}
+unsafe impl Sync for RawCondvar {}
+
+impl RawCondvar {
+    fn new() -> Self {
+        let mut attr: pthread_condattr_t = Default::default();
+        let mut cond: pthread_cond_t = Default::default();
+
+        unsafe {
+            pthread_condattr_init(&mut attr);
+            pthread_condattr_setclock(&mut attr, CLOCK_MONOTONIC);
+            pthread_cond_init(&mut cond, &attr);
+        }
+
+        Self(UnsafeCell::new(cond))
+    }
+
+    /// Atomically unlocks `guard`'s mutex and blocks until [`notify_all`](Self::notify_all)
+    /// wakes it, re-locking the mutex before returning. May return spuriously;
+    /// callers must re-check their predicate in a loop, same as with any condvar.
+    fn wait<T: ?Sized>(&self, guard: &MutexGuard<'_, T>) {
+        unsafe {
+            pthread_cond_wait(self.0.get(), guard.raw_handle());
+        }
+    }
+
+    /// As [`wait`](Self::wait), but gives up once the monotonic-clock `deadline`
+    /// passes. Returns `true` if it gave up because of the deadline, `false` if
+    /// woken normally (which, same as [`wait`](Self::wait), may be spurious).
+    fn wait_until<T: ?Sized>(&self, guard: &MutexGuard<'_, T>, deadline: timespec) -> bool {
+        unsafe { pthread_cond_timedwait(self.0.get(), guard.raw_handle(), &deadline) == ETIMEDOUT }
+    }
+
+    fn notify_all(&self) {
+        unsafe {
+            pthread_cond_broadcast(self.0.get());
+        }
+    }
+}
+
+impl Default for RawCondvar {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl Drop for RawCondvar {
+    fn drop(&mut self) {
+        unsafe {
+            pthread_cond_destroy(self.0.get());
+        }
+    }
+}
+
+/// Computes an absolute deadline `timeout` from now on the monotonic clock,
+/// for [`RawCondvar::wait_until`] (its `pthread_condattr_setclock(CLOCK_MONOTONIC)`
+/// counterpart to `pthread_cond_timedwait`'s absolute `abstime`).
+fn monotonic_deadline(timeout: Duration) -> timespec {
+    let mut now = timespec::default();
+    unsafe {
+        clock_gettime(CLOCK_MONOTONIC, &mut now);
+    }
+
+    let mut tv_sec = now.tv_sec + timeout.as_secs() as c_long;
+    let mut tv_nsec = now.tv_nsec + timeout.subsec_nanos() as c_long;
+
+    if tv_nsec >= 1_000_000_000 {
+        tv_sec += 1;
+        tv_nsec -= 1_000_000_000;
+    }
+
+    timespec { tv_sec, tv_nsec }
 }
 
 /// A thread's pending task-notification value, plus whether one is pending.
@@ -111,10 +203,18 @@ struct NotifyState {
 }
 
 /// The synchronization primitives backing one thread's notification slot.
-#[derive(Default)]
 struct NotifySlot {
     state: Mutex<NotifyState>,
-    cv: Condvar,
+    cv: RawCondvar,
+}
+
+impl Default for NotifySlot {
+    fn default() -> Self {
+        Self {
+            state: Mutex::new(NotifyState::default()),
+            cv: RawCondvar::default(),
+        }
+    }
 }
 
 /// Process-wide table of notification slots, keyed by `pthread_t`.
@@ -124,9 +224,19 @@ struct NotifySlot {
 /// stored on `Thread` itself — `Thread` is freely cloned, but a notification
 /// belongs to the underlying OS thread, not to any one Rust handle to it.
 fn notify_registry() -> &'static Mutex<HashMap<ThreadHandle, Arc<NotifySlot>>> {
-    static REGISTRY: OnceLock<Mutex<HashMap<ThreadHandle, Arc<NotifySlot>>>> = OnceLock::new();
+    static mut ONCE: pthread_once_t = PTHREAD_ONCE_INIT;
+    static mut REGISTRY: *mut Mutex<HashMap<ThreadHandle, Arc<NotifySlot>>> = null_mut();
 
-    REGISTRY.get_or_init(|| Mutex::new(HashMap::new()))
+    extern "C" fn init() {
+        unsafe {
+            REGISTRY = Box::into_raw(Box::new(Mutex::new(HashMap::new())));
+        }
+    }
+
+    unsafe {
+        pthread_once(&raw mut ONCE, Some(init));
+        &*REGISTRY
+    }
 }
 
 /// Returns `handle`'s notification slot, creating it on first use.
@@ -159,9 +269,19 @@ fn forget_notify_slot(handle: ThreadHandle) {
 /// successful `spawn()`/`spawn_simple()` adds an entry, and `join()`/`delete()`
 /// remove it once the thread is known to be gone.
 fn thread_registry() -> &'static Mutex<HashMap<ThreadHandle, ThreadMetadata>> {
-    static REGISTRY: OnceLock<Mutex<HashMap<ThreadHandle, ThreadMetadata>>> = OnceLock::new();
+    static mut ONCE: pthread_once_t = PTHREAD_ONCE_INIT;
+    static mut REGISTRY: *mut Mutex<HashMap<ThreadHandle, ThreadMetadata>> = null_mut();
 
-    REGISTRY.get_or_init(|| Mutex::new(HashMap::new()))
+    extern "C" fn init() {
+        unsafe {
+            REGISTRY = Box::into_raw(Box::new(Mutex::new(HashMap::new())));
+        }
+    }
+
+    unsafe {
+        pthread_once(&raw mut ONCE, Some(init));
+        &*REGISTRY
+    }
 }
 
 /// Records `metadata` under `metadata.thread` for [`System::get_all_thread()`].
@@ -739,18 +859,27 @@ impl ThreadFn for Thread {
 
         if !state.pending {
             if timeout_ticks == TickType::MAX {
-                while !state.pending {
-                    state = slot.cv.wait(state).unwrap();
+                // Not a `while !state.pending` loop: `pending` is flipped by
+                // `notify()` through a *different* `MutexGuard` (its own
+                // `slot.state.lock()`) while this thread is parked inside
+                // `wait()` — invisible to clippy's `while_immutable_condition`,
+                // which only looks for reassignment in the loop body.
+                loop {
+                    if state.pending {
+                        break;
+                    }
+                    slot.cv.wait(&state);
                 }
             } else {
-                let deadline = Instant::now() + Duration::from_millis((timeout_ticks as u64).saturating_mul(TICK_PERIOD_MS));
+                let deadline = monotonic_deadline(Duration::from_millis((timeout_ticks as u64).saturating_mul(TICK_PERIOD_MS)));
 
-                while !state.pending {
-                    let Some(remaining) = deadline.checked_duration_since(Instant::now()) else {
+                loop {
+                    if state.pending {
                         break;
-                    };
-
-                    state = slot.cv.wait_timeout(state, remaining).unwrap().0;
+                    }
+                    if slot.cv.wait_until(&state, deadline) {
+                        break;
+                    }
                 }
             }
         }

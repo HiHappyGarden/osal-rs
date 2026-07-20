@@ -245,6 +245,19 @@ pub struct MutexGuard<'a, T: ?Sized + 'a> {
 	_phantom: PhantomData<&'a mut T>,
 }
 
+impl<'a, T: ?Sized> MutexGuard<'a, T> {
+	/// Raw handle of the pthread mutex backing this guard.
+	///
+	/// Lets a condition variable (`pthread_cond_wait`/`pthread_cond_timedwait`)
+	/// atomically unlock/re-lock the same OS mutex this guard represents,
+	/// without going through [`RawMutexFn::unlock`]/`lock` — those calls are
+	/// made internally by libc during the wait, so the guard's Rust-level
+	/// "locked" state stays valid across it.
+	pub(crate) fn raw_handle(&self) -> *mut MutexHandle {
+		self.mutex.inner.0.get()
+	}
+}
+
 impl<'a, T: ?Sized> Deref for MutexGuard<'a, T> {
 	type Target = T;
 

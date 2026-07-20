@@ -168,6 +168,80 @@ impl Default for pthread_mutexattr_t {
     }
 }
 
+/// Size (in bytes) of glibc's opaque `pthread_cond_t` (`__SIZEOF_PTHREAD_COND_T`).
+///
+/// Unlike [`PTHREAD_MUTEX_T_SIZE`], glibc keeps this the same 48 bytes on
+/// every architecture this crate supports (`bits/pthreadtypes-arch.h`).
+const PTHREAD_COND_T_SIZE: usize = 48;
+
+/// Opaque storage for `pthread_cond_t`.
+///
+/// As with [`pthread_mutex_t`], Rust never reads/writes its fields directly;
+/// only its address is handed to `pthread_cond_*`, so a correctly
+/// sized-and-aligned byte buffer is a valid stand-in for the real glibc
+/// struct.
+#[repr(C, align(8))]
+#[derive(Copy, Clone)]
+pub(super) struct pthread_cond_t {
+    _opaque: [u8; PTHREAD_COND_T_SIZE],
+}
+
+impl Default for pthread_cond_t {
+    fn default() -> Self {
+        Self {
+            _opaque: [0u8; PTHREAD_COND_T_SIZE],
+        }
+    }
+}
+
+/// Size (in bytes) of glibc's opaque `pthread_condattr_t`
+/// (`__SIZEOF_PTHREAD_CONDATTR_T`), for each architecture this crate
+/// supports. Follows the same per-architecture split as
+/// [`PTHREAD_MUTEXATTR_T_SIZE`].
+#[cfg(any(
+    target_arch = "x86_64",
+    target_arch = "x86",
+    target_arch = "arm",
+    target_arch = "riscv64",
+    target_arch = "riscv32",
+))]
+const PTHREAD_CONDATTR_T_SIZE: usize = 4;
+#[cfg(target_arch = "aarch64")]
+const PTHREAD_CONDATTR_T_SIZE: usize = 8;
+
+/// Opaque storage for `pthread_condattr_t`.
+///
+/// As with [`pthread_mutex_t`], Rust never reads/writes its fields directly;
+/// only its address is handed to `pthread_condattr_*`, so a correctly
+/// sized-and-aligned byte buffer is a valid stand-in for the real glibc
+/// struct.
+#[repr(C, align(8))]
+#[derive(Copy, Clone)]
+pub(super) struct pthread_condattr_t {
+    _opaque: [u8; PTHREAD_CONDATTR_T_SIZE],
+}
+
+impl Default for pthread_condattr_t {
+    fn default() -> Self {
+        Self {
+            _opaque: [0u8; PTHREAD_CONDATTR_T_SIZE],
+        }
+    }
+}
+
+/// One-time initialization control (`pthread_once_t`, `<pthread.h>`).
+///
+/// Unlike the opaque, per-architecture-sized `pthread_mutex_t`/`pthread_attr_t`,
+/// glibc defines this as a plain `int` (`bits/pthreadtypes.h`) on every
+/// architecture this crate supports.
+pub(super) type pthread_once_t = c_int;
+
+/// Initial value for a [`pthread_once_t`] (`PTHREAD_ONCE_INIT`, `<pthread.h>`).
+pub(super) const PTHREAD_ONCE_INIT: pthread_once_t = 0;
+
+/// One-time initialization routine, as accepted by `pthread_once(3)`.
+pub(super) type PthreadOnceRoutine = unsafe extern "C" fn();
+
 /// Thread entry point matching the C signature `void *(*)(void *)`.
 pub(super) type ThreadStartRoutine = unsafe extern "C" fn(arg: *mut c_void) -> *mut c_void;
 
@@ -240,6 +314,12 @@ pub(super) const _SC_AVPHYS_PAGES: c_int = 86;
 /// Value is glibc's generic `<bits/time.h>` namespace, stable across every
 /// architecture it supports.
 pub(super) const CLOCK_MONOTONIC: c_int = 1;
+
+/// `errno` value for a timed-out wait (`<asm-generic/errno.h>`). Stable
+/// across every architecture this crate supports (all use the generic Linux
+/// errno numbering; only a handful of non-supported archs like mips/sparc/alpha
+/// diverge).
+pub(super) const ETIMEDOUT: c_int = 110;
 
 /// Mirrors `struct timespec` (`<time.h>`).
 ///
@@ -390,4 +470,50 @@ unsafe extern "C" {
 
     /// Unlock `mutex`. Must be called by the thread that currently holds it.
     pub(super) fn pthread_mutex_unlock(mutex: *mut pthread_mutex_t) -> c_int;
+
+    /// Run `init_routine` exactly once for the process, no matter how many
+    /// threads call this concurrently with the same `once_control`
+    /// (`pthread_once(3)`).
+    pub(super) fn pthread_once(once_control: *mut pthread_once_t, init_routine: Option<PthreadOnceRoutine>) -> c_int;
+
+    /// Initialize a condition-variable attributes object with default values.
+    pub(super) fn pthread_condattr_init(attr: *mut pthread_condattr_t) -> c_int;
+
+    /// Set the clock (e.g. [`CLOCK_MONOTONIC`]) against which
+    /// `pthread_cond_timedwait`'s absolute deadline is measured.
+    pub(super) fn pthread_condattr_setclock(attr: *mut pthread_condattr_t, clock_id: c_int) -> c_int;
+
+    /// Initialize `cond` with the attributes in `attr` (`NULL` for the
+    /// implementation's defaults).
+    pub(super) fn pthread_cond_init(cond: *mut pthread_cond_t, attr: *const pthread_condattr_t) -> c_int;
+
+    /// Destroy `cond`, freeing any resources it holds.
+    ///
+    /// # Safety
+    ///
+    /// No thread may be blocked in [`pthread_cond_wait`]/[`pthread_cond_timedwait`]
+    /// on `cond`, and it must not be used again afterwards.
+    pub(super) fn pthread_cond_destroy(cond: *mut pthread_cond_t) -> c_int;
+
+    /// Atomically unlock `mutex` and block on `cond` until signaled, then
+    /// re-lock `mutex` before returning (`pthread_cond_wait(3)`).
+    ///
+    /// # Safety
+    ///
+    /// `mutex` must be locked by the calling thread, and must be the same
+    /// mutex on every call for a given `cond`.
+    pub(super) fn pthread_cond_wait(cond: *mut pthread_cond_t, mutex: *mut pthread_mutex_t) -> c_int;
+
+    /// As [`pthread_cond_wait`], but gives up and returns `ETIMEDOUT` once
+    /// the absolute deadline `abstime` (in `cond`'s attribute clock) passes
+    /// (`pthread_cond_timedwait(3)`).
+    ///
+    /// # Safety
+    ///
+    /// Same as [`pthread_cond_wait`].
+    pub(super) fn pthread_cond_timedwait(cond: *mut pthread_cond_t, mutex: *mut pthread_mutex_t, abstime: *const timespec) -> c_int;
+
+    /// Wake every thread currently blocked on `cond`
+    /// (`pthread_cond_broadcast(3)`).
+    pub(super) fn pthread_cond_broadcast(cond: *mut pthread_cond_t) -> c_int;
 }

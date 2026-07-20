@@ -24,10 +24,9 @@ use core::time::Duration;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use alloc::vec::Vec;
-use std::sync::OnceLock;
 
 use crate::posix::ffi::{
-    CLOCK_MONOTONIC, _SC_AVPHYS_PAGES, _SC_PAGESIZE, clock_gettime, nanosleep, pthread_self, sched_yield, sysconf, timespec,
+    CLOCK_MONOTONIC, PTHREAD_ONCE_INIT, _SC_AVPHYS_PAGES, _SC_PAGESIZE, clock_gettime, nanosleep, pthread_once, pthread_once_t, pthread_self, sched_yield, sysconf, timespec,
 };
 use crate::posix::thread::{ThreadMetadata, ThreadState, all_registered_threads, registered_thread_count};
 use crate::posix::types::{BaseType, TickType, UBaseType};
@@ -71,9 +70,19 @@ impl System {
     }
 
     fn start_time() -> Duration {
-        static START_TIME: OnceLock<Duration> = OnceLock::new();
+        static mut ONCE: pthread_once_t = PTHREAD_ONCE_INIT;
+        static mut START_TIME: Duration = Duration::ZERO;
 
-        *START_TIME.get_or_init(Self::monotonic_now)
+        extern "C" fn init() {
+            unsafe {
+                START_TIME = System::monotonic_now();
+            }
+        }
+
+        unsafe {
+            pthread_once(&raw mut ONCE, Some(init));
+            START_TIME
+        }
     }
 
     fn elapsed() -> Duration {

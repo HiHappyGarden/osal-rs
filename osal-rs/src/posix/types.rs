@@ -69,30 +69,31 @@ use crate::posix::ffi::{pthread_cond_t, pthread_mutex_t};
 ///
 /// glibc defines `pthread_t` as `unsigned long int`, so `c_ulong` has the
 /// correct size/representation on every target this crate builds for.
-pub type ThreadHandle = c_ulong;
-pub type QueueHandle = *const c_void;
 
 #[derive(Default)]
-pub struct SemaphoreHandle (
+pub struct ClockMonotonicHandle (
     pub(in crate::posix) pthread_mutex_t, 
     pub(in crate::posix) pthread_cond_t,
 );
 
-impl Debug for SemaphoreHandle {
+impl Debug for ClockMonotonicHandle {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        f.debug_struct("SemaphoreHandle")
+        f.debug_struct("ClockMonotonicHandle")
             .field("handle", &(&raw const self).addr())
             .finish()
     }
 }
 
-impl SemaphoreHandle {
+impl ClockMonotonicHandle {
     pub fn is_empty(&self) -> bool {
         self.0.is_empty() && self.1.is_empty() 
     }
 }
 
-pub type EventGroupHandle = *const c_void;
+pub type ThreadHandle = c_ulong;
+pub type QueueHandle = *const c_void;
+pub type SemaphoreHandle = ClockMonotonicHandle;
+pub type EventGroupHandle = ClockMonotonicHandle;
 pub type TimerHandle = *const c_void;
 pub type MutexHandle = pthread_mutex_t;
 

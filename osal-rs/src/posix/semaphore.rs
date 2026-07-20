@@ -27,7 +27,7 @@ use core::time::Duration;
 use crate::posix::config::TICK_PERIOD_MS;
 use crate::posix::ffi::{
 	CLOCK_MONOTONIC, ETIMEDOUT, PTHREAD_PRIO_INHERIT, clock_gettime, pthread_cond_broadcast, pthread_cond_destroy, pthread_cond_init, pthread_cond_t, pthread_cond_timedwait, pthread_cond_wait,
-	pthread_condattr_init, pthread_condattr_setclock, pthread_condattr_t, pthread_mutex_destroy, pthread_mutex_init, pthread_mutex_lock, pthread_mutex_t, pthread_mutex_unlock, pthread_mutexattr_init,
+	pthread_condattr_init, pthread_condattr_setclock, pthread_condattr_t, pthread_mutex_destroy, pthread_mutex_init, pthread_mutex_lock, pthread_mutex_t, pthread_mutex_trylock, pthread_mutex_unlock, pthread_mutexattr_init,
 	pthread_mutexattr_setprotocol, pthread_mutexattr_t, timespec,
 };
 use crate::posix::types::{SemaphoreHandle, TickType, UBaseType};
@@ -55,6 +55,13 @@ fn monotonic_deadline(timeout: Duration) -> timespec {
 	timespec { tv_sec, tv_nsec }
 }
 
+/// POSIX backend for [`SemaphoreFn`]. Built directly on a `pthread_mutex_t` +
+/// `pthread_cond_t` pair rather than `sem_t`, so `signal()` can be bounded by
+/// a user-supplied `max_count` and the mutex can use priority inheritance —
+/// neither of which plain POSIX unnamed semaphores support.
+///
+/// Fields (unnamed, accessed as `self.0`/`self.1`/`self.2`): the pthread
+/// handle, the current count, and the fixed maximum count.
 pub struct Semaphore(UnsafeCell<SemaphoreHandle>, UnsafeCell<UBaseType>, UBaseType);
 
 unsafe impl Send for Semaphore {}
@@ -70,9 +77,14 @@ impl Semaphore {
 
 
 		unsafe {
+			// Bind the condvar to CLOCK_MONOTONIC so its absolute timeouts line
+			// up with the clock `monotonic_deadline` uses to build them.
 			pthread_condattr_init(&mut cond_attr);
 			pthread_condattr_setclock (&mut cond_attr, CLOCK_MONOTONIC);
 			pthread_cond_init (&mut cond, &cond_attr);
+			// Priority inheritance: a low-priority holder that blocks a
+			// higher-priority waiter gets temporarily boosted, avoiding
+			// priority inversion (same protocol as posix::mutex::RawMutex).
 			pthread_mutexattr_init (&mut mutex_attr);
    			pthread_mutexattr_setprotocol (&mut mutex_attr, PTHREAD_PRIO_INHERIT);
    			pthread_mutex_init (&mut mutex, &mutex_attr);
@@ -82,6 +94,9 @@ impl Semaphore {
 		Ok(Self(UnsafeCell::new(SemaphoreHandle(mutex, cond)), UnsafeCell::new(initial_count), max_count))
 	}
 
+	// Raw pointers into the `UnsafeCell`s, needed because the pthread FFI
+	// takes `*mut`. `count_ptr()` must only be dereferenced while holding
+	// `mutex_ptr()` locked, except for the racy peek in `is_null()`.
 	fn mutex_ptr(&self) -> *mut pthread_mutex_t {
 		unsafe { &raw mut (*self.0.get()).0 }
 	}
@@ -93,10 +108,45 @@ impl Semaphore {
 	fn count_ptr(&self) -> *mut UBaseType {
 		self.1.get()
 	}
+
+	// Assumes `mutex_ptr()` is already locked (by the caller, either via
+	// blocking `lock` or non-blocking `trylock`) and always unlocks it
+	// before returning. Increments the count if below `max_count` and, if
+	// so, broadcasts to wake any `wait()`ers.
+	fn signal_locked(&self) -> OsalRsBool {
+		let signalled = unsafe {
+			if *self.count_ptr() < self.2 {
+				*self.count_ptr() += 1;
+				true
+			} else {
+				false
+			}
+		};
+
+		if signalled {
+			// Broadcast, not signal: any thread parked in `wait()`'s loop
+			// could be the one to claim this unit, so all of them are woken
+			// to re-check the count under the mutex; losers just go back to
+			// waiting instead of missing the wake-up.
+			unsafe {
+				pthread_cond_broadcast(self.cond_ptr());
+			}
+		}
+
+		unsafe {
+			pthread_mutex_unlock(self.mutex_ptr());
+		}
+
+		if signalled { OsalRsBool::True } else { OsalRsBool::False }
+	}
 }
 
 impl SemaphoreFn for Semaphore {
 
+	// "Null" means never-initialized-or-already-deleted: both the pthread
+	// handle and the count are still/again at their zero `Default` state.
+	// Checking the count too avoids treating a live semaphore that just
+	// happens to be momentarily empty (count == 0) as deleted.
 	fn is_null(&self) -> bool {
 		unsafe { (*self.0.get()).is_empty() && *self.1.get() == 0 }
 	}
@@ -117,6 +167,8 @@ impl SemaphoreFn for Semaphore {
 		// and a woken thread isn't guaranteed to be the one that gets the
 		// unit of the semaphore another thread's `wait()` grabbed first.
 		let acquired = if ticks == TickType::MAX {
+			// TickType::MAX is the "wait forever" sentinel: no deadline,
+			// block until signalled.
 			loop {
 				if unsafe { *self.count_ptr() } > 0 {
 					break true;
@@ -126,6 +178,9 @@ impl SemaphoreFn for Semaphore {
 				}
 			}
 		} else {
+			// Bounded wait: the deadline is computed once up front, then
+			// every re-wake races against that same fixed point in time
+			// (rather than restarting a fresh relative timeout each loop).
 			let deadline = monotonic_deadline(Duration::from_millis((ticks as u64).saturating_mul(TICK_PERIOD_MS)));
 
 			loop {
@@ -156,8 +211,12 @@ impl SemaphoreFn for Semaphore {
 			return OsalRsBool::False;
 		}
 
-		unsafe {
-			pthread_mutex_lock(self.mutex_ptr());
+		// pthreads has no ISR context of its own; `trylock` keeps this
+		// non-blocking, as `_from_isr` callers expect (mirrors
+		// `RawMutex::lock_from_isr`). If the mutex is contended, bail out
+		// rather than blocking the "interrupt".
+		if unsafe { pthread_mutex_trylock(self.mutex_ptr()) } != 0 {
+			return OsalRsBool::False;
 		}
 
 		let acquired = unsafe {
@@ -185,30 +244,21 @@ impl SemaphoreFn for Semaphore {
 			pthread_mutex_lock(self.mutex_ptr());
 		}
 
-		let signalled = unsafe {
-			if *self.count_ptr() < self.2 {
-				*self.count_ptr() += 1;
-				true
-			} else {
-				false
-			}
-		};
-
-		if signalled {
-			unsafe {
-				pthread_cond_broadcast(self.cond_ptr());
-			}
-		}
-
-		unsafe {
-			pthread_mutex_unlock(self.mutex_ptr());
-		}
-
-		if signalled { OsalRsBool::True } else { OsalRsBool::False }
+		self.signal_locked()
 	}
 
 	fn signal_from_isr(&self) -> OsalRsBool {
-		self.signal()
+		if self.is_null() {
+			return OsalRsBool::False;
+		}
+
+		// Same non-blocking rationale as `wait_from_isr`: `trylock` instead
+		// of `lock` so this never blocks the "interrupt".
+		if unsafe { pthread_mutex_trylock(self.mutex_ptr()) } != 0 {
+			return OsalRsBool::False;
+		}
+
+		self.signal_locked()
 	}
 
 	fn delete(&mut self) {
@@ -221,6 +271,9 @@ impl SemaphoreFn for Semaphore {
 			pthread_cond_destroy(self.cond_ptr());
 		}
 
+		// Reset to the "null" state so a second `delete()` call (e.g. from
+		// `Drop` after an explicit `delete()`) is a no-op rather than
+		// destroying the same pthread objects twice.
 		*self.0.get_mut() = SemaphoreHandle::default();
 		*self.1.get_mut() = 0;
 	}
@@ -231,6 +284,7 @@ impl Drop for Semaphore {
 		if self.is_null() {
 			return;
 		}
+		// Safety net for callers that don't call `delete()` explicitly.
 		self.delete();
 	}
 }
@@ -239,6 +293,7 @@ impl Deref for Semaphore {
 	type Target = SemaphoreHandle;
 
 	fn deref(&self) -> &Self::Target {
+		// Read-only escape hatch to the raw (mutex, condvar) handle.
 		unsafe { &*self.0.get() }
 	}
 }

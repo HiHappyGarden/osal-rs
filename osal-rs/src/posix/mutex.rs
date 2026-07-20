@@ -22,51 +22,103 @@ use core::cell::UnsafeCell;
 use core::fmt::{Debug, Display, Formatter};
 use core::marker::PhantomData;
 use core::ops::{Deref, DerefMut};
-use core::ptr::null;
 
 use alloc::sync::Arc;
 
+use crate::posix::ffi::{
+	PTHREAD_MUTEX_RECURSIVE, PTHREAD_PRIO_INHERIT, pthread_mutex_destroy, pthread_mutex_init, pthread_mutex_lock, pthread_mutex_trylock, pthread_mutex_unlock,
+	pthread_mutexattr_init, pthread_mutexattr_setprotocol, pthread_mutexattr_settype, pthread_mutexattr_t,
+};
 use crate::posix::types::MutexHandle;
 use crate::traits::{MutexFn, MutexGuardFn, RawMutexFn};
 use crate::utils::{Error, OsalRsBool, Result};
 
-#[derive(Clone)]
-pub struct RawMutex(MutexHandle);
+pub struct RawMutex(UnsafeCell<MutexHandle>);
 
 unsafe impl Send for RawMutex {}
 unsafe impl Sync for RawMutex {}
 
 impl RawMutex {
 	pub fn new() -> Result<Self> {
-		Ok(Self(null()))
+		let mut mutex_attr: pthread_mutexattr_t = Default::default();
+		let mut mutex: MutexHandle = Default::default();
+
+		unsafe {
+			pthread_mutexattr_init(&mut mutex_attr);
+			pthread_mutexattr_setprotocol(&mut mutex_attr, PTHREAD_PRIO_INHERIT);
+			pthread_mutexattr_settype(&mut mutex_attr, PTHREAD_MUTEX_RECURSIVE);
+		}
+
+		let result = unsafe { pthread_mutex_init(&mut mutex, &mutex_attr) };
+
+		if result != 0 {
+			return Err(Error::ReturnWithCode(result));
+		}
+
+		Ok(Self(UnsafeCell::new(mutex)))
 	}
 }
 
 impl RawMutexFn for RawMutex {
+
+	fn is_null(&self) -> bool {
+		unsafe { (*self.0.get()).is_empty() }
+	}
+
 	fn lock(&self) -> OsalRsBool {
-		OsalRsBool::True
+		if self.is_null() {
+			return OsalRsBool::False;
+		}
+
+		match unsafe { pthread_mutex_lock(self.0.get()) } {
+			0 => OsalRsBool::True,
+			_ => OsalRsBool::False,
+		}
 	}
 
 	fn lock_from_isr(&self) -> OsalRsBool {
-		OsalRsBool::True
+		if self.is_null() {
+			return OsalRsBool::False;
+		}
+
+		// pthreads has no ISR context/API of its own; `trylock` gives the
+		// non-blocking behavior `lock_from_isr` callers expect instead.
+		match unsafe { pthread_mutex_trylock(self.0.get()) } {
+			0 => OsalRsBool::True,
+			_ => OsalRsBool::False,
+		}
 	}
 
 	fn unlock(&self) -> OsalRsBool {
-		OsalRsBool::True
+		if self.is_null() {
+			return OsalRsBool::False;
+		}
+
+		match unsafe { pthread_mutex_unlock(self.0.get()) } {
+			0 => OsalRsBool::True,
+			_ => OsalRsBool::False,
+		}
 	}
 
 	fn unlock_from_isr(&self) -> OsalRsBool {
-		OsalRsBool::True
+		self.unlock()
 	}
 
 	fn delete(&mut self) {
-		self.0 = null();
+		if self.is_null() {
+			return;
+		}
+
+		unsafe {
+			pthread_mutex_destroy(self.0.get());
+		}
+
 	}
 }
 
 impl Drop for RawMutex {
 	fn drop(&mut self) {
-		self.0 = null();
+		self.delete();
 	}
 }
 
@@ -74,21 +126,22 @@ impl Deref for RawMutex {
 	type Target = MutexHandle;
 
 	fn deref(&self) -> &MutexHandle {
-		&self.0
+		unsafe { &*self.0.get() }
 	}
 }
 
 impl Debug for RawMutex {
 	fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
+
 		f.debug_struct("RawMutex")
-			.field("handle", &self.0)
+			.field("handle", &(&raw const self).addr())
 			.finish()
 	}
 }
 
 impl Display for RawMutex {
 	fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
-		write!(f, "RawMutex {{ handle: {:?} }}", self.0)
+		write!(f, "RawMutex {{ handle: {:?} }}", &(&raw const self).addr())
 	}
 }
 

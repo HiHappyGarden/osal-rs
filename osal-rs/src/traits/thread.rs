@@ -262,6 +262,8 @@ impl Into<(u32, u32)> for ThreadNotification {
 /// ```
 pub trait Thread {
 
+    /// Returns `true` if the underlying OS handle is null, i.e. the thread
+    /// has not been spawned yet or has already been deleted.
     fn is_null(&self) -> bool;
 
     /// Spawns a thread with a callback function and optional parameter.

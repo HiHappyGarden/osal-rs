@@ -91,6 +91,83 @@ impl Default for pthread_attr_t {
     }
 }
 
+/// Size (in bytes) of glibc's opaque `pthread_mutex_t`, taken from
+/// `bits/pthreadtypes-arch.h` (`__SIZEOF_PTHREAD_MUTEX_T`) for each
+/// architecture this crate supports (same architecture set as
+/// [`PTHREAD_ATTR_T_SIZE`]).
+#[cfg(target_arch = "x86_64")]
+const PTHREAD_MUTEX_T_SIZE: usize = 40;
+#[cfg(target_arch = "x86")]
+const PTHREAD_MUTEX_T_SIZE: usize = 24;
+#[cfg(target_arch = "aarch64")]
+const PTHREAD_MUTEX_T_SIZE: usize = 48;
+#[cfg(target_arch = "arm")]
+const PTHREAD_MUTEX_T_SIZE: usize = 24;
+#[cfg(target_arch = "riscv64")]
+const PTHREAD_MUTEX_T_SIZE: usize = 40;
+#[cfg(target_arch = "riscv32")]
+const PTHREAD_MUTEX_T_SIZE: usize = 32;
+
+/// Opaque storage for `pthread_mutex_t`.
+///
+/// As with [`pthread_attr_t`], Rust never reads/writes its fields directly;
+/// only its address is handed to `pthread_mutex_*`, so a correctly
+/// sized-and-aligned byte buffer is a valid stand-in for the real glibc
+/// struct.
+#[repr(C, align(8))]
+#[derive(Copy, Clone)]
+pub struct pthread_mutex_t {
+    _opaque: [u8; PTHREAD_MUTEX_T_SIZE],
+}
+
+impl Default for pthread_mutex_t {
+    fn default() -> Self {
+        Self {
+            _opaque: [0u8; PTHREAD_MUTEX_T_SIZE],
+        }
+    }
+}
+
+impl pthread_mutex_t {
+    pub(super) fn is_empty(&self) -> bool {
+        self._opaque.is_empty()
+    }
+}
+
+/// Size (in bytes) of glibc's opaque `pthread_mutexattr_t`
+/// (`__SIZEOF_PTHREAD_MUTEXATTR_T`), for each architecture this crate
+/// supports.
+#[cfg(any(
+    target_arch = "x86_64",
+    target_arch = "x86",
+    target_arch = "arm",
+    target_arch = "riscv64",
+    target_arch = "riscv32",
+))]
+const PTHREAD_MUTEXATTR_T_SIZE: usize = 4;
+#[cfg(target_arch = "aarch64")]
+const PTHREAD_MUTEXATTR_T_SIZE: usize = 8;
+
+/// Opaque storage for `pthread_mutexattr_t`.
+///
+/// As with [`pthread_attr_t`], Rust never reads/writes its fields directly;
+/// only its address is handed to `pthread_mutexattr_*`, so a correctly
+/// sized-and-aligned byte buffer is a valid stand-in for the real glibc
+/// struct.
+#[repr(C, align(8))]
+#[derive(Copy, Clone)]
+pub(super) struct pthread_mutexattr_t {
+    _opaque: [u8; PTHREAD_MUTEXATTR_T_SIZE],
+}
+
+impl Default for pthread_mutexattr_t {
+    fn default() -> Self {
+        Self {
+            _opaque: [0u8; PTHREAD_MUTEXATTR_T_SIZE],
+        }
+    }
+}
+
 /// Thread entry point matching the C signature `void *(*)(void *)`.
 pub(super) type ThreadStartRoutine = unsafe extern "C" fn(arg: *mut c_void) -> *mut c_void;
 
@@ -175,6 +252,19 @@ pub(super) struct timespec {
     pub(super) tv_sec: c_long,
     pub(super) tv_nsec: c_long,
 }
+
+/// Mutex type: the owning thread may lock it again without deadlocking,
+/// as long as it unlocks it the same number of times (`<pthread.h>`,
+/// `pthread_mutexattr_settype(3)`). Value is glibc's generic namespace,
+/// stable across every architecture it supports.
+pub(super) const PTHREAD_MUTEX_RECURSIVE: c_int = 1;
+
+/// Mutex protocol: a thread holding the mutex has its priority temporarily
+/// raised to that of the highest-priority thread blocked on it, preventing
+/// priority inversion (`<pthread.h>`, `pthread_mutexattr_setprotocol(3)`).
+/// Value is glibc's generic namespace, stable across every architecture it
+/// supports.
+pub(super) const PTHREAD_PRIO_INHERIT: c_int = 1;
 
 unsafe extern "C" {
 
@@ -269,4 +359,35 @@ unsafe extern "C" {
     /// Relinquish the processor to another thread ready to run, without
     /// blocking the caller (`sched_yield(2)`).
     pub(super) fn sched_yield() -> c_int;
+
+    /// Initialize a mutex attributes object with default values.
+    pub(super) fn pthread_mutexattr_init(attr: *mut pthread_mutexattr_t) -> c_int;
+
+    /// Set the mutex type attribute (e.g. [`PTHREAD_MUTEX_RECURSIVE`]).
+    pub(super) fn pthread_mutexattr_settype(attr: *mut pthread_mutexattr_t, kind: c_int) -> c_int;
+
+    /// Set the mutex priority-inheritance protocol attribute (e.g.
+    /// [`PTHREAD_PRIO_INHERIT`]).
+    pub(super) fn pthread_mutexattr_setprotocol(attr: *mut pthread_mutexattr_t, protocol: c_int) -> c_int;
+
+    /// Initialize `mutex` with the attributes in `attr` (`NULL` for the
+    /// implementation's defaults).
+    pub(super) fn pthread_mutex_init(mutex: *mut pthread_mutex_t, attr: *const pthread_mutexattr_t) -> c_int;
+
+    /// Destroy `mutex`, freeing any resources it holds.
+    ///
+    /// # Safety
+    ///
+    /// `mutex` must not be locked, and must not be used again afterwards.
+    pub(super) fn pthread_mutex_destroy(mutex: *mut pthread_mutex_t) -> c_int;
+
+    /// Lock `mutex`, blocking the calling thread until it becomes available.
+    pub(super) fn pthread_mutex_lock(mutex: *mut pthread_mutex_t) -> c_int;
+
+    /// Attempt to lock `mutex` without blocking; fails with `EBUSY` if it is
+    /// already held by another thread.
+    pub(super) fn pthread_mutex_trylock(mutex: *mut pthread_mutex_t) -> c_int;
+
+    /// Unlock `mutex`. Must be called by the thread that currently holds it.
+    pub(super) fn pthread_mutex_unlock(mutex: *mut pthread_mutex_t) -> c_int;
 }

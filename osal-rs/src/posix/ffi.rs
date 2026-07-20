@@ -168,6 +168,12 @@ impl Default for pthread_mutexattr_t {
     }
 }
 
+impl pthread_mutexattr_t {
+    pub(super) fn is_empty(&self) -> bool {
+        self._opaque.iter().all(|&b| b == 0)
+    }
+}
+
 /// Size (in bytes) of glibc's opaque `pthread_cond_t` (`__SIZEOF_PTHREAD_COND_T`).
 ///
 /// Unlike [`PTHREAD_MUTEX_T_SIZE`], glibc keeps this the same 48 bytes on
@@ -193,6 +199,13 @@ impl Default for pthread_cond_t {
         }
     }
 }
+
+impl pthread_cond_t {
+    pub(super) fn is_empty(&self) -> bool {
+        self._opaque.iter().all(|&b| b == 0)
+    }
+}
+
 
 /// Size (in bytes) of glibc's opaque `pthread_condattr_t`
 /// (`__SIZEOF_PTHREAD_CONDATTR_T`), for each architecture this crate
@@ -226,6 +239,12 @@ impl Default for pthread_condattr_t {
         Self {
             _opaque: [0u8; PTHREAD_CONDATTR_T_SIZE],
         }
+    }
+}
+
+impl pthread_condattr_t {
+    pub(super) fn is_empty(&self) -> bool {
+        self._opaque.iter().all(|&b| b == 0)
     }
 }
 

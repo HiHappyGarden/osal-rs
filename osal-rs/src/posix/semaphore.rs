@@ -30,7 +30,7 @@ use crate::posix::ffi::{
 	pthread_condattr_init, pthread_condattr_setclock, pthread_condattr_t, pthread_mutex_destroy, pthread_mutex_init, pthread_mutex_lock, pthread_mutex_t, pthread_mutex_trylock, pthread_mutex_unlock, pthread_mutexattr_init,
 	pthread_mutexattr_setprotocol, pthread_mutexattr_t, timespec,
 };
-use crate::posix::types::{SemaphoreHandle, TickType, UBaseType};
+use crate::posix::types::{ClockMonotonicHandle, SemaphoreHandle, TickType, UBaseType};
 use crate::traits::{SemaphoreFn, ToTick};
 use crate::utils::{OsalRsBool, Result};
 
@@ -91,7 +91,7 @@ impl Semaphore {
 
 		}
 
-		Ok(Self(UnsafeCell::new(SemaphoreHandle(mutex, cond)), UnsafeCell::new(initial_count), max_count))
+		Ok(Self(UnsafeCell::new(ClockMonotonicHandle(mutex, cond)), UnsafeCell::new(initial_count), max_count))
 	}
 
 	// Raw pointers into the `UnsafeCell`s, needed because the pthread FFI

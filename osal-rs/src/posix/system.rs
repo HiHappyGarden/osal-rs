@@ -29,9 +29,9 @@ use crate::os::ThreadFn;
 use crate::posix::ffi::{
     CLOCK_MONOTONIC, PTHREAD_ONCE_INIT, _SC_AVPHYS_PAGES, _SC_PAGESIZE, clock_gettime, nanosleep, pthread_once, pthread_once_t, pthread_self, sched_yield, sysconf, timespec,
 };
-use crate::posix::thread::{Thread, ThreadMetadata, ThreadState, all_registered_threads, registered_thread_count};
+use crate::posix::thread::{Thread, all_registered_threads, registered_thread_count};
 use crate::posix::types::{BaseType, TickType, UBaseType};
-use crate::traits::{SystemFn, ToTick};
+use crate::traits::{SystemFn, ThreadMetadata, ThreadState, ToTick};
 use crate::utils::OsalRsBool;
 
 static RUN: AtomicBool = AtomicBool::new(true);

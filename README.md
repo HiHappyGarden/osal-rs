@@ -489,7 +489,7 @@ OSAL-RS provides several Cargo features to customize the build configuration for
 | Feature | Default | Description |
 |---------|---------|-------------|
 | `freertos` | ✅ | Enable FreeRTOS backend implementation. This is the default and fully implemented feature for embedded RTOS development. |
-| `posix` | ❌ | Enable POSIX/native backend implementation for host environments. |
+| `posix` | ❌ | Enable POSIX/native backend implementation for host environments. Requires **glibc** (see note below). |
 | `async` | ❌ | Enable backend-agnostic async/await support (`block_on`, `AsyncQueue`, `AsyncSemaphore`, `AsyncMutex`). Works with both `freertos` and `posix`. No Tokio required. |
 | `serde` | ❌ | Enable serialization/deserialization support via `osal-rs-serde`. Includes derive macros for automatic implementation. |
 
@@ -525,16 +525,24 @@ cargo build --no-default-features --features posix,async
 cargo build --no-default-features --features posix,serde
 ```
 
+### POSIX Backend: glibc Requirement
+
+The `posix` backend links directly against **glibc** (the GNU C Library), not just any C compiler. It relies on glibc-specific internals — struct layouts (`pthread_attr_t`, `pthread_mutex_t`, `pthread_cond_t`, `sigset_t`, etc.) and the `__libc_current_sigrtmin()` extension used to implement thread suspend/resume via real-time signals.
+
+This means:
+- The **compiler** doesn't matter — gcc or clang both work fine.
+- The **C library** does matter — targets linking against **musl** (e.g. `x86_64-unknown-linux-musl`) or non-glibc platforms (e.g. macOS/BSD libc) are **not supported** by the `posix` backend.
+
 ### Using Features in Cargo.toml
 
 To use OSAL-RS in your project with specific features:
 
 ```toml
 [dependencies]
-osal-rs = { version = "0.4", features = ["freertos"] }
+osal-rs = { version = "0.5", features = ["freertos"] }
 
 # Or with serialization support
-osal-rs = { version = "0.4", features = ["freertos", "serde"] }
+osal-rs = { version = "0.5", features = ["freertos", "serde"] }
 ```
 
 ## Project Structure

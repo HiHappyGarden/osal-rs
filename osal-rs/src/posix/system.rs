@@ -100,10 +100,6 @@ impl SystemFn for System {
         }
     } 
 
-    fn get_state() -> ThreadState {
-        if RUN.load(Ordering::Acquire) { ThreadState::Running } else { ThreadState::Suspended }
-    }
-
     fn suspend_all() {
         for tm in all_registered_threads() {
             if let Ok(t) = Thread::new_with_handle(tm.thread, tm.name.as_str(), tm.stack_depth, tm.current_priority) {

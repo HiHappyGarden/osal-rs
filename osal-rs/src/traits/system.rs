@@ -53,7 +53,6 @@
 use core::time::Duration;
 
 use crate::os::types::{BaseType, TickType, UBaseType};
-use crate::os::{ThreadState};
 use crate::os::SystemState;
 use crate::utils::OsalRsBool;
 
@@ -67,7 +66,7 @@ use crate::utils::OsalRsBool;
 /// - **Scheduler**: `start()`, `stop()`, `suspend_all()`, `resume_all()`
 /// - **Timing**: `get_tick_count()`, `get_current_time_us()`, `delay()`, `delay_until()`
 /// - **Critical Sections**: `critical_section_enter()`, `critical_section_exit()`, ISR variants
-/// - **System Info**: `get_state()`, `count_threads()`, `get_all_thread()`, `get_free_heap_size()`
+/// - **System Info**: `count_threads()`, `get_all_thread()`, `get_free_heap_size()`
 /// - **ISR Support**: `yield_from_isr()`, `end_switching_isr()`, ISR critical sections
 ///
 /// # Examples
@@ -125,29 +124,7 @@ pub trait System {
     /// // This line is never reached
     /// ```
     fn start();
-    
-    /// Gets the current scheduler state.
-    ///
-    /// Returns the current operational state of the RTOS scheduler.
-    ///
-    /// # Returns
-    ///
-    /// The current state of the scheduler (e.g., Running, Suspended, NotStarted)
-    ///
-    /// # Examples
-    ///
-    /// ```ignore
-    /// use osal_rs::os::{System, ThreadState};
-    /// 
-    /// let state = System::get_state();
-    /// match state {
-    ///     ThreadState::Running => println!("Scheduler running"),
-    ///     ThreadState::Suspended => println!("Scheduler suspended"),
-    ///     _ => {}
-    /// }
-    /// ```
-    fn get_state() -> ThreadState;
-    
+
     /// Suspends all tasks.
     ///
     /// Pauses the scheduler, preventing any task switches. The current task

@@ -83,11 +83,6 @@ pub(super) type TaskState = c_uint;
 pub(super) mod task {
     use super::TaskState;
 
-    pub(in crate::freertos) const RUNNING: TaskState = 0;
-    pub(in crate::freertos) const READY: TaskState = 1;
-    pub(in crate::freertos) const BLOCKED: TaskState = 2;
-    pub(in crate::freertos) const SUSPENDED: TaskState = 3;
-    pub(in crate::freertos) const DELETED: TaskState = 4;
     pub(in crate::freertos) const INVALID: TaskState = 5;
 }
 
@@ -214,8 +209,6 @@ unsafe extern "C" {
     pub(super) fn xTaskResumeAll() -> BaseType;
 
     pub(super) fn xTaskGetCurrentTaskHandle() -> ThreadHandle;
-
-    pub(super) fn eTaskGetState(xTask: ThreadHandle) -> TaskState;
 
     pub(super) fn uxTaskGetNumberOfTasks() -> UBaseType;
 

@@ -100,7 +100,6 @@ fn assert_display<T: Display>() {}
 #[allow(dead_code)]
 pub fn compile_system_surface() {
     let _start: fn() = <System as SystemFn>::start;
-    let _get_state: fn() -> ThreadState = <System as SystemFn>::get_state;
     let _suspend_all: fn() = <System as SystemFn>::suspend_all;
     let _resume_all: fn() -> types::BaseType = <System as SystemFn>::resume_all;
     let _stop: fn() = <System as SystemFn>::stop;

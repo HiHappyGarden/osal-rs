@@ -27,7 +27,7 @@ use alloc::vec::Vec;
 
 use crate::os::ThreadFn;
 use crate::posix::ffi::{
-    CLOCK_MONOTONIC, PTHREAD_ONCE_INIT, _SC_AVPHYS_PAGES, _SC_PAGESIZE, clock_gettime, nanosleep, pthread_once, pthread_once_t, pthread_self, sched_yield, sysconf, timespec,
+    CLOCK_MONOTONIC, PTHREAD_ONCE_INIT, _SC_AVPHYS_PAGES, _SC_PAGESIZE, clock_gettime, nanosleep, pthread_once, pthread_once_t, sched_yield, sysconf, timespec,
 };
 use crate::posix::thread::{Thread, all_registered_threads, registered_thread_count};
 use crate::posix::types::{BaseType, TickType, UBaseType};
@@ -101,14 +101,7 @@ impl SystemFn for System {
     } 
 
     fn get_state() -> ThreadState {
-        let tasks = all_registered_threads();
-
-        let current_handle = unsafe { pthread_self() };
-
-        match tasks.iter().find(|task| task.thread == current_handle) {
-            Some(thread_metadata) => thread_metadata.state,
-            None => ThreadState::Invalid,
-        }
+        if RUN.load(Ordering::Acquire) { ThreadState::Running } else { ThreadState::Suspended }
     }
 
     fn suspend_all() {
@@ -126,7 +119,7 @@ impl SystemFn for System {
 
         for tm in all_registered_threads() {
             if let Ok(t) = Thread::new_with_handle(tm.thread, tm.name.as_str(), tm.stack_depth, tm.current_priority) {
-                if tm.state == ThreadState::Ready || tm.state == ThreadState::Running {
+                if tm.state == ThreadState::Suspended {
                     t.resume();
                     count += 1;
                 }

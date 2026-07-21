@@ -297,6 +297,37 @@ fn forget_thread(handle: ThreadHandle) {
     }
 }
 
+/// Updates `handle`'s tracked [`ThreadState`] in the registry, if it has an entry.
+///
+/// Threads not spawned through this crate's API (e.g. a foreign thread only
+/// ever wrapped via [`Thread::new_with_handle`]) have no registry entry and
+/// are silently ignored, same as [`forget_thread`].
+fn set_thread_state(handle: ThreadHandle, state: ThreadState) {
+    if let Ok(mut registry) = thread_registry().lock() {
+        if let Some(metadata) = registry.get_mut(&handle) {
+            metadata.state = state;
+        }
+    }
+}
+
+/// Returns `handle`'s registry entry, if any.
+fn registered_thread_metadata(handle: ThreadHandle) -> Option<ThreadMetadata> {
+    thread_registry().lock().ok().and_then(|registry| registry.get(&handle).cloned())
+}
+
+/// Resolves `handle`'s effective [`ThreadState`] for metadata queries.
+///
+/// A thread can only ask about its own metadata while it's actually
+/// executing: `suspend()` parks the target thread inside `sigsuspend()`
+/// (see [`suspend_signal_handler`]), so a genuinely suspended thread can
+/// never itself reach this call. `pthread_self()` therefore always
+/// overrides `tracked` with [`ThreadState::Running`]; for every other
+/// handle, the last state recorded by [`set_thread_state`] is the best
+/// information available.
+fn effective_thread_state(handle: ThreadHandle, tracked: ThreadState) -> ThreadState {
+    if handle == unsafe { pthread_self() } { ThreadState::Running } else { tracked }
+}
+
 /// Snapshot of every thread currently registered via `spawn()`/`spawn_simple()`.
 ///
 /// Used by [`crate::posix::system::System::get_all_thread`].
@@ -394,17 +425,23 @@ impl Thread {
             return ThreadMetadata::default();
         }
 
-        ThreadMetadata {
-            thread: handle,
-            name: Bytes::from_str("thread"),
-            stack_depth: 0,
-            priority: 0,
-            thread_number: 0,
-            state: ThreadState::Ready,
-            current_priority: 0,
-            base_priority: 0,
-            run_time_counter: 0,
-            stack_high_water_mark: 0,
+        match registered_thread_metadata(handle) {
+            Some(metadata) => ThreadMetadata {
+                state: effective_thread_state(handle, metadata.state),
+                ..metadata
+            },
+            None => ThreadMetadata {
+                thread: handle,
+                name: Bytes::from_str("thread"),
+                stack_depth: 0,
+                priority: 0,
+                thread_number: 0,
+                state: effective_thread_state(handle, ThreadState::Ready),
+                current_priority: 0,
+                base_priority: 0,
+                run_time_counter: 0,
+                stack_high_water_mark: 0,
+            },
         }
     }
 
@@ -412,13 +449,20 @@ impl Thread {
         // Name/stack/priority reflect what was passed to `new()` regardless of
         // whether the thread has been spawned yet; only `state`/`thread` depend
         // on there being a live `pthread_t` behind it.
+        let state = if thread.is_null() {
+            ThreadState::Invalid
+        } else {
+            let tracked = registered_thread_metadata(thread.handle).map(|metadata| metadata.state).unwrap_or(ThreadState::Ready);
+            effective_thread_state(thread.handle, tracked)
+        };
+
         ThreadMetadata {
             thread: thread.handle,
             name: thread.name.clone(),
             stack_depth: thread.stack_depth,
             priority: thread.priority,
             thread_number: thread.handle,
-            state: if thread.is_null() { ThreadState::Invalid } else { ThreadState::Ready },
+            state,
             current_priority: thread.priority,
             base_priority: thread.priority,
             run_time_counter: 0,
@@ -461,6 +505,7 @@ unsafe extern "C" fn callback_c_wrapper(param_ptr: *mut c_void) -> *mut c_void {
     let mut thread_instance: Box<Thread> = unsafe { Box::from_raw(param_ptr as *mut _) };
 
     thread_instance.as_mut().handle = unsafe { pthread_self() };
+    let handle = thread_instance.handle;
 
     let param_arc: Option<ThreadParam> = thread_instance.param.clone();
 
@@ -473,6 +518,11 @@ unsafe extern "C" fn callback_c_wrapper(param_ptr: *mut c_void) -> *mut c_void {
     } else {
         Err(Error::NullPtr)
     };
+
+    // The callback has returned: the thread is finished even though nobody
+    // has joined it yet, so reflect that in the registry rather than leaving
+    // whatever state (e.g. `Ready`) was last tracked while it was running.
+    set_thread_state(handle, ThreadState::Deleted);
 
     Box::into_raw(Box::new(ret)) as *mut c_void
 }
@@ -496,6 +546,9 @@ unsafe extern "C" fn simple_callback_c_wrapper(param_ptr: *mut c_void) -> *mut c
 
     let func: Box<Arc<ThreadSimpleFnPtr>> = unsafe { Box::from_raw(param_ptr as *mut _) };
     let ret = func();
+
+    // See the equivalent comment in `callback_c_wrapper`.
+    set_thread_state(unsafe { pthread_self() }, ThreadState::Deleted);
 
     Box::into_raw(Box::new(ret)) as *mut c_void
 }
@@ -665,6 +718,8 @@ impl ThreadFn for Thread {
         unsafe {
             pthread_kill(self.handle, suspend_signal());
         }
+
+        set_thread_state(self.handle, ThreadState::Suspended);
     }
 
     fn resume(&self) {
@@ -677,6 +732,8 @@ impl ThreadFn for Thread {
         unsafe {
             pthread_kill(self.handle, resume_signal());
         }
+
+        set_thread_state(self.handle, ThreadState::Ready);
     }
 
     fn join(&self, ret_val: DoublePtr) -> Result<i32> {
@@ -757,6 +814,8 @@ impl ThreadFn for Thread {
         state.value &= !bits_to_clear_on_entry;
 
         if !state.pending {
+            set_thread_state(self.handle, ThreadState::Blocked);
+
             if timeout_ticks == TickType::MAX {
                 // Not a `while !state.pending` loop: `pending` is flipped by
                 // `notify()` through a *different* `MutexGuard` (its own
@@ -781,6 +840,8 @@ impl ThreadFn for Thread {
                     }
                 }
             }
+
+            set_thread_state(self.handle, ThreadState::Ready);
         }
 
         if !state.pending {

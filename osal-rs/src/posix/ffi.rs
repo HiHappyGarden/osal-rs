@@ -341,6 +341,100 @@ pub(super) struct timespec {
     pub(super) tv_nsec: c_long,
 }
 
+/// Mirrors `struct itimerspec` (`<time.h>`): the relative interval used to
+/// arm, re-arm, or (with an all-zero `it_value`) disarm a POSIX timer via
+/// [`timer_settime`].
+#[repr(C)]
+#[derive(Copy, Clone, Default)]
+pub(super) struct itimerspec {
+    pub(super) it_interval: timespec,
+    pub(super) it_value: timespec,
+}
+
+/// Process/thread ID type (`__pid_t`, `bits/types.h`). glibc defines this as
+/// a plain `int` on every architecture it supports.
+pub(super) type pid_t = c_int;
+
+/// Opaque per-process timer identifier (`timer_t`, `bits/types/timer_t.h`).
+/// glibc defines `__timer_t` as `void *`; neither the kernel nor this crate
+/// ever dereferences it, only passes the opaque value back to
+/// [`timer_settime`]/[`timer_delete`].
+pub(super) type timer_t = *mut c_void;
+
+/// Padding word count for glibc's `sigevent_t` union (`bits/types/sigevent_t.h`,
+/// `__SIGEV_PAD_SIZE`). Together with [`sigval_t`]'s pointer-sized member,
+/// this keeps [`sigevent`] at glibc's fixed `__SIGEV_MAX_SIZE` (64 bytes) on
+/// every architecture this crate supports, whether `sizeof(void *)` is 4 or 8.
+#[cfg(target_pointer_width = "64")]
+const SIGEV_PAD_SIZE: usize = 12;
+#[cfg(target_pointer_width = "32")]
+const SIGEV_PAD_SIZE: usize = 13;
+
+/// Mirrors glibc's `sigval_t` (`bits/types/sigval_t.h`): a signal-associated
+/// value that is either an `int` or a pointer.
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub(super) union sigval_t {
+    pub(super) sival_int: c_int,
+    pub(super) sival_ptr: *mut c_void,
+}
+
+impl Default for sigval_t {
+    fn default() -> Self {
+        Self { sival_ptr: core::ptr::null_mut() }
+    }
+}
+
+/// Mirrors the anonymous union inside glibc's `sigevent_t`
+/// (`_sigev_un` in `bits/types/sigevent_t.h`). Only the `tid` member (used
+/// with [`SIGEV_THREAD_ID`]) is exposed; `pad` exists solely so this union
+/// has the same size as glibc's, which also carries a `_sigev_thread` member
+/// (function-pointer notification, `SIGEV_THREAD`) this crate never uses.
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub(super) union sigevent_un {
+    pub(super) pad: [c_int; SIGEV_PAD_SIZE],
+    /// Kernel thread ID to notify, when `sigev_notify == SIGEV_THREAD_ID`.
+    pub(super) tid: pid_t,
+}
+
+impl Default for sigevent_un {
+    fn default() -> Self {
+        Self { pad: [0; SIGEV_PAD_SIZE] }
+    }
+}
+
+/// Mirrors glibc's `sigevent_t` (`bits/types/sigevent_t.h`), used to tell
+/// [`timer_create`] how to notify on timer expiry. This crate only uses
+/// [`SIGEV_THREAD_ID`] notification (deliver `sigev_signo` directly to the
+/// thread named by `sigev_un.tid`), which is a Linux/glibc extension.
+#[repr(C)]
+#[derive(Copy, Clone, Default)]
+pub(super) struct sigevent {
+    pub(super) sigev_value: sigval_t,
+    pub(super) sigev_signo: c_int,
+    pub(super) sigev_notify: c_int,
+    pub(super) sigev_un: sigevent_un,
+}
+
+/// Notify by delivering `sigev_signo` directly to the thread whose kernel TID
+/// is given in `sigev_un.tid` (`SIGEV_THREAD_ID`, a Linux/glibc extension to
+/// `bits/sigevent-consts.h`, gated there behind `__USE_GNU`). Not part of
+/// POSIX; lets a timer target one specific thread instead of the whole
+/// process.
+pub(super) const SIGEV_THREAD_ID: c_int = 4;
+
+/// Alarm clock signal (`SIGALRM`, `bits/signum-generic.h`). Value 14 is part
+/// of Linux's base (non-real-time) signal numbering, stable across every
+/// architecture this crate supports.
+pub(super) const SIGALRM: c_int = 14;
+
+/// `sigprocmask(2)`/`pthread_sigmask(3)` operation: add the signals in `set`
+/// to the caller's current mask (`SIG_BLOCK`). Value is stable across every
+/// architecture this crate supports (defined in the generic
+/// `asm-generic/signal.h`, not an arch-specific ABI detail).
+pub(super) const SIG_BLOCK: c_int = 0;
+
 /// Mutex type: the owning thread may lock it again without deadlocking,
 /// as long as it unlocks it the same number of times (`<pthread.h>`,
 /// `pthread_mutexattr_settype(3)`). Value is glibc's generic namespace,
@@ -524,4 +618,53 @@ unsafe extern "C" {
     /// Wake every thread currently blocked on `cond`
     /// (`pthread_cond_broadcast(3)`).
     pub(super) fn pthread_cond_broadcast(cond: *mut pthread_cond_t) -> c_int;
+
+    /// Initialize `set` to exclude every signal (`sigemptyset(3)`).
+    pub(super) fn sigemptyset(set: *mut sigset_t) -> c_int;
+
+    /// Add `signum` to `set` (`sigaddset(3)`).
+    pub(super) fn sigaddset(set: *mut sigset_t, signum: c_int) -> c_int;
+
+    /// Fetch and/or change the calling thread's blocked-signal mask
+    /// (`sigprocmask(2)`); `oldset` may be null if the previous mask isn't
+    /// needed.
+    ///
+    /// POSIX leaves the multi-threaded behavior of `sigprocmask` unspecified
+    /// — `pthread_sigmask(3)` is the portable per-thread call — but on
+    /// Linux/glibc `sigprocmask` is a thin, thread-local wrapper around it,
+    /// which is what [`crate::posix::timer`] relies on to give a newly
+    /// created thread a mask that already has `SIGALRM` blocked.
+    pub(super) fn sigprocmask(how: c_int, set: *const sigset_t, oldset: *mut sigset_t) -> c_int;
+
+    /// Synchronously accept one pending signal from `set`, storing its
+    /// number in `sig` (`sigwait(3)`). The signals in `set` must be blocked
+    /// in every thread that might receive them (see [`sigprocmask`]) —
+    /// `sigwait` "consumes" a pending blocked signal instead of running a
+    /// handler for it. Returns 0 on success, or a positive `errno`-style
+    /// error code (unlike most of this module's functions, `sigwait` does
+    /// not set `errno` itself).
+    pub(super) fn sigwait(set: *const sigset_t, sig: *mut c_int) -> c_int;
+
+    /// Return the calling thread's kernel thread ID (`gettid(2)`), as
+    /// opposed to [`pthread_self`]'s process-wide `pthread_t`. Needed
+    /// because [`SIGEV_THREAD_ID`] notification targets a kernel TID, not a
+    /// `pthread_t`.
+    ///
+    /// A direct glibc wrapper since glibc 2.30.
+    pub(super) fn gettid() -> pid_t;
+
+    /// Create a per-process timer that notifies as described by `sevp`,
+    /// writing its ID to `timerid` (`timer_create(2)`). This crate always
+    /// uses [`CLOCK_MONOTONIC`] and [`SIGEV_THREAD_ID`] notification (see
+    /// [`crate::posix::timer`]).
+    pub(super) fn timer_create(clockid: c_int, sevp: *const sigevent, timerid: *mut timer_t) -> c_int;
+
+    /// Arm, re-arm, or (with an all-zero `new_value.it_value`) disarm
+    /// `timerid` (`timer_settime(2)`). `flags = 0` means `new_value.it_value`
+    /// is relative to now, which is all this crate uses.
+    pub(super) fn timer_settime(timerid: timer_t, flags: c_int, new_value: *const itimerspec, old_value: *mut itimerspec) -> c_int;
+
+    /// Destroy `timerid`, releasing its resources (`timer_delete(2)`). Any
+    /// pending expiration notification is discarded.
+    pub(super) fn timer_delete(timerid: timer_t) -> c_int;
 }

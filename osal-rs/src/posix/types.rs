@@ -94,7 +94,12 @@ pub type ThreadHandle = c_ulong;
 pub type QueueHandle = ClockMonotonicHandle;
 pub type SemaphoreHandle = ClockMonotonicHandle;
 pub type EventGroupHandle = ClockMonotonicHandle;
-pub type TimerHandle = *const c_void;
+
+/// Opaque POSIX per-process timer identifier (`timer_t`, `<time.h>`).
+///
+/// glibc defines `timer_t` as `void *`, so `*mut c_void` has the correct
+/// size/representation on every target this crate builds for.
+pub type TimerHandle = *mut c_void;
 pub type MutexHandle = pthread_mutex_t;
 
 /// Type alias for event group bits.

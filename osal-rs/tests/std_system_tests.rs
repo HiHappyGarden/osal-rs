@@ -101,18 +101,6 @@ fn test_system_delay_until() -> Result<()> {
 }
 
 #[test]
-fn test_system_critical_section() -> Result<()> {
-    log_info!(TAG, "Starting test_system_critical_section");
-    log_debug!(TAG, "Entering critical section");
-    System::critical_section_enter();
-    // Critical section code
-    System::critical_section_exit();
-    log_debug!(TAG, "Exited critical section");
-    log_info!(TAG, "test_system_critical_section PASSED");
-    Ok(())
-}
-
-#[test]
 fn test_system_suspend_resume_all() -> Result<()> {
     log_info!(TAG, "Starting test_system_suspend_resume_all");
     log_debug!(TAG, "Suspending all threads");
@@ -247,7 +235,7 @@ fn test_system_delay_until_with_to_tick() -> Result<()> {
 }
 
 // NOTE: `System::start`/`stop`, `yield_from_isr`, `end_switching_isr`,
-// `enter_critical_from_isr`/`exit_critical_from_isr` are intentionally NOT
+// `critical_section_enter_from_isr`/`critical_section_exit_from_isr` are intentionally NOT
 // invoked here. On the FreeRTOS backend `start`/`stop` control the real
 // scheduler and calling them from an already-running task would hang or
 // corrupt the test run; the ISR-only functions are only meaningful from

@@ -129,10 +129,10 @@ impl Deref for SystemState {
 /// use osal_rs::os::{System, SystemFn};
 /// 
 /// // Protect shared data
-/// System::critical_section_enter();
+/// System::_critical_section_enter();
 /// // Access shared data here
 /// // ...
-/// System::critical_section_exit();
+/// System::_critical_section_exit();
 /// ```
 ///
 /// ## Thread enumeration
@@ -523,41 +523,6 @@ impl SystemFn for System {
             );
         }
     }
-
-    /// Enters a critical section.
-    ///
-    /// Disables interrupts or increments the scheduler lock nesting count.
-    /// Must be paired with `critical_section_exit()`.
-    ///
-    /// # Examples
-    ///
-    /// ```ignore
-    /// use osal_rs::os::{System, SystemFn};
-    /// 
-    /// System::critical_section_enter();
-    /// // Critical code - no task switches or interrupts
-    /// System::critical_section_exit();
-    /// ```
-    fn critical_section_enter() {
-        unsafe {
-            osal_rs_enter_critical_section();
-        }
-    }
-
-    /// Exits a critical section.
-    ///
-    /// Re-enables interrupts or decrements the scheduler lock nesting count.
-    ///
-    /// # Examples
-    ///
-    /// ```ignore
-    /// System::critical_section_exit();
-    /// ```
-    fn critical_section_exit() {
-        unsafe {
-            osal_rs_exit_critical_section();
-        }
-    }
     
     /// Checks if a timer has elapsed.
     ///
@@ -664,20 +629,20 @@ impl SystemFn for System {
     /// Enters a critical section at task level.
     ///
     /// Disables scheduler and interrupts to protect shared resources.
-    /// Must be paired with [`exit_critical()`](Self::exit_critical).
+    /// Must be paired with [`critical_section_exit()`](Self::critical_section_exit).
     /// This is the task-level version; for ISR context use 
-    /// [`enter_critical_from_isr()`](Self::enter_critical_from_isr).
+    /// [`critical_section_enter_from_isr()`](Self::critical_section_enter_from_isr).
     ///
     /// # Examples
     ///
     /// ```ignore
     /// use osal_rs::os::{System, SystemFn};
     /// 
-    /// System::enter_critical();
+    /// System::critical_section_enter();
     /// // Access shared resource safely
-    /// System::exit_critical();
+    /// System::critical_section_exit();
     /// ```
-    fn enter_critical() {
+    fn critical_section_enter() {
         unsafe {
             osal_rs_enter_critical_section();
         }
@@ -685,19 +650,19 @@ impl SystemFn for System {
 
     /// Exits a critical section at task level.
     ///
-    /// Re-enables scheduler and interrupts after [`enter_critical()`](Self::enter_critical).
-    /// Must be called from the same task that called `enter_critical()`.
+    /// Re-enables scheduler and interrupts after [`critical_section_enter()`](Self::critical_section_enter).
+    /// Must be called from the same task that called `critical_section_enter()`.
     ///
     /// # Examples
     ///
     /// ```ignore
     /// use osal_rs::os::{System, SystemFn};
     /// 
-    /// System::enter_critical();
+    /// System::critical_section_enter();
     /// // Critical section code
-    /// System::exit_critical();
+    /// System::critical_section_exit();
     /// ```
-    fn exit_critical() {
+    fn critical_section_exit() {
         unsafe {
             osal_rs_exit_critical_section();
         }
@@ -706,8 +671,8 @@ impl SystemFn for System {
     /// Enters a critical section from an ISR context.
     ///
     /// ISR-safe version of critical section entry. Returns the interrupt mask state
-    /// that must be passed to [`exit_critical_from_isr()`](Self::exit_critical_from_isr).
-    /// Use this instead of [`enter_critical()`](Self::enter_critical) when in interrupt context.
+    /// that must be passed to [`critical_section_exit_from_isr()`](Self::critical_section_exit_from_isr).
+    /// Use this instead of [`critical_section_enter()`](Self::critical_section_enter) when in interrupt context.
     ///
     /// # Returns
     ///
@@ -719,11 +684,11 @@ impl SystemFn for System {
     /// use osal_rs::os::{System, SystemFn};
     /// 
     /// // In an interrupt handler
-    /// let saved_status = System::enter_critical_from_isr();
+    /// let saved_status = System::critical_section_enter_from_isr();
     /// // Critical ISR code
-    /// System::exit_critical_from_isr(saved_status);
+    /// System::critical_section_exit_from_isr(saved_status);
     /// ```
-    fn enter_critical_from_isr() -> UBaseType {
+    fn critical_section_enter_from_isr() -> UBaseType {
         unsafe {
             osal_rs_enter_critical_section_from_isr()
         }
@@ -732,22 +697,22 @@ impl SystemFn for System {
     /// Exits a critical section from an ISR context.
     ///
     /// Restores the interrupt mask to the state saved by 
-    /// [`enter_critical_from_isr()`](Self::enter_critical_from_isr).
+    /// [`critical_section_enter_from_isr()`](Self::critical_section_enter_from_isr).
     ///
     /// # Parameters
     ///
-    /// * `saved_interrupt_status` - Interrupt status returned by `enter_critical_from_isr()`
+    /// * `saved_interrupt_status` - Interrupt status returned by `critical_section_enter_from_isr()`
     ///
     /// # Examples
     ///
     /// ```ignore
     /// use osal_rs::os::{System, SystemFn};
     /// 
-    /// let saved = System::enter_critical_from_isr();
+    /// let saved = System::critical_section_enter_from_isr();
     /// // Protected ISR operations
-    /// System::exit_critical_from_isr(saved);
+    /// System::critical_section_exit_from_isr(saved);
     /// ```
-    fn exit_critical_from_isr(saved_interrupt_status: UBaseType) {
+    fn critical_section_exit_from_isr(saved_interrupt_status: UBaseType) {
         unsafe {
             osal_rs_exit_critical_section_from_isr(saved_interrupt_status);
         }

@@ -364,15 +364,15 @@ fn apply_notification(state: &mut NotifyState, notification: ThreadNotification)
 #[repr(u8)]
 pub enum ThreadState {
     /// Thread is currently executing on a CPU
-    Running = 0,
+    Running = 0, //TODO: to implement in ThreadMetadata
     /// Thread is ready to run but not currently executing
-    Ready = 1,
+    Ready = 1, //TODO: to implement in ThreadMetadata
     /// Thread is blocked waiting for an event (e.g., semaphore, queue)
     Blocked = 2,
-    /// Thread has been explicitly suspended
-    Suspended = 3,
+    /// Thread in ThreadMetadata has been explicitly suspended
+    Suspended = 3, //TODO: to implement in ThreadMetadata
     /// Thread has been deleted
-    Deleted = 4,
+    Deleted = 4, //TODO: to implement in ThreadMetadata
     /// Invalid or unknown state
     Invalid,
 }
@@ -404,7 +404,7 @@ pub struct ThreadMetadata {
     pub stack_depth: StackType,
     /// Thread priority
     pub priority: UBaseType,
-    /// Unique thread number assigned by FreeRTOS
+    /// Unique thread number assigned by OS
     pub thread_number: UBaseType,
     /// Current execution state
     pub state: ThreadState,
@@ -518,7 +518,7 @@ impl Thread {
             name: thread.name.clone(),
             stack_depth: thread.stack_depth,
             priority: thread.priority,
-            thread_number: 0,
+            thread_number: thread.handle,
             state: if thread.is_null() { ThreadState::Invalid } else { ThreadState::Ready },
             current_priority: thread.priority,
             base_priority: thread.priority,

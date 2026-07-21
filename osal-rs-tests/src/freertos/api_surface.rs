@@ -111,15 +111,13 @@ pub fn compile_system_surface() {
     let _get_all_thread: fn() -> SystemState = <System as SystemFn>::get_all_thread;
     let _delay: fn(types::TickType) = <System as SystemFn>::delay;
     let _delay_until: fn(&mut types::TickType, types::TickType) = <System as SystemFn>::delay_until;
-    let _critical_section_enter: fn() = <System as SystemFn>::critical_section_enter;
-    let _critical_section_exit: fn() = <System as SystemFn>::critical_section_exit;
     let _check_timer: fn(&Duration, &Duration) -> osal_rs::utils::OsalRsBool = <System as SystemFn>::check_timer;
     let _yield_from_isr: fn(types::BaseType) = <System as SystemFn>::yield_from_isr;
     let _end_switching_isr: fn(types::BaseType) = <System as SystemFn>::end_switching_isr;
-    let _enter_critical: fn() = <System as SystemFn>::enter_critical;
-    let _exit_critical: fn() = <System as SystemFn>::exit_critical;
-    let _enter_critical_from_isr: fn() -> types::UBaseType = <System as SystemFn>::enter_critical_from_isr;
-    let _exit_critical_from_isr: fn(types::UBaseType) = <System as SystemFn>::exit_critical_from_isr;
+    let _enter_critical: fn() = <System as SystemFn>::critical_section_enter;
+    let _exit_critical: fn() = <System as SystemFn>::critical_section_exit;
+    let _enter_critical_from_isr: fn() -> types::UBaseType = <System as SystemFn>::critical_section_enter_from_isr;
+    let _exit_critical_from_isr: fn(types::UBaseType) = <System as SystemFn>::critical_section_exit_from_isr;
     let _get_free_heap_size: fn() -> usize = <System as SystemFn>::get_free_heap_size;
 
     System::delay_with_to_tick(Duration::ZERO);

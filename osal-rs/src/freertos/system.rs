@@ -33,13 +33,12 @@ use core::time::Duration;
 
 use alloc::vec::Vec;
 
-use super::ffi::task::{BLOCKED, DELETED, READY, RUNNING, SUSPENDED};
 use super::ffi::{
-    TaskStatus, eTaskGetState, osal_rs_port_end_switching_isr, osal_rs_port_yield_from_isr, uxTaskGetNumberOfTasks, uxTaskGetSystemState, vTaskDelay, vTaskEndScheduler, vTaskStartScheduler, vTaskSuspendAll, xPortGetFreeHeapSize, xTaskDelayUntil, xTaskGetCurrentTaskHandle, xTaskGetTickCount, xTaskResumeAll, osal_rs_enter_critical_section, osal_rs_enter_critical_section_from_isr, osal_rs_exit_critical_section, osal_rs_exit_critical_section_from_isr
+    TaskStatus, osal_rs_port_end_switching_isr, osal_rs_port_yield_from_isr, uxTaskGetNumberOfTasks, uxTaskGetSystemState, vTaskDelay, vTaskEndScheduler, vTaskStartScheduler, vTaskSuspendAll, xPortGetFreeHeapSize, xTaskDelayUntil, xTaskGetTickCount, xTaskResumeAll, osal_rs_enter_critical_section, osal_rs_enter_critical_section_from_isr, osal_rs_exit_critical_section, osal_rs_exit_critical_section_from_isr
 };
 use super::types::{BaseType, TickType, UBaseType};
 use crate::tick_period_ms;
-use crate::traits::{SystemFn, ThreadMetadata, ThreadState, ToTick};
+use crate::traits::{SystemFn, ThreadMetadata, ToTick};
 use crate::utils::{CpuRegisterSize::*, register_bit_size, OsalRsBool};
 
 /// Represents a snapshot of the system state including all threads.
@@ -246,36 +245,6 @@ impl SystemFn for System {
     fn start() {
         unsafe {
             vTaskStartScheduler();
-        }
-    }
-
-    /// Gets the state of the currently executing thread.
-    ///
-    /// # Returns
-    ///
-    /// Current thread state enum value
-    ///
-    /// # Examples
-    ///
-    /// ```ignore
-    /// use osal_rs::os::{System, SystemFn, ThreadState};
-    /// 
-    /// let state = System::get_state();
-    /// match state {
-    ///     ThreadState::Running => println!("Currently running"),
-    ///     _ => println!("Other state"),
-    /// }
-    /// ```
-    fn get_state() -> ThreadState {
-        use crate::traits::ThreadState::*;
-        let state = unsafe { eTaskGetState(xTaskGetCurrentTaskHandle()) };
-        match state {
-            RUNNING => Running,
-            READY => Ready,
-            BLOCKED => Blocked,
-            SUSPENDED => Suspended,
-            DELETED => Deleted,
-            _ => Invalid, // INVALID or unknown state
         }
     }
 

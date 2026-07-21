@@ -131,16 +131,6 @@ pub fn test_system_get_free_heap_size() -> Result<()> {
     Ok(())
 }
 
-pub fn test_system_get_state() -> Result<()> {
-    log_info!(TAG, "Starting test_system_get_state");
-    let state = System::get_state();
-    log_debug!(TAG, "Current thread state: {:?}", state);
-    // Current thread should be in Running state
-    assert!(matches!(state, ThreadState::Running | ThreadState::Ready));
-    log_info!(TAG, "test_system_get_state PASSED");
-    Ok(())
-}
-
 pub fn test_system_time_conversion() -> Result<()> {
     log_info!(TAG, "Starting test_system_time_conversion");
     let duration = Duration::from_millis(100);
@@ -236,7 +226,6 @@ pub fn run_all_tests() -> Result<()> {
     test_system_suspend_resume_all()?;
     test_system_check_timer()?;
     test_system_get_free_heap_size()?;
-    test_system_get_state()?;
     test_system_time_conversion()?;
     test_system_thread_metadata()?;
     test_system_multiple_delays()?;

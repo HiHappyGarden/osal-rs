@@ -78,7 +78,6 @@ impl ToPriority for HostPriority {
 #[test]
 fn std_system_surface_signatures_compile() {
     let _start: fn() = <System as SystemFn>::start;
-    let _get_state: fn() -> ThreadState = <System as SystemFn>::get_state;
     let _suspend_all: fn() = <System as SystemFn>::suspend_all;
     let _resume_all: fn() -> types::BaseType = <System as SystemFn>::resume_all;
     let _stop: fn() = <System as SystemFn>::stop;

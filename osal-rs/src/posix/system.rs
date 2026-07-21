@@ -25,13 +25,14 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use alloc::vec::Vec;
 
+use crate::os::ThreadFn;
 use crate::posix::ffi::{
     CLOCK_MONOTONIC, PTHREAD_ONCE_INIT, _SC_AVPHYS_PAGES, _SC_PAGESIZE, clock_gettime, nanosleep, pthread_once, pthread_once_t, pthread_self, sched_yield, sysconf, timespec,
 };
-use crate::posix::thread::{ThreadMetadata, ThreadState, all_registered_threads, registered_thread_count};
+use crate::posix::thread::{Thread, ThreadMetadata, ThreadState, all_registered_threads, registered_thread_count};
 use crate::posix::types::{BaseType, TickType, UBaseType};
 use crate::traits::{SystemFn, ToTick};
-use crate::utils::{Bytes, OsalRsBool};
+use crate::utils::OsalRsBool;
 
 static RUN: AtomicBool = AtomicBool::new(true);
 
@@ -100,13 +101,39 @@ impl SystemFn for System {
     } 
 
     fn get_state() -> ThreadState {
-        ThreadState::Running
+        let tasks = all_registered_threads();
+
+        let current_handle = unsafe { pthread_self() };
+
+        match tasks.iter().find(|task| task.thread == current_handle) {
+            Some(thread_metadata) => thread_metadata.state,
+            None => ThreadState::Invalid,
+        }
     }
 
-    fn suspend_all() {}
+    fn suspend_all() {
+        for tm in all_registered_threads() {
+            if let Ok(t) = Thread::new_with_handle(tm.thread, tm.name.as_str(), tm.stack_depth, tm.current_priority) {
+                if tm.state == ThreadState::Ready || tm.state == ThreadState::Running {
+                    t.suspend();
+                }
+            }
+        }
+    }
 
     fn resume_all() -> BaseType {
-        0
+        let mut count = 0;
+
+        for tm in all_registered_threads() {
+            if let Ok(t) = Thread::new_with_handle(tm.thread, tm.name.as_str(), tm.stack_depth, tm.current_priority) {
+                if tm.state == ThreadState::Ready || tm.state == ThreadState::Running {
+                    t.resume();
+                    count += 1;
+                }
+            }
+        }
+
+        count
     }
 
     fn stop() {
@@ -132,28 +159,8 @@ impl SystemFn for System {
     }
 
     fn get_all_thread() -> SystemState {
-        let mut tasks = all_registered_threads();
-
-        let current_handle = unsafe { pthread_self() };
-        if !tasks.iter().any(|task| task.thread == current_handle) {
-            tasks.push(ThreadMetadata {
-                thread: current_handle,
-                name: Bytes::from_str("current"),
-                stack_depth: 0,
-                // Not spawned through `Thread::new()`, so there's no configured
-                // priority to report; use the lowest valid one as a placeholder.
-                priority: 1,
-                thread_number: 0,
-                state: ThreadState::Running,
-                current_priority: 1,
-                base_priority: 1,
-                run_time_counter: 0,
-                stack_high_water_mark: 0,
-            });
-        }
-
         SystemState {
-            tasks,
+            tasks: all_registered_threads(),
             total_run_time: Self::get_tick_count().min(TickType::MAX) as u32,
         }
     }
@@ -194,10 +201,6 @@ impl SystemFn for System {
         *previous_wake_time = next_wake_time;
     }
 
-    fn critical_section_enter() {}
-
-    fn critical_section_exit() {}
-
     fn check_timer(timestamp: &Duration, time: &Duration) -> OsalRsBool {
         let elapsed = Self::get_current_time_us().checked_sub(*timestamp).unwrap_or_default();
 
@@ -224,15 +227,15 @@ impl SystemFn for System {
         }
     }
 
-    fn enter_critical() {}
+    fn critical_section_enter() {}
 
-    fn exit_critical() {}
+    fn critical_section_exit() {}
 
-    fn enter_critical_from_isr() -> UBaseType {
+    fn critical_section_enter_from_isr() -> UBaseType {
         0
     }
 
-    fn exit_critical_from_isr(_: UBaseType) {}
+    fn critical_section_exit_from_isr(_: UBaseType) {}
 
     fn get_free_heap_size() -> usize {
         // POSIX processes don't have a fixed heap the way FreeRTOS does (the

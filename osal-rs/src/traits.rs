@@ -55,6 +55,8 @@
 //!
 //! - [`ThreadFn`] - Thread/task creation and management
 //! - [`ThreadNotification`] - Thread notification mechanisms
+//! - [`ThreadState`] - Thread execution state
+//! - [`ThreadMetadata`] - Thread runtime information (name, priority, stack usage, state)
 //! - [`ToPriority`] - Priority conversion trait
 //!
 //! ## Timers

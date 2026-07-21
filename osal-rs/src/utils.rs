@@ -785,6 +785,7 @@ impl<const SIZE: usize> Serialize for Bytes<SIZE> {
     /// # Returns
     ///
     /// A reference to the internal byte array.
+    #[inline]
     fn to_bytes(&self) -> &[u8] {
         &self.0
     }

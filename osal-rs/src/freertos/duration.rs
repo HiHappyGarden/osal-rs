@@ -46,6 +46,7 @@ use super::types::TickType;
 /// - Saturates at maximum value on overflow
 /// - Conversion is based on `configTICK_RATE_HZ` from FreeRTOS configuration
 impl ToTick for Duration {
+    #[inline]
     fn to_ticks(&self) -> TickType {
         let millis = self.as_millis() as TickType;
         
@@ -71,6 +72,7 @@ impl ToTick for Duration {
 /// - Conversion is based on `configTICK_RATE_HZ` from FreeRTOS configuration
 /// - Saturates at maximum value on overflow
 impl FromTick for Duration {
+    #[inline]
     fn ticks(&mut self, tick: TickType) {
         let millis = tick.saturating_mul(1000) / tick_rate_hz!() as TickType;
         *self = Duration::from_millis(millis as u64);

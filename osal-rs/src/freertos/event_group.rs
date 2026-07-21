@@ -185,6 +185,7 @@ impl EventGroup {
     /// let events = EventGroup::new().unwrap();
     /// let bits = events.wait_with_to_tick(0b0001, Duration::from_secs(1));
     /// ```
+    #[inline]
     pub fn wait_with_to_tick(&self, mask: EventBits, timeout_ticks: impl ToTick) -> EventBits {
         self.wait(mask, timeout_ticks.to_ticks())
     }

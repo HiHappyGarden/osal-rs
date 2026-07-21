@@ -45,7 +45,7 @@ fn test_semaphore_creation() -> Result<()> {
 #[test]
 fn test_semaphore_creation_with_count() -> Result<()> {
     log_info!(TAG, "Starting test_semaphore_creation_with_count");
-    let semaphore = Semaphore::new_with_count(3);
+    let semaphore = Semaphore::new(types::UBaseType::MAX, 3);
     assert!(semaphore.is_ok());
     log_info!(TAG, "test_semaphore_creation_with_count PASSED");
     Ok(())

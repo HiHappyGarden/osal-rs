@@ -129,10 +129,10 @@ impl Deref for SystemState {
 /// use osal_rs::os::{System, SystemFn};
 /// 
 /// // Protect shared data
-/// System::_critical_section_enter();
+/// System::critical_section_enter();
 /// // Access shared data here
 /// // ...
-/// System::_critical_section_exit();
+/// System::critical_section_exit();
 /// ```
 ///
 /// ## Thread enumeration

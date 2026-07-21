@@ -34,91 +34,11 @@ use alloc::sync::Arc;
 use super::ffi::task::INVALID;
 use super::ffi::{ TaskStatus, ThreadHandle, pdPASS, pdTRUE, vTaskDelete, vTaskGetInfo, vTaskResume, vTaskSuspend, xTaskCreate, xTaskGetCurrentTaskHandle};
 use super::types::{StackType, UBaseType, BaseType, TickType};
-use super::thread::ThreadState::*;
+use crate::traits::ThreadState::*;
 use crate::os::ThreadSimpleFnPtr;
-use crate::traits::{ThreadFn, ThreadParam, ThreadFnPtr, ThreadNotification, ToTick, ToPriority};
+use crate::traits::{ThreadFn, ThreadParam, ThreadFnPtr, ThreadNotification, ThreadMetadata, ToTick, ToPriority};
+use crate::traits::MAX_TASK_NAME_LEN;
 use crate::utils::{Bytes, DoublePtr, Error, Result};
-
-const MAX_TASK_NAME_LEN: usize = 16;
-
-/// Represents the possible states of a FreeRTOS task/thread.
-///
-/// # Examples
-///
-/// ```ignore
-/// use osal_rs::os::{Thread, ThreadState};
-/// 
-/// let thread = Thread::current();
-/// let metadata = thread.metadata().unwrap();
-/// 
-/// match metadata.state {
-///     ThreadState::Running => println!("Thread is currently executing"),
-///     ThreadState::Ready => println!("Thread is ready to run"),
-///     ThreadState::Blocked => println!("Thread is waiting for an event"),
-///     ThreadState::Suspended => println!("Thread is suspended"),
-///     _ => println!("Unknown state"),
-/// }
-/// ```
-#[derive(Copy, Clone, Debug, PartialEq)]
-#[repr(u8)]
-pub enum ThreadState {
-    /// Thread is currently executing on a CPU
-    Running = 0,
-    /// Thread is ready to run but not currently executing
-    Ready = 1,
-    /// Thread is blocked waiting for an event (e.g., semaphore, queue)
-    Blocked = 2,
-    /// Thread has been explicitly suspended
-    Suspended = 3,
-    /// Thread has been deleted
-    Deleted = 4,
-    /// Invalid or unknown state
-    Invalid,
-}
-
-/// Metadata and runtime information about a thread.
-///
-/// Contains detailed information about a thread's state, priorities, stack usage,
-/// and runtime statistics.
-///
-/// # Examples
-///
-/// ```ignore
-/// use osal_rs::os::Thread;
-/// 
-/// let thread = Thread::current();
-/// let metadata = thread.metadata().unwrap();
-/// 
-/// println!("Thread: {}", metadata.name);
-/// println!("Priority: {}", metadata.priority);
-/// println!("Stack high water mark: {}", metadata.stack_high_water_mark);
-/// ```
-#[derive(Clone, Debug)]
-pub struct ThreadMetadata {
-    /// FreeRTOS task handle
-    pub thread: ThreadHandle,
-    /// Thread name
-    pub name: Bytes<MAX_TASK_NAME_LEN>,
-    /// Original stack depth allocated for this thread
-    pub stack_depth: StackType,
-    /// Thread priority
-    pub priority: UBaseType,
-    /// Unique thread number assigned by FreeRTOS
-    pub thread_number: UBaseType,
-    /// Current execution state
-    pub state: ThreadState,
-    /// Current priority (may differ from base priority due to priority inheritance)
-    pub current_priority: UBaseType,
-    /// Base priority without inheritance
-    pub base_priority: UBaseType,
-    /// Total runtime counter (requires configGENERATE_RUN_TIME_STATS)
-    pub run_time_counter: UBaseType,
-    /// Minimum remaining stack space ever recorded (lower values indicate higher stack usage)
-    pub stack_high_water_mark: StackType,
-}
-
-unsafe impl Send for ThreadMetadata {}
-unsafe impl Sync for ThreadMetadata {}
 
 /// Converts a FreeRTOS TaskStatus into ThreadMetadata.
 ///
@@ -148,27 +68,6 @@ impl From<(ThreadHandle,TaskStatus)> for ThreadMetadata {
             base_priority: status.1.uxBasePriority,
             run_time_counter: status.1.ulRunTimeCounter,
             stack_high_water_mark: status.1.usStackHighWaterMark,
-        }
-    }
-}
-
-/// Provides default values for ThreadMetadata.
-///
-/// Creates a metadata instance with null/zero values, representing an
-/// invalid or uninitialized thread.
-impl Default for ThreadMetadata {
-    fn default() -> Self {
-        ThreadMetadata {
-            thread: null_mut(),
-            name: Bytes::new(),
-            stack_depth: 0,
-            priority: 0,
-            thread_number: 0,
-            state: Invalid,
-            current_priority: 0,
-            base_priority: 0,
-            run_time_counter: 0,
-            stack_high_water_mark: 0,
         }
     }
 }

@@ -173,8 +173,12 @@ pub use crate::traits::semaphore::Semaphore as SemaphoreFn;
 // Re-export system trait with Fn suffix for scheduler, timing, and critical section control
 pub use crate::traits::system::System as SystemFn;
 
-// Re-export thread trait and related types (ThreadParam, function pointers, notifications, priority conversion)
-pub use crate::traits::thread::{Thread as ThreadFn, ThreadParam, ThreadFnPtr, ThreadSimpleFnPtr, ThreadNotification, ToPriority};
+// Re-export thread trait and related types (ThreadParam, function pointers, notifications, priority conversion,
+// state/metadata shared by all backends)
+pub use crate::traits::thread::{Thread as ThreadFn, ThreadParam, ThreadFnPtr, ThreadSimpleFnPtr, ThreadNotification, ThreadState, ThreadMetadata, ToPriority};
+
+// Internal thread-name length shared by backend `Thread`/`ThreadMetadata` implementations
+pub(crate) use crate::traits::thread::MAX_TASK_NAME_LEN;
 
 // Re-export tick conversion traits (ToTick, FromTick)
 pub use crate::traits::tick::*;

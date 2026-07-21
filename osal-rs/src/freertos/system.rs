@@ -37,10 +37,9 @@ use super::ffi::task::{BLOCKED, DELETED, READY, RUNNING, SUSPENDED};
 use super::ffi::{
     TaskStatus, eTaskGetState, osal_rs_port_end_switching_isr, osal_rs_port_yield_from_isr, uxTaskGetNumberOfTasks, uxTaskGetSystemState, vTaskDelay, vTaskEndScheduler, vTaskStartScheduler, vTaskSuspendAll, xPortGetFreeHeapSize, xTaskDelayUntil, xTaskGetCurrentTaskHandle, xTaskGetTickCount, xTaskResumeAll, osal_rs_enter_critical_section, osal_rs_enter_critical_section_from_isr, osal_rs_exit_critical_section, osal_rs_exit_critical_section_from_isr
 };
-use super::thread::{ThreadState, ThreadMetadata};
 use super::types::{BaseType, TickType, UBaseType};
 use crate::tick_period_ms;
-use crate::traits::{SystemFn, ToTick};
+use crate::traits::{SystemFn, ThreadMetadata, ThreadState, ToTick};
 use crate::utils::{CpuRegisterSize::*, register_bit_size, OsalRsBool};
 
 /// Represents a snapshot of the system state including all threads.
@@ -268,7 +267,7 @@ impl SystemFn for System {
     /// }
     /// ```
     fn get_state() -> ThreadState {
-        use super::thread::ThreadState::*;
+        use crate::traits::ThreadState::*;
         let state = unsafe { eTaskGetState(xTaskGetCurrentTaskHandle()) };
         match state {
             RUNNING => Running,

@@ -146,9 +146,10 @@ pub type ThreadSimpleFnPtr = dyn Fn() -> Result<ThreadParam> + Send + Sync + 'st
 
 /// Thread notification actions.
 ///
-/// Defines different ways to notify a thread using the FreeRTOS task notification mechanism.
-/// Task notifications provide a lightweight alternative to semaphores and queues for
-/// simple signaling between threads or from ISRs to threads.
+/// Defines different ways to notify a thread, using a lightweight task-notification
+/// mechanism modeled on FreeRTOS's (backends without native support, e.g. POSIX,
+/// emulate the same one-slot semantics). Provides a lightweight alternative to
+/// semaphores and queues for simple signaling between threads or from ISRs to threads.
 ///
 /// # Performance
 ///

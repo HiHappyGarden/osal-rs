@@ -184,7 +184,7 @@ fn std_backend_exports_core_api_surface() {
     let mut semaphore = Semaphore::new(2, 1).unwrap();
     let semaphore_handle: &types::SemaphoreHandle = &semaphore;
     let _ = semaphore_handle;
-    let _ = Semaphore::new_with_count(0).unwrap();
+    let _ = Semaphore::new(types::UBaseType::MAX, 0).unwrap();
     let _ = semaphore.wait(Duration::ZERO);
     let _ = semaphore.wait_from_isr();
     let _ = semaphore.signal();

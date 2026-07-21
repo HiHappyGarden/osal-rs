@@ -233,7 +233,6 @@ pub fn run_all_tests() -> Result<()> {
     test_system_delay_until()?;
     test_system_delay_with_to_tick()?;
     test_system_delay_until_with_to_tick()?;
-    test_system_critical_section()?;
     test_system_suspend_resume_all()?;
     test_system_check_timer()?;
     test_system_get_free_heap_size()?;

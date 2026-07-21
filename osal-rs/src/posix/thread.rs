@@ -412,10 +412,12 @@ impl Thread {
         })
     }
 
+    #[inline]
     pub fn new_with_to_priority(name: &str, stack_depth: StackType, priority: impl ToPriority) -> Self {
         Self::new(name, stack_depth, priority.to_priority())
     }
 
+    #[inline]
     pub fn new_with_handle_and_to_priority(handle: ThreadHandle, name: &str, stack_depth: StackType, priority: impl ToPriority) -> Result<Self> {
         Self::new_with_handle(handle, name, stack_depth, priority.to_priority())
     }

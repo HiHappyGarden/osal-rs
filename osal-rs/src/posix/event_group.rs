@@ -63,6 +63,7 @@ unsafe impl Sync for EventGroup {}
 impl EventGroup {
 	pub const MAX_MASK: EventBits = EventBits::MAX >> 8;
 
+	#[inline]
 	pub fn wait_with_to_tick(&self, mask: EventBits, timeout_ticks: impl ToTick) -> EventBits {
 		self.wait(mask, timeout_ticks.to_ticks())
 	}

@@ -456,14 +456,17 @@ where
 		Ok(())
 	}
 
+	#[inline]
 	fn post(&self, item: &T, time: TickType) -> Result<()> {
 		self.0.post(&item.to_bytes(), time)
 	}
 
+	#[inline]
 	fn post_from_isr(&self, item: &T) -> Result<()> {
 		self.0.post_from_isr(&item.to_bytes())
 	}
 
+	#[inline]
 	fn delete(&mut self) {
 		self.0.delete()
 	}
@@ -508,6 +511,7 @@ where
 		self.0.post_from_isr(&buf_bytes)
 	}
 
+	#[inline]
 	fn delete(&mut self) {
 		self.0.delete()
 	}

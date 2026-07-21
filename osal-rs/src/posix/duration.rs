@@ -25,6 +25,7 @@ use crate::posix::types::TickType;
 use crate::traits::{FromTick, ToTick};
 
 impl ToTick for Duration {
+    #[inline]
     fn to_ticks(&self) -> TickType {
         let millis = self.as_millis() as TickType;
         let period = TICK_PERIOD_MS as TickType;
@@ -38,6 +39,7 @@ impl ToTick for Duration {
 }
 
 impl FromTick for Duration {
+    #[inline]
     fn ticks(&mut self, tick: TickType) {
         *self = Duration::from_millis(tick.saturating_mul(TICK_PERIOD_MS as TickType));
     }

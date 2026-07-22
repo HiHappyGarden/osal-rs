@@ -397,6 +397,11 @@ fn apply_notification(state: &mut NotifyState, notification: ThreadNotification)
     Ok(())
 }
 
+/// A schedulable unit of execution backed by a POSIX thread (`pthread_t`).
+///
+/// Created in a "not yet spawned" state via [`Thread::new`], and only backed
+/// by a real OS thread once [`ThreadFn::spawn`]/[`ThreadFn::spawn_simple`] is
+/// called on it. See [`Thread::new`] for a complete, testable example.
 #[derive(Clone)]
 pub struct Thread {
     handle: ThreadHandle,

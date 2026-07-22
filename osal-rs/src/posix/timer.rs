@@ -149,8 +149,15 @@ struct TimerShared {
     thread: Mutex<Option<Thread>>,
 }
 
+/// A software timer backed by a POSIX `timer_create`/`SIGALRM` timer and a
+/// dedicated background thread that waits for the signal and invokes the
+/// user callback. Freely [`Clone`]-able - every clone shares the same
+/// underlying timer. See [`Timer::new`] for a complete, testable example.
 #[derive(Clone)]
 pub struct Timer {
+    /// Raw handle to the underlying `timer_t`, exposed for diagnostics
+    /// (`Debug`/`Display`). `null` until [`Timer::new`] successfully calls
+    /// `timer_create`.
     pub handle: TimerHandle,
     name: String,
     callback: Option<Arc<TimerFnPtr>>,

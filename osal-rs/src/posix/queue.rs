@@ -66,6 +66,47 @@ use crate::posix::types::{QueueHandle, TickType, UBaseType};
 #[cfg(feature = "serde")]
 use osal_rs_serde::{Deserialize, Serialize, from_bytes, to_bytes};
 
+/// Marker trait bundling the bounds required to send a type through a
+/// [`QueueStreamed`] instead of a raw [`Queue`]: it must be serializable to
+/// bytes, deserializable from bytes, and know its own byte length.
+///
+/// Blanket-implemented below for every type satisfying `Serialize` +
+/// `BytesHasLen` + `Deserialize` (or their `osal-rs-serde` equivalents when
+/// the `serde` feature is enabled) - never implement it by hand.
+///
+/// # Examples
+///
+#[cfg_attr(not(feature = "serde"), doc = "```")]
+#[cfg_attr(feature = "serde", doc = "```ignore")]
+/// use osal_rs::os::*;
+///
+/// struct Reading(u32);
+///
+/// impl BytesHasLen for Reading {
+///     fn len(&self) -> usize { core::mem::size_of::<u32>() }
+/// }
+///
+/// impl Serialize for Reading {
+///     fn to_bytes(&self) -> &[u8] {
+///         unsafe {
+///             core::slice::from_raw_parts(&self.0 as *const u32 as *const u8, core::mem::size_of::<u32>())
+///         }
+///     }
+/// }
+///
+/// impl Deserialize for Reading {
+///     fn from_bytes(bytes: &[u8]) -> osal_rs::utils::Result<Self> {
+///         let mut buf = [0u8; 4];
+///         buf.copy_from_slice(&bytes[..4]);
+///         Ok(Reading(u32::from_le_bytes(buf)))
+///     }
+/// }
+///
+/// // `Reading` satisfies `Serialize + BytesHasLen + Deserialize`, so it
+/// // automatically implements `StructSerde` via the blanket impl below.
+/// fn accepts_queue_payload<T: StructSerde>(_: &T) {}
+/// accepts_queue_payload(&Reading(42));
+/// ```
 pub trait StructSerde: Serialize + BytesHasLen + Deserialize {}
 
 impl<T> StructSerde for T where T: Serialize + BytesHasLen + Deserialize {}

@@ -95,10 +95,20 @@ use core::ffi::c_void;
 /// // The handle is managed internally by the Thread wrapper
 /// ```
 pub type ThreadHandle = *const c_void;
+/// Handle to a FreeRTOS message queue for inter-thread communication. See
+/// [`ThreadHandle`] for the shared safety notes.
 pub type QueueHandle = *const c_void;
+/// Handle to a FreeRTOS counting or binary semaphore. See [`ThreadHandle`]
+/// for the shared safety notes.
 pub type SemaphoreHandle = *const c_void;
+/// Handle to a FreeRTOS event group for multi-bit synchronization. See
+/// [`ThreadHandle`] for the shared safety notes.
 pub type EventGroupHandle = *const c_void;
+/// Handle to a FreeRTOS software timer. See [`ThreadHandle`] for the shared
+/// safety notes.
 pub type TimerHandle = *const c_void;
+/// Handle to a FreeRTOS recursive mutex with priority inheritance. See
+/// [`ThreadHandle`] for the shared safety notes.
 pub type MutexHandle = *const c_void;
 
 /// Type alias for event group bits.

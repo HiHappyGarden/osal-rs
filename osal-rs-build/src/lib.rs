@@ -1,5 +1,16 @@
 #![cfg_attr(target_os = "none", no_std)]
 
+//! Build-time utilities for `osal-rs`'s `build.rs`.
+//!
+//! [`TypeGenerator`] detects the active backend's `TickType`/`UBaseType`/
+//! `BaseType`/`StackType` sizes and writes them as Rust type aliases into
+//! `OUT_DIR/types_generated.rs` (included by `osal-rs` via `include!`),
+//! wires up `cargo:rerun-if-changed` for the C porting sources, and - for
+//! the `posix` backend - compiles and statically links the C porting layer.
+//!
+//! Exactly one of the `posix` or `freertos` features is expected to be
+//! enabled, matching whichever backend `osal-rs` itself is being built with.
+
 /***************************************************************************
  *
  * osal-rs
@@ -28,6 +39,27 @@ use std::ffi::OsStr;
 use std::fs;
 use std::process::Command;
 
+/// Detects the active backend's platform type sizes and (for `posix`) links
+/// the C porting layer, driven from a `build.rs` script.
+///
+/// Wraps the build script's `OUT_DIR` (where generated files are written)
+/// and a flag recording whether the `real_time` (`SCHED_FIFO`) cfg should be
+/// enabled for the crate being built.
+///
+/// # Examples
+///
+/// ```
+/// use std::path::PathBuf;
+///
+/// // Cargo sets `OUT_DIR` automatically inside a real build script; set it
+/// // by hand here so the example can run standalone. The path passed in
+/// // needs at least two components (as `CARGO_MANIFEST_DIR` always has)
+/// // since the `freertos` backend walks up two parents to find the
+/// // workspace root.
+/// unsafe { std::env::set_var("OUT_DIR", std::env::temp_dir()); }
+///
+/// let _generator = osal_rs_build::TypeGenerator::new(PathBuf::from("workspace/osal-rs"));
+/// ```
 pub struct TypeGenerator(PathBuf, bool);
 
 impl TypeGenerator {
@@ -95,9 +127,13 @@ impl TypeGenerator {
 // BaseType_t: {} bytes -> {}
 // StackType_t: {} bytes -> {}
 
+/// Alias for the platform's tick-count type, sized to match `TickType_t` as detected at build time.
 pub type TickType = {};
+/// Alias for the platform's unsigned base type, sized to match `UBaseType_t` as detected at build time.
 pub type UBaseType = {};
+/// Alias for the platform's signed base type, sized to match `BaseType_t` as detected at build time.
 pub type BaseType = {};
+/// Alias for the platform's stack-element type, sized to match `StackType_t` as detected at build time.
 pub type StackType = {};
 
 "#,
@@ -146,11 +182,35 @@ pub type StackType = {};
 #[cfg(feature = "posix")]
 impl TypeGenerator {
 
+    /// Tells Cargo to re-run the build script when the POSIX C porting
+    /// sources change.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// osal_rs_build::TypeGenerator::add_rerun_if_changed();
+    /// ```
     pub fn add_rerun_if_changed() {
         println!("cargo:rerun-if-changed=../osal-rs-porting/posix/src/osal_rs.c");
         println!("cargo:rerun-if-changed=../osal-rs-porting/posix/inc/osal_rs.h");
     }
 
+    /// Probes the host architecture (and `SCHED_FIFO` support) by compiling
+    /// and running a small C program with `gcc`, then writes the
+    /// corresponding `TickType`/`UBaseType`/`BaseType`/`StackType` aliases
+    /// into `OUT_DIR/types_generated.rs`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use std::path::PathBuf;
+    ///
+    /// unsafe { std::env::set_var("OUT_DIR", std::env::temp_dir()); }
+    /// let mut generator = osal_rs_build::TypeGenerator::new(PathBuf::from("Cargo.toml"));
+    /// generator.generate_types();
+    ///
+    /// assert!(std::env::temp_dir().join("types_generated.rs").exists());
+    /// ```
     pub fn generate_types(&mut self) {
 
         let query_program = r#"
@@ -278,6 +338,22 @@ int main() {
         println!("cargo:rustc-link-lib=static=osal_rs_posix");
     }
 
+    /// Runs the full POSIX build step: [`TypeGenerator::generate_types`],
+    /// then [`TypeGenerator::compile_sources`] to build and link the C
+    /// porting layer.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use std::path::PathBuf;
+    ///
+    /// // `compile_sources` shells out to `gcc`/`ar` and expects the C porting
+    /// // sources at a path relative to the crate invoking the build script,
+    /// // so this is illustrative rather than runnable standalone.
+    /// unsafe { std::env::set_var("OUT_DIR", std::env::temp_dir()); }
+    /// let mut generator = osal_rs_build::TypeGenerator::new(PathBuf::from("Cargo.toml"));
+    /// generator.generate_all();
+    /// ```
     pub fn generate_all(&mut self) {
         self.generate_types();
         self.enable_sched_fifo();
@@ -290,6 +366,14 @@ int main() {
 impl TypeGenerator {
 
 
+    /// Tells Cargo to re-run the build script when the FreeRTOS C porting
+    /// sources change.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// osal_rs_build::TypeGenerator::add_rerun_if_changed();
+    /// ```
     pub fn add_rerun_if_changed() {
         println!("cargo:rerun-if-changed=../osal-rs-porting/freeretos/src/osal_rs.c");
         println!("cargo:rerun-if-changed=../osal-rs-porting/freeretos/inc/osal_rs.h");

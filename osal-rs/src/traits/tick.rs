@@ -48,8 +48,8 @@
 //!
 //! # Examples
 //!
-//! ```ignore
-//! use osal_rs::traits::{ToTick, FromTick};
+//! ```
+//! use osal_rs::os::{ToTick, FromTick};
 //! use core::time::Duration;
 //!
 //! // Convert Duration to ticks
@@ -59,6 +59,7 @@
 //! // Convert ticks to Duration
 //! let mut duration = Duration::from_secs(0);
 //! duration.ticks(50);
+//! assert_eq!(duration.as_millis(), 50);
 //! ```
 
 use crate::os::types::TickType;
@@ -90,25 +91,24 @@ use crate::os::types::TickType;
 ///
 /// # Examples
 ///
-/// ```ignore
-/// use osal_rs::traits::ToTick;
+/// ```
+/// use osal_rs::os::{System, SystemFn, ToTick};
 /// use core::time::Duration;
-/// 
+///
 /// // Convert milliseconds to ticks
 /// let duration = Duration::from_millis(100);
 /// let ticks = duration.to_ticks();
-/// 
+///
 /// // Use with RTOS API
-/// System::delay(Duration::from_millis(500).to_ticks());
-/// 
+/// System::delay(Duration::from_millis(1).to_ticks());
+///
 /// // Or let the API handle the conversion
 /// fn delay_for(timeout: impl ToTick) {
 ///     let ticks = timeout.to_ticks();
-///     // Use ticks...
+///     System::delay(ticks);
 /// }
-/// 
-/// delay_for(Duration::from_secs(1));
-/// delay_for(1000u32);  // If u32 implements ToTick
+///
+/// delay_for(Duration::from_millis(1));
 /// ```
 pub trait ToTick : Sized + Copy {
     /// Converts this value to RTOS ticks.
@@ -128,8 +128,8 @@ pub trait ToTick : Sized + Copy {
     ///
     /// # Examples
     ///
-    /// ```ignore
-    /// use osal_rs::traits::ToTick;
+    /// ```
+    /// use osal_rs::os::ToTick;
     /// use core::time::Duration;
     ///
     /// let timeout = Duration::from_millis(250);
@@ -163,14 +163,14 @@ pub trait ToTick : Sized + Copy {
 ///
 /// # Examples
 ///
-/// ```ignore
-/// use osal_rs::traits::FromTick;
+/// ```
+/// use osal_rs::os::{System, SystemFn, FromTick};
 /// use core::time::Duration;
-/// 
+///
 /// // Create duration from tick count
 /// let mut duration = Duration::from_secs(0);
 /// duration.ticks(100);  // Set from 100 ticks
-/// 
+///
 /// // Calculate elapsed time
 /// let start_tick = System::get_tick_count();
 /// // ... do work ...
@@ -195,8 +195,8 @@ pub trait FromTick {
     ///
     /// # Examples
     ///
-    /// ```ignore
-    /// use osal_rs::traits::FromTick;
+    /// ```
+    /// use osal_rs::os::FromTick;
     /// use core::time::Duration;
     ///
     /// let mut duration = Duration::from_secs(0);

@@ -100,26 +100,23 @@ fn assert_display<T: Display>() {}
 #[allow(dead_code)]
 pub fn compile_system_surface() {
     let _start: fn() = <System as SystemFn>::start;
-    let _get_state: fn() -> ThreadState = <System as SystemFn>::get_state;
     let _suspend_all: fn() = <System as SystemFn>::suspend_all;
     let _resume_all: fn() -> types::BaseType = <System as SystemFn>::resume_all;
     let _stop: fn() = <System as SystemFn>::stop;
     let _get_tick_count: fn() -> types::TickType = <System as SystemFn>::get_tick_count;
     let _get_current_time_us: fn() -> Duration = <System as SystemFn>::get_current_time_us;
-    let _get_us_from_tick: fn(&Duration) -> types::TickType = <System as SystemFn>::get_us_from_tick;
+    let _get_ms_from_tick: fn(&Duration) -> types::TickType = <System as SystemFn>::get_ms_from_tick;
     let _count_threads: fn() -> usize = <System as SystemFn>::count_threads;
     let _get_all_thread: fn() -> SystemState = <System as SystemFn>::get_all_thread;
     let _delay: fn(types::TickType) = <System as SystemFn>::delay;
     let _delay_until: fn(&mut types::TickType, types::TickType) = <System as SystemFn>::delay_until;
-    let _critical_section_enter: fn() = <System as SystemFn>::critical_section_enter;
-    let _critical_section_exit: fn() = <System as SystemFn>::critical_section_exit;
     let _check_timer: fn(&Duration, &Duration) -> osal_rs::utils::OsalRsBool = <System as SystemFn>::check_timer;
     let _yield_from_isr: fn(types::BaseType) = <System as SystemFn>::yield_from_isr;
     let _end_switching_isr: fn(types::BaseType) = <System as SystemFn>::end_switching_isr;
-    let _enter_critical: fn() = <System as SystemFn>::enter_critical;
-    let _exit_critical: fn() = <System as SystemFn>::exit_critical;
-    let _enter_critical_from_isr: fn() -> types::UBaseType = <System as SystemFn>::enter_critical_from_isr;
-    let _exit_critical_from_isr: fn(types::UBaseType) = <System as SystemFn>::exit_critical_from_isr;
+    let _enter_critical: fn() = <System as SystemFn>::critical_section_enter;
+    let _exit_critical: fn() = <System as SystemFn>::critical_section_exit;
+    let _enter_critical_from_isr: fn() -> types::UBaseType = <System as SystemFn>::critical_section_enter_from_isr;
+    let _exit_critical_from_isr: fn(types::UBaseType) = <System as SystemFn>::critical_section_exit_from_isr;
     let _get_free_heap_size: fn() -> usize = <System as SystemFn>::get_free_heap_size;
 
     System::delay_with_to_tick(Duration::ZERO);
@@ -216,7 +213,7 @@ pub fn compile_core_surface() {
     let mut semaphore = Semaphore::new(2, 1).unwrap();
     let semaphore_handle: &types::SemaphoreHandle = &semaphore;
     let _ = semaphore_handle;
-    let _ = Semaphore::new_with_count(0).unwrap();
+    let _ = Semaphore::new(types::UBaseType::MAX, 0).unwrap();
     let _ = semaphore.wait(Duration::ZERO);
     let _ = semaphore.wait_from_isr();
     let _ = semaphore.signal();
@@ -253,10 +250,18 @@ pub fn compile_core_surface() {
     spawned.suspend();
     spawned.resume();
     let _ = spawned.join(null_mut()).unwrap();
-    spawned.delete();
+
+    // `join()` above already deletes the FreeRTOS task (see
+    // `freertos/thread.rs`), so exercise `delete()` on its own thread instead
+    // of double-deleting the same handle.
+    let mut delete_worker = Thread::new("worker_delete", 128, 1);
+    let spawned_for_delete = delete_worker
+        .spawn(None, |_thread, param| Ok(param.unwrap_or_else(|| Arc::new(0u32) as ThreadParam)))
+        .unwrap();
+    spawned_for_delete.delete();
 
     let mut simple_thread = Thread::new("simple", 128, 1);
-    let _ = simple_thread.spawn_simple(|| {}).unwrap();
+    let _ = simple_thread.spawn_simple(|| Ok(Arc::new(()))).unwrap();
     let _ = Thread::get_current();
 
     assert_debug::<Timer>();

@@ -16,9 +16,7 @@ categories = ["embedded", "no-std", "encoding"]
 crate-type = ["rlib"]
 
 [features]
-default = ["alloc"]
-alloc = []
-std = ["alloc"]
+std = []
 derive = ["osal-rs-serde-derive"]
 
 [dependencies]
@@ -30,6 +28,10 @@ required-features = []
 
 [[example]]
 name = "with_derive"
+required-features = ["derive"]
+
+[[example]]
+name = "binary_serialization"
 required-features = ["derive"]
 
 [[example]]

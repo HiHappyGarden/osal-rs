@@ -43,8 +43,8 @@
 //!
 //! # Examples
 //!
-//! ```ignore
-//! use osal_rs::os::Mutex;
+//! ```
+//! use osal_rs::os::{Mutex, MutexFn};
 //!
 //! let mutex = Mutex::new(0);
 //!
@@ -89,6 +89,10 @@ pub trait RawMutex
 where
     Self: Sized,
 {
+    /// Returns `true` if the underlying OS handle is null, i.e. the mutex
+    /// has not been created yet or has already been deleted.
+    fn is_null(&self) -> bool;
+
     /// Locks the mutex (blocking).
     ///
     /// Blocks the calling task until the mutex becomes available.

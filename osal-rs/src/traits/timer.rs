@@ -58,32 +58,33 @@
 //!
 //! # Examples
 //!
-//! ```ignore
-//! use osal_rs::os::Timer;
+//! ```
+//! use osal_rs::os::*;
+//! use std::sync::Arc;
 //! use core::time::Duration;
 //!
 //! // One-shot timer
-//! let once = Timer::new(
+//! let once = Timer::new_with_to_tick(
 //!     "timeout",
-//!     Duration::from_secs(5),
+//!     Duration::from_millis(50),
 //!     false,  // Not auto-reload
 //!     None,
 //!     |_timer, _param| {
 //!         println!("Timeout!");
-//!         Ok(None)
+//!         Ok(Arc::new(()))
 //!     }
 //! ).unwrap();
 //! once.start(0);
 //!
 //! // Periodic timer
-//! let periodic = Timer::new(
+//! let periodic = Timer::new_with_to_tick(
 //!     "heartbeat",
 //!     Duration::from_millis(500),
 //!     true,  // Auto-reload
 //!     None,
 //!     |_timer, _param| {
-//!         toggle_led();
-//!         Ok(None)
+//!         println!("Blink!");
+//!         Ok(Arc::new(()))
 //!     }
 //! ).unwrap();
 //! periodic.start(0);
@@ -242,6 +243,12 @@ pub type TimerFnPtr = dyn Fn(Box<dyn Timer>, Option<TimerParam>) -> Result<Timer
 /// // Runs every 100ms until stopped
 /// ```
 pub trait Timer {
+
+    /// Returns `true` if the underlying OS handle is null, i.e. the mutex
+    /// has not been created yet or has already been deleted.
+    fn is_null(&self) -> bool;
+
+
     /// Starts or restarts the timer.
     ///
     /// If the timer is already running, this command resets it to its full

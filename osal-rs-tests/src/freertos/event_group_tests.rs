@@ -189,6 +189,53 @@ pub fn test_event_group_drop() -> Result<()> {
     Ok(())
 }
 
+pub fn test_event_group_wait_with_to_tick() -> Result<()> {
+    log_info!(TAG, "Starting test_event_group_wait_with_to_tick");
+    let event_group = EventGroup::new()?;
+    event_group.set(BIT_0);
+
+    let result = event_group.wait_with_to_tick(BIT_0, Duration::from_millis(100));
+    log_debug!(TAG, "wait_with_to_tick result: 0x{:X}", result);
+    assert_eq!(result & BIT_0, BIT_0);
+    log_info!(TAG, "test_event_group_wait_with_to_tick PASSED");
+    Ok(())
+}
+
+pub fn test_event_group_max_mask() -> Result<()> {
+    log_info!(TAG, "Starting test_event_group_max_mask");
+    log_debug!(TAG, "MAX_MASK: 0x{:X}", EventGroup::MAX_MASK);
+    assert_eq!(EventGroup::MAX_MASK, EventBits::MAX >> 8);
+    log_info!(TAG, "test_event_group_max_mask PASSED");
+    Ok(())
+}
+
+pub fn test_event_group_from_isr_variants() -> Result<()> {
+    log_info!(TAG, "Starting test_event_group_from_isr_variants");
+    let event_group = EventGroup::new()?;
+
+    // set_from_isr/clear_from_isr are processed asynchronously by the RTOS
+    // timer/daemon task on real FreeRTOS, so give it a short delay before
+    // checking the effect via get().
+    let set_result = event_group.set_from_isr(BIT_0);
+    log_debug!(TAG, "set_from_isr ok: {}", set_result.is_ok());
+    assert!(set_result.is_ok());
+    System::delay(Duration::from_millis(20).to_ticks());
+    assert_eq!(event_group.get() & BIT_0, BIT_0);
+
+    let isr_bits = event_group.get_from_isr();
+    log_debug!(TAG, "get_from_isr bits: 0x{:X}", isr_bits);
+    assert_eq!(isr_bits & BIT_0, BIT_0);
+
+    let clear_result = event_group.clear_from_isr(BIT_0);
+    log_debug!(TAG, "clear_from_isr ok: {}", clear_result.is_ok());
+    assert!(clear_result.is_ok());
+    System::delay(Duration::from_millis(20).to_ticks());
+    assert_eq!(event_group.get() & BIT_0, 0);
+
+    log_info!(TAG, "test_event_group_from_isr_variants PASSED");
+    Ok(())
+}
+
 pub fn run_all_tests() -> Result<()> {
     log_info!(TAG, "========== Running EventGroup Tests ==========");
     test_event_group_creation()?;
@@ -199,8 +246,11 @@ pub fn run_all_tests() -> Result<()> {
     test_event_group_wait()?;
     test_event_group_wait_timeout()?;
     test_event_group_wait_partial()?;
+    test_event_group_wait_with_to_tick()?;
     test_event_group_sequential_operations()?;
     test_event_group_all_bits()?;
+    test_event_group_max_mask()?;
+    test_event_group_from_isr_variants()?;
     test_event_group_drop()?;
     log_info!(TAG, "========== All EventGroup Tests PASSED ==========");
     Ok(())

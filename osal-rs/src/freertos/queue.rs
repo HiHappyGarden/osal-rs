@@ -198,6 +198,12 @@ impl Queue {
 
 impl QueueFn for Queue {
 
+    /// Returns `true` if the underlying OS handle is null, i.e. the queue
+    /// has not been created yet or has already been deleted.
+    fn is_null(&self) -> bool {
+        self.0.is_null()
+    }
+
     /// Receives data from the queue, blocking until data is available or timeout.
     /// 
     /// This function blocks the calling thread until data is available or the
@@ -413,7 +419,7 @@ impl QueueFn for Queue {
 /// This ensures proper cleanup of FreeRTOS resources.
 impl Drop for Queue {
     fn drop(&mut self) {
-        if self.0.is_null() {
+        if self.is_null() {
             return;
         }
         self.delete();

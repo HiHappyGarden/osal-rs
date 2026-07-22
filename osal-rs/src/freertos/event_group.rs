@@ -185,6 +185,7 @@ impl EventGroup {
     /// let events = EventGroup::new().unwrap();
     /// let bits = events.wait_with_to_tick(0b0001, Duration::from_secs(1));
     /// ```
+    #[inline]
     pub fn wait_with_to_tick(&self, mask: EventBits, timeout_ticks: impl ToTick) -> EventBits {
         self.wait(mask, timeout_ticks.to_ticks())
     }
@@ -217,6 +218,12 @@ impl EventGroup {
 
 }
 impl EventGroupFn for EventGroup {
+
+    /// Returns `true` if the underlying OS handle is null, i.e. the event
+    /// group has not been created yet or has already been deleted.
+    fn is_null(&self) -> bool {
+        self.0.is_null()
+    }
 
     /// Sets specified event bits.
     /// 
@@ -463,7 +470,7 @@ impl EventGroupFn for EventGroup {
 /// This ensures proper cleanup of FreeRTOS resources.
 impl Drop for EventGroup {
     fn drop(&mut self) {
-        if self.0.is_null() {
+        if self.is_null() {
             return;
         }
         self.delete();

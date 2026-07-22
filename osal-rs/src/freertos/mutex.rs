@@ -73,6 +73,11 @@ impl RawMutex {
 
 impl RawMutexFn for RawMutex {
 
+
+    fn is_null(&self) -> bool {
+        self.0.is_null()
+    }
+
     /// Attempts to acquire the mutex, blocking until it becomes available.
     /// 
     /// This function will block the calling thread until the mutex can be acquired.
@@ -611,7 +616,7 @@ impl<'a, T: ?Sized> DerefMut for MutexGuard<'a, T> {
 /// Automatically unlocks the mutex when the guard goes out of scope.
 impl<'a, T: ?Sized> Drop for MutexGuard<'a, T> {
     fn drop(&mut self) {
-        self.mutex.inner.unlock();
+        let _ = self.mutex.inner.unlock();
     }
 }
 
@@ -677,7 +682,7 @@ impl<'a, T: ?Sized> DerefMut for MutexGuardFromIsr<'a, T> {
 /// Automatically unlocks the mutex using ISR-safe unlock when the guard goes out of scope.
 impl<'a, T: ?Sized> Drop for MutexGuardFromIsr<'a, T> {
     fn drop(&mut self) {
-        self.mutex.inner.unlock_from_isr();
+        let _ = self.mutex.inner.unlock_from_isr();
     }
 }
 

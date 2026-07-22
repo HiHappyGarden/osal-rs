@@ -25,8 +25,15 @@
 //! ## Overview
 //!
 //! OSAL-RS provides a unified, safe Rust API for working with different real-time
-//! operating systems. Currently supports FreeRTOS with planned support for POSIX
-//! and other RTOSes.
+//! operating systems. It currently ships two backends, selected at compile time
+//! via feature flags - there is no default, exactly one must be enabled:
+//! - **FreeRTOS** (feature `freertos`) - for bare-metal embedded targets
+//! - **POSIX** (feature `posix`) - runs on any pthreads-capable host (Linux, macOS)
+//!   so applications, tests and doc examples can execute natively without
+//!   embedded hardware or a cross toolchain
+//!
+//! Application code written against `osal_rs::os::*` is portable between the
+//! two backends by switching feature flags.
 //!
 //! ## Features
 //!
@@ -35,7 +42,8 @@
 //! - **Communication**: Queues for inter-thread message passing
 //! - **Timers**: Software timers for periodic and one-shot operations
 //! - **Time Management**: Duration-based timing with tick conversion
-//! - **No-std Support**: Works in bare-metal embedded environments
+//! - **No-std Support**: Works in bare-metal embedded environments (`freertos` backend)
+//! - **Host Testing**: Runs under `std` on POSIX hosts for native testing (`posix` backend)
 //! - **Type Safety**: Leverages Rust's type system for correctness
 //! - **Async/Await**: Backend-agnostic `async`/`await` without Tokio (feature `async`)
 //!
@@ -43,51 +51,50 @@
 //!
 //! ### Basic Thread Example
 //!
-//! ```ignore
+//! ```no_run
 //! use osal_rs::os::*;
-//! use core::time::Duration;
 //!
 //! fn main() {
 //!     // Create a thread
-//!     let thread = Thread::new(
+//!     let mut thread = Thread::new(
 //!         "worker",
 //!         4096,  // stack size
 //!         5,     // priority
-//!         || {
-//!             loop {
-//!                 println!("Working...");
-//!                 Duration::from_secs(1).sleep();
-//!             }
-//!         }
-//!     ).unwrap();
+//!     );
 //!
-//!     thread.start().unwrap();
-//!     
-//!     // Start the scheduler
+//!     thread.spawn_simple(|| {
+//!         loop {
+//!             println!("Working...");
+//!             System::delay(1000);
+//!         }
+//!     }).unwrap();
+//!
+//!     // Start the scheduler (never returns)
 //!     System::start();
 //! }
 //! ```
 //!
 //! ### Mutex Example
 //!
-//! ```ignore
+//! ```
 //! use osal_rs::os::*;
-//! use alloc::sync::Arc;
+//! use std::sync::Arc;
 //!
 //! let counter = Arc::new(Mutex::new(0));
 //! let counter_clone = counter.clone();
 //!
-//! let thread = Thread::new("incrementer", 2048, 5, move || {
+//! let mut thread = Thread::new("incrementer", 2048, 5);
+//! thread.spawn_simple(move || {
 //!     let mut guard = counter_clone.lock().unwrap();
 //!     *guard += 1;
+//!     Ok(Arc::new(()))
 //! }).unwrap();
 //! ```
 //!
 //! ### Queue Example
 //!
-//! ```ignore
+//! ```
 //! use osal_rs::os::*;
-//! use core::time::Duration;
 //!
 //! let queue = Queue::new(10, 4).unwrap();
 //!
@@ -102,13 +109,14 @@
 //!
 //! ### Semaphore Example
 //!
-//! ```ignore
+//! ```
 //! use osal_rs::os::*;
+//! use osal_rs::utils::OsalRsBool;
 //! use core::time::Duration;
 //!
 //! let sem = Semaphore::new(1, 1).unwrap();
 //!
-//! if sem.wait(Duration::from_millis(100)).into() {
+//! if sem.wait(Duration::from_millis(100)) == OsalRsBool::True {
 //!     // Critical section
 //!     sem.signal();
 //! }
@@ -116,8 +124,10 @@
 //!
 //! ### Timer Example
 //!
-//! ```ignore
+//! ```
+//! extern crate alloc;
 //! use osal_rs::os::*;
+//! use alloc::sync::Arc;
 //! use core::time::Duration;
 //!
 //! let timer = Timer::new_with_to_tick(
@@ -125,9 +135,9 @@
 //!     Duration::from_millis(500),
 //!     true,  // auto-reload
 //!     None,
-//!     |_, _| {
+//!     |_timer, _param| {
 //!         println!("Timer tick");
-//!         Ok(None)
+//!         Ok(Arc::new(()))
 //!     }
 //! ).unwrap();
 //!
@@ -136,7 +146,8 @@
 //!
 //! ### Async/Await Example (feature `async`)
 //!
-//! ```ignore
+#![cfg_attr(feature = "async", doc = "```")]
+#![cfg_attr(not(feature = "async"), doc = "```ignore")]
 //! use osal_rs::os::{block_on, AsyncMutex, AsyncQueue, AsyncSemaphore};
 //!
 //! // Drive a future to completion on the calling RTOS task — no Tokio needed.
@@ -176,10 +187,16 @@
 //!
 //! | Feature | Default | Description |
 //! |---------|---------|-------------|
-//! | `freertos` | ✅ | FreeRTOS backend |
+//! | `freertos` | ❌ | FreeRTOS backend |
 //! | `posix` | ❌ | POSIX/host backend |
 //! | `async` | ❌ | Async/await without Tokio |
 //! | `serde` | ❌ | Serialization via `osal-rs-serde` |
+//! | `real_time` | ❌ | POSIX only: schedules spawned threads with `SCHED_FIFO` instead of inheriting the creating thread's policy/priority. Not meant to be requested by hand - the build script auto-enables it when the host OS/kernel supports real-time scheduling |
+//!
+//! There is no default backend: exactly one of `freertos`/`posix` must be
+//! enabled explicitly. Enabling neither trips the `compile_error!` below;
+//! enabling both is equally unsupported (the two are mutually exclusive by
+//! `cfg`, so the crate fails to build either way).
 //!
 //! ## Requirements
 //!
@@ -193,13 +210,22 @@
 //!   - `configUSE_TIMERS` - Must be 1 for timer support
 //!   - `configSUPPORT_DYNAMIC_ALLOCATION` - Must be 1 for dynamic allocation
 //!
+//! When using with POSIX:
+//! - A POSIX-compliant host implementing pthreads, `timer_create(2)`/`sigwait(3)`
+//!   and `CLOCK_MONOTONIC` (glibc/Linux is part of this crate's test suite)
+//! - No special build steps: unlike `freertos`, this backend links only
+//!   against the host's libc/libpthread - no cross toolchain or RTOS kernel
+//!   sources required
+//! - Disables `no_std`: the `posix` feature builds the crate against `std`
+//!
 //! ## Platform Support
 //!
 //! Currently tested on:
-//! - ARM Cortex-M (Raspberry Pi Pico/RP2040, RP2350)
-//! - ARM Cortex-M4F (STM32F4 series)
-//! - ARM Cortex-M7 (STM32H7 series)
-//! - RISC-V (RP2350 RISC-V cores)
+//! - ARM Cortex-M (Raspberry Pi Pico/RP2040, RP2350) - `freertos` backend
+//! - ARM Cortex-M4F (STM32F4 series) - `freertos` backend
+//! - ARM Cortex-M7 (STM32H7 series) - `freertos` backend
+//! - RISC-V (RP2350 RISC-V cores) - `freertos` backend
+//! - glibc/Linux - `posix` backend
 //!
 //! ## Thread Safety
 //!
@@ -211,7 +237,10 @@
 //!
 //! ## ISR Context
 //!
-//! Operations in ISR context have restrictions:
+//! Operations in ISR context have restrictions (applies to the `freertos`
+//! backend; POSIX has no interrupt context - `_from_isr` variants are
+//! provided there for API compatibility but behave like their regular
+//! counterparts):
 //! - Cannot block or use timeouts (must use zero timeout or `_from_isr` variants)
 //! - Must be extremely fast to avoid blocking other interrupts
 //! - Use semaphores or queues to defer work to task context
@@ -229,7 +258,10 @@
 //!
 //! ## Performance Considerations
 //!
-//! - Allocations happen on the FreeRTOS heap, not the system heap
+//! - `freertos` backend: allocations happen on the FreeRTOS heap (via the
+//!   `#[global_allocator]` in [`os`]), not the system heap
+//! - `posix` backend: uses the system allocator and native OS threads; each
+//!   [`os::Timer`] spawns a dedicated background thread
 //! - Stack sizes must be carefully tuned for each thread
 //! - Priority inversion is mitigated through priority inheritance
 //! - Context switches are triggered by blocking operations
@@ -260,14 +292,18 @@ compile_error!("Enable either the `freertos` backend or the `posix` host backend
 /// This module contains the concrete implementation of all OSAL abstractions
 /// for FreeRTOS, including threads, mutexes, queues, timers, etc.
 ///
-/// Enabled with the `freertos` feature flag (on by default).
-#[cfg(feature = "freertos")]
+/// Enabled with the `freertos` feature flag (no default backend - must be
+/// requested explicitly).
+#[cfg(all(not(feature = "posix"), feature = "freertos"))]
 mod freertos;
 
-/// POSIX implementation of OSAL traits (planned).
+/// POSIX implementation of OSAL traits.
 ///
-/// This module will contain the implementation for POSIX-compliant systems.
-/// Currently under development.
+/// This module contains the concrete implementation of all OSAL abstractions
+/// on top of the POSIX/pthreads API (threads, mutexes, semaphores, queues,
+/// event groups, timers), so applications - and their tests and doc examples -
+/// can run natively on any POSIX host (Linux, macOS) without embedded hardware
+/// or a cross toolchain. See [`posix`] for details.
 ///
 /// Enabled with the `posix` feature flag.
 #[cfg(all(feature = "posix", not(feature = "freertos")))]
@@ -292,7 +328,7 @@ mod async_executor;
 pub mod async_primitives;
 
 /// Select FreeRTOS as the active OSAL backend.
-#[cfg(feature = "freertos")]
+#[cfg(all(not(feature = "posix"), feature = "freertos"))]
 use crate::freertos as osal;
 
 /// Select POSIX as the active OSAL backend.
@@ -330,7 +366,7 @@ use crate::posix as osal;
 /// ```
 pub mod os {
 
-    #[cfg(feature = "freertos")]
+    #[cfg(all(not(feature = "posix"), feature = "freertos"))]
     use crate::osal::allocator::Allocator;
 
     /// Global allocator using the underlying RTOS heap.
@@ -364,7 +400,7 @@ pub mod os {
     /// let mut v = Vec::new();
     /// v.push(42);
     /// ```
-    #[cfg(feature = "freertos")]
+    #[cfg(all(not(feature = "posix"), feature = "freertos"))]
     #[global_allocator]
     pub static ALLOCATOR: Allocator = Allocator;
 
@@ -436,7 +472,7 @@ pub mod os {
 /// - Performing safe shutdown procedures
 /// - Resetting the system via watchdog
 ///
-#[cfg(feature = "freertos")]
+#[cfg(all(not(feature = "posix"), feature = "freertos"))]
 #[panic_handler]
 fn panic(info: &core::panic::PanicInfo) -> ! {
     println!("Panic occurred: {}", info);

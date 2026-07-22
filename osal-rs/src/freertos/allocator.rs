@@ -40,9 +40,10 @@
 //! ```ignore
 //! use alloc::vec::Vec;
 //! use alloc::string::String;
-//! 
+//!
 //! // All allocations use FreeRTOS heap
-//! let v = Vec::new();
+//! let mut v: Vec<u8> = Vec::new();
+//! v.push(42);
 //! let s = String::from("Hello");
 //! ```
 //!

@@ -50,9 +50,11 @@ use core::any::Any;
 use alloc::boxed::Box;
 use alloc::sync::Arc;
 
-use crate::os::{ThreadMetadata};
-use crate::os::types::{BaseType, TickType, UBaseType};
-use crate::utils::{Result, DoublePtr};
+use crate::os::types::{BaseType, StackType, ThreadHandle, TickType, UBaseType};
+use crate::utils::{Bytes, DoublePtr, Result};
+
+/// Maximum length (in bytes) of a thread name, shared by all backends.
+pub(crate) const MAX_TASK_NAME_LEN: usize = 16;
 
 /// Type-erased parameter that can be passed to thread callbacks.
 ///
@@ -140,13 +142,14 @@ pub type ThreadFnPtr = dyn Fn(Box<dyn Thread>, Option<ThreadParam>) -> Result<Th
 ///     }
 /// }).unwrap();
 /// ```
-pub type ThreadSimpleFnPtr = dyn Fn() + Send + Sync + 'static;
+pub type ThreadSimpleFnPtr = dyn Fn() -> Result<ThreadParam> + Send + Sync + 'static;
 
 /// Thread notification actions.
 ///
-/// Defines different ways to notify a thread using the FreeRTOS task notification mechanism.
-/// Task notifications provide a lightweight alternative to semaphores and queues for
-/// simple signaling between threads or from ISRs to threads.
+/// Defines different ways to notify a thread, using a lightweight task-notification
+/// mechanism modeled on FreeRTOS's (backends without native support, e.g. POSIX,
+/// emulate the same one-slot semantics). Provides a lightweight alternative to
+/// semaphores and queues for simple signaling between threads or from ISRs to threads.
 ///
 /// # Performance
 ///
@@ -217,6 +220,106 @@ impl Into<(u32, u32)> for ThreadNotification {
     }
 }
 
+/// Represents the possible states of an RTOS task/thread.
+///
+/// # Examples
+///
+/// ```ignore
+/// use osal_rs::os::{Thread, ThreadState};
+///
+/// let thread = Thread::current();
+/// let metadata = thread.metadata().unwrap();
+///
+/// match metadata.state {
+///     ThreadState::Running => println!("Thread is currently executing"),
+///     ThreadState::Ready => println!("Thread is ready to run"),
+///     ThreadState::Blocked => println!("Thread is waiting for an event"),
+///     ThreadState::Suspended => println!("Thread is suspended"),
+///     _ => println!("Unknown state"),
+/// }
+/// ```
+#[derive(Copy, Clone, Debug, PartialEq)]
+#[repr(u8)]
+pub enum ThreadState {
+    /// Thread is currently executing on a CPU
+    Running = 0,
+    /// Thread is ready to run but not currently executing
+    Ready = 1,
+    /// Thread is blocked waiting for an event (e.g., semaphore, queue)
+    Blocked = 2,
+    /// Thread has been explicitly suspended
+    Suspended = 3,
+    /// Thread has been deleted
+    Deleted = 4,
+    /// Invalid or unknown state
+    Invalid,
+}
+
+/// Metadata and runtime information about a thread.
+///
+/// Contains detailed information about a thread's state, priorities, stack usage,
+/// and runtime statistics.
+///
+/// # Examples
+///
+/// ```ignore
+/// use osal_rs::os::Thread;
+///
+/// let thread = Thread::current();
+/// let metadata = thread.metadata().unwrap();
+///
+/// println!("Thread: {}", metadata.name);
+/// println!("Priority: {}", metadata.priority);
+/// println!("Stack high water mark: {}", metadata.stack_high_water_mark);
+/// ```
+#[derive(Clone, Debug)]
+pub struct ThreadMetadata {
+    /// OS-level thread/task handle
+    pub thread: ThreadHandle,
+    /// Thread name
+    pub name: Bytes<MAX_TASK_NAME_LEN>,
+    /// Original stack depth allocated for this thread
+    pub stack_depth: StackType,
+    /// Thread priority
+    pub priority: UBaseType,
+    /// Unique thread number assigned by OS
+    pub thread_number: UBaseType,
+    /// Current execution state
+    pub state: ThreadState,
+    /// Current priority (may differ from base priority due to priority inheritance)
+    pub current_priority: UBaseType,
+    /// Base priority without inheritance
+    pub base_priority: UBaseType,
+    /// Total runtime counter (requires configGENERATE_RUN_TIME_STATS)
+    pub run_time_counter: UBaseType,
+    /// Minimum remaining stack space ever recorded (lower values indicate higher stack usage)
+    pub stack_high_water_mark: StackType,
+}
+
+unsafe impl Send for ThreadMetadata {}
+unsafe impl Sync for ThreadMetadata {}
+
+/// Provides default values for ThreadMetadata.
+///
+/// Creates a metadata instance with null/zero values, representing an
+/// invalid or uninitialized thread.
+impl Default for ThreadMetadata {
+    fn default() -> Self {
+        ThreadMetadata {
+            thread: ThreadHandle::default(),
+            name: Bytes::new(),
+            stack_depth: 0,
+            priority: 0,
+            thread_number: 0,
+            state: ThreadState::Invalid,
+            current_priority: 0,
+            base_priority: 0,
+            run_time_counter: 0,
+            stack_high_water_mark: 0,
+        }
+    }
+}
+
 /// Core thread/task trait.
 ///
 /// Provides methods for thread lifecycle management, synchronization,
@@ -261,6 +364,11 @@ impl Into<(u32, u32)> for ThreadNotification {
 /// }).unwrap();
 /// ```
 pub trait Thread {
+
+    /// Returns `true` if the underlying OS handle is null, i.e. the thread
+    /// has not been spawned yet or has already been deleted.
+    fn is_null(&self) -> bool;
+
     /// Spawns a thread with a callback function and optional parameter.
     ///
     /// Creates and starts a new thread that executes the provided callback function.
@@ -330,7 +438,7 @@ pub trait Thread {
     /// ```
     fn spawn_simple<F>(&mut self, callback: F) -> Result<Self>
     where
-        F: Fn() + Send + Sync + 'static,
+        F: Fn() -> Result<ThreadParam> + Send + Sync + 'static,
         Self: Sized;
 
     /// Deletes the thread and frees its resources.

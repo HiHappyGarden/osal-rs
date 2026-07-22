@@ -36,13 +36,13 @@
 //!
 //! ```ignore
 //! use osal_rs::{tick_rate_hz, cpu_clock_hz, max_priorities};
-//! 
+//!
 //! let tick_rate = tick_rate_hz!();
 //! println!("Tick rate: {} Hz", tick_rate);
-//! 
+//!
 //! let cpu_freq = cpu_clock_hz!();
 //! println!("CPU frequency: {} Hz", cpu_freq);
-//! 
+//!
 //! let priorities = max_priorities!();
 //! println!("Max priorities: {}", priorities);
 //! ```

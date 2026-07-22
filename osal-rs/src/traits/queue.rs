@@ -48,18 +48,18 @@
 //!
 //! # Examples
 //!
-//! ```ignore
-//! use osal_rs::os::Queue;
+//! ```
+//! use osal_rs::os::{Queue, QueueFn};
 //!
-//! // Create a queue for 10 messages of 16 bytes each
-//! let queue = Queue::new(10, 16).unwrap();
+//! // Create a queue for 10 messages of 4 bytes each
+//! let queue = Queue::new(10, 4).unwrap();
 //!
 //! // Producer task
-//! let data = [1, 2, 3, 4];
+//! let data = [1u8, 2, 3, 4];
 //! queue.post(&data, 1000).unwrap();
 //!
 //! // Consumer task
-//! let mut buffer = [0u8; 16];
+//! let mut buffer = [0u8; 4];
 //! queue.fetch(&mut buffer, 1000).unwrap();
 //! ```
 #[cfg(not(feature = "serde"))]
@@ -109,6 +109,11 @@ use crate::utils::Result;
 /// assert_eq!(&buffer[..4], &[1, 2, 3, 4]);
 /// ```
 pub trait Queue {
+
+    /// Returns `true` if the underlying OS handle is null, i.e. the mutex
+    /// has not been created yet or has already been deleted.
+    fn is_null(&self) -> bool;
+
     /// Fetches a message from the queue (blocking).
     ///
     /// Removes and retrieves the oldest message from the queue (FIFO order).

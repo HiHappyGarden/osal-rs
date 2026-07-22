@@ -34,7 +34,7 @@
 //!
 //! The easiest way to implement serialization is using the derive macro:
 //!
-
+//! ```
 //! use osal_rs_serde::Serialize;
 //!
 //! #[derive(Serialize)]
@@ -49,7 +49,7 @@
 //!
 //! For custom serialization logic, implement the trait manually:
 //!
-
+//! ```
 //! use osal_rs_serde::{Serialize, Serializer};
 //!
 //! struct Point {

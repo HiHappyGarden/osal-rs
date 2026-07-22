@@ -57,7 +57,7 @@
 //!
 //! #### Basic Struct Example
 //!
-
+//! ```
 //! use osal_rs_serde::{Serialize, Deserialize, to_bytes, from_bytes};
 //!
 //! #[derive(Serialize, Deserialize)]
@@ -87,7 +87,7 @@
 //!
 //! #### Struct with Optional Fields
 //!
-
+//! ```
 //! use osal_rs_serde::{Serialize, Deserialize, to_bytes, from_bytes};
 //!
 //! #[derive(Serialize, Deserialize)]
@@ -114,7 +114,7 @@
 //!
 //! #### Struct with Arrays and Tuples
 //!
-
+//! ```
 //! use osal_rs_serde::{Serialize, Deserialize, to_bytes, from_bytes};
 //!
 //! #[derive(Serialize, Deserialize)]
@@ -141,7 +141,7 @@
 //!
 //! #### Nested Structs
 //!
-
+//! ```
 //! use osal_rs_serde::{Serialize, Deserialize, to_bytes, from_bytes};
 //!
 //! #[derive(Serialize, Deserialize)]
@@ -180,7 +180,7 @@
 //!
 //! #### Complex Embedded System Example
 //!
-
+//! ```
 //! use osal_rs_serde::{Serialize, Deserialize, to_bytes, from_bytes};
 //!
 //! #[derive(Serialize, Deserialize, Debug, PartialEq)]
@@ -229,7 +229,7 @@
 //!
 //! ### Manual Implementation (For Custom Behavior)
 //!
-
+//! ```
 //! use osal_rs_serde::{Serialize, Deserialize, Serializer, Deserializer};
 //!
 //! struct Point {
@@ -238,7 +238,7 @@
 //! }
 //!
 //! impl Serialize for Point {
-//!     fn serialize<S: Serializer>(&self, serializer: &mut S) -> Result<(), S::Error> {
+//!     fn serialize<S: Serializer>(&self, _name: &str, serializer: &mut S) -> Result<(), S::Error> {
 //!         serializer.serialize_i32("x", self.x)?;
 //!         serializer.serialize_i32("y", self.y)?;
 //!         Ok(())
@@ -259,7 +259,7 @@
 //!
 //! Perfect for inter-task communication using queues:
 //!
-
+//! ```ignore
 //! use osal_rs::os::{Queue, QueueFn};
 //! use osal_rs_serde::{Serialize, Deserialize, to_bytes, from_bytes};
 //!
@@ -296,7 +296,7 @@
 //! You can create custom serializers for different formats (JSON, MessagePack, CBOR, etc.)
 //! by implementing the `Serializer` and `Deserializer` traits:
 //!
-
+//! ```ignore
 //! use osal_rs_serde::{Serializer, Error};
 //!
 //! struct JsonSerializer<'a> {

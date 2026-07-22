@@ -43,51 +43,50 @@
 //!
 //! ### Basic Thread Example
 //!
-
+//! ```no_run
 //! use osal_rs::os::*;
-//! use core::time::Duration;
 //!
 //! fn main() {
 //!     // Create a thread
-//!     let thread = Thread::new(
+//!     let mut thread = Thread::new(
 //!         "worker",
 //!         4096,  // stack size
 //!         5,     // priority
-//!         || {
-//!             loop {
-//!                 println!("Working...");
-//!                 Duration::from_secs(1).sleep();
-//!             }
-//!         }
-//!     ).unwrap();
+//!     );
 //!
-//!     thread.start().unwrap();
-//!     
-//!     // Start the scheduler
+//!     thread.spawn_simple(|| {
+//!         loop {
+//!             println!("Working...");
+//!             System::delay(1000);
+//!         }
+//!     }).unwrap();
+//!
+//!     // Start the scheduler (never returns)
 //!     System::start();
 //! }
 //! ```
 //!
 //! ### Mutex Example
 //!
-
+//! ```
 //! use osal_rs::os::*;
-//! use alloc::sync::Arc;
+//! use std::sync::Arc;
 //!
 //! let counter = Arc::new(Mutex::new(0));
 //! let counter_clone = counter.clone();
 //!
-//! let thread = Thread::new("incrementer", 2048, 5, move || {
+//! let mut thread = Thread::new("incrementer", 2048, 5);
+//! thread.spawn_simple(move || {
 //!     let mut guard = counter_clone.lock().unwrap();
 //!     *guard += 1;
+//!     Ok(Arc::new(()))
 //! }).unwrap();
 //! ```
 //!
 //! ### Queue Example
 //!
-
+//! ```
 //! use osal_rs::os::*;
-//! use core::time::Duration;
 //!
 //! let queue = Queue::new(10, 4).unwrap();
 //!
@@ -102,13 +101,14 @@
 //!
 //! ### Semaphore Example
 //!
-
+//! ```
 //! use osal_rs::os::*;
+//! use osal_rs::utils::OsalRsBool;
 //! use core::time::Duration;
 //!
 //! let sem = Semaphore::new(1, 1).unwrap();
 //!
-//! if sem.wait(Duration::from_millis(100)).into() {
+//! if sem.wait(Duration::from_millis(100)) == OsalRsBool::True {
 //!     // Critical section
 //!     sem.signal();
 //! }
@@ -116,8 +116,9 @@
 //!
 //! ### Timer Example
 //!
-
+//! ```
 //! use osal_rs::os::*;
+//! use std::sync::Arc;
 //! use core::time::Duration;
 //!
 //! let timer = Timer::new_with_to_tick(
@@ -125,9 +126,9 @@
 //!     Duration::from_millis(500),
 //!     true,  // auto-reload
 //!     None,
-//!     |_, _| {
+//!     |_timer, _param| {
 //!         println!("Timer tick");
-//!         Ok(None)
+//!         Ok(Arc::new(()))
 //!     }
 //! ).unwrap();
 //!
@@ -136,7 +137,7 @@
 //!
 //! ### Async/Await Example (feature `async`)
 //!
-
+//! ```
 //! use osal_rs::os::{block_on, AsyncMutex, AsyncQueue, AsyncSemaphore};
 //!
 //! // Drive a future to completion on the calling RTOS task — no Tokio needed.

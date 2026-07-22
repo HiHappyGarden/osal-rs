@@ -58,32 +58,33 @@
 //!
 //! # Examples
 //!
-
-//! use osal_rs::os::Timer;
+//! ```
+//! use osal_rs::os::*;
+//! use std::sync::Arc;
 //! use core::time::Duration;
 //!
 //! // One-shot timer
-//! let once = Timer::new(
+//! let once = Timer::new_with_to_tick(
 //!     "timeout",
-//!     Duration::from_secs(5),
+//!     Duration::from_millis(50),
 //!     false,  // Not auto-reload
 //!     None,
 //!     |_timer, _param| {
 //!         println!("Timeout!");
-//!         Ok(None)
+//!         Ok(Arc::new(()))
 //!     }
 //! ).unwrap();
 //! once.start(0);
 //!
 //! // Periodic timer
-//! let periodic = Timer::new(
+//! let periodic = Timer::new_with_to_tick(
 //!     "heartbeat",
 //!     Duration::from_millis(500),
 //!     true,  // Auto-reload
 //!     None,
 //!     |_timer, _param| {
-//!         toggle_led();
-//!         Ok(None)
+//!         println!("Blink!");
+//!         Ok(Arc::new(()))
 //!     }
 //! ).unwrap();
 //! periodic.start(0);

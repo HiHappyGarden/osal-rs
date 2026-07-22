@@ -43,8 +43,8 @@
 //!
 //! # Examples
 //!
-
-//! use osal_rs::os::Mutex;
+//! ```
+//! use osal_rs::os::{Mutex, MutexFn};
 //!
 //! let mutex = Mutex::new(0);
 //!

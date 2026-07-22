@@ -25,7 +25,7 @@
 //!
 //! # Examples
 //!
-
+//! ```ignore
 //! use osal_rs_serde::{Serialize, Deserialize};
 //!
 //! #[derive(Serialize, Deserialize)]

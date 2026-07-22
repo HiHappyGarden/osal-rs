@@ -369,7 +369,7 @@ pub use osal_rs_serde_derive::{Serialize, Deserialize};
 ///
 /// # Examples
 ///
-/// ```ignore
+/// ```
 /// use osal_rs_serde::to_bytes;
 ///
 /// let value = 42u32;
@@ -392,7 +392,8 @@ where
 ///
 /// # Examples
 ///
-/// ```ignore
+/// ```
+/// extern crate alloc;
 /// use osal_rs_serde::to_dyn_bytes;
 /// use alloc::vec::Vec;
 ///
@@ -405,7 +406,7 @@ pub fn to_dyn_bytes<T>(value: &T, buffer: &mut Vec<u8>) -> Result<usize>
 where 
     T: Serialize
 {
-    let mut serializer = ByteSerializer::new(buffer);
+    let mut serializer = ByteSerializer::new_dyn(buffer);
     value.serialize("", &mut serializer)?;
     Ok(serializer.position())
 }
@@ -416,7 +417,7 @@ where
 ///
 /// # Examples
 ///
-/// ```ignore
+/// ```
 /// use osal_rs_serde::from_bytes;
 ///
 /// let buffer = [42u8, 0, 0, 0];

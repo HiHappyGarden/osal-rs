@@ -95,7 +95,7 @@ use crate::error::{Error, Result};
 ///
 /// The easiest way to implement this trait is using the derive macro (requires `derive` feature):
 ///
-/// ```ignore
+/// ```
 /// use osal_rs_serde::Deserialize;
 ///
 /// #[derive(Deserialize)]
@@ -110,7 +110,7 @@ use crate::error::{Error, Result};
 ///
 /// For custom deserialization logic or types not supported by the derive macro:
 ///
-/// ```ignore
+/// ```
 /// use osal_rs_serde::{Deserialize, Deserializer};
 ///
 /// struct Point {
@@ -249,7 +249,7 @@ pub trait Deserializer: Sized {
 ///
 /// ## Basic Usage
 ///
-/// ```ignore
+/// ```
 /// use osal_rs_serde::{ByteDeserializer, Deserializer};
 ///
 /// let buffer = [42u8, 0, 0, 0, 1, 156, 255];
@@ -266,8 +266,8 @@ pub trait Deserializer: Sized {
 ///
 /// ## With Structs
 ///
-/// ```ignore
-/// use osal_rs_serde::{ByteDeserializer, Deserialize, from_bytes};
+/// ```
+/// use osal_rs_serde::{Deserialize, from_bytes};
 ///
 /// #[derive(Deserialize)]
 /// struct Message {

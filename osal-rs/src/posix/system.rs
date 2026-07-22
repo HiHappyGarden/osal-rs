@@ -78,6 +78,12 @@ impl System {
             unsafe {
                 START_TIME = System::monotonic_now();
             }
+            // Without this, a caller landing within nanoseconds of the
+            // epoch capture above would measure 0 elapsed ms (millisecond
+            // resolution) on its very first read, since `pthread_once`
+            // blocks every other racing caller until `init` returns.
+            // Paid once per process, lazily, only if timing is ever used.
+            System::delay(1);
         }
 
         unsafe {

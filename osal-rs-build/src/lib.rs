@@ -276,7 +276,6 @@ int main() {
         println!("cargo:rustc-link-lib=static=osal_rs_posix");
     }
 
-    #[inline]
     pub fn generate_all(&mut self) {
         self.generate_types();
         self.enable_sched_fifo();

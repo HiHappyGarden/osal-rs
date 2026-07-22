@@ -50,6 +50,32 @@
 //!   invocation. Calling `start()`/`reset()` again on an already-fired
 //!   one-shot timer re-arms the kernel timer, but nothing is left running to
 //!   consume its `SIGALRM` — create a new `Timer` instead of reusing one.
+//!
+//! # Examples
+//!
+//! ```
+//! use osal_rs::os::*;
+//! use std::sync::Arc;
+//! use std::sync::atomic::{AtomicBool, Ordering};
+//! use core::time::Duration;
+//!
+//! static FIRED: AtomicBool = AtomicBool::new(false);
+//!
+//! let timer = Timer::new_with_to_tick(
+//!     "heartbeat",
+//!     Duration::from_millis(10),
+//!     false, // one-shot
+//!     None,
+//!     |_timer, _param| {
+//!         FIRED.store(true, Ordering::SeqCst);
+//!         Ok(Arc::new(()))
+//!     }
+//! ).unwrap();
+//!
+//! timer.start(0);
+//! System::delay(50);
+//! assert!(FIRED.load(Ordering::SeqCst));
+//! ```
 
 use core::ffi::{c_int, c_long, c_void};
 use core::fmt::{Debug, Display};
@@ -219,6 +245,9 @@ fn run_timer_thread(shared: Arc<TimerShared>, callback: Option<Arc<TimerFnPtr>>,
 }
 
 impl Timer {
+    /// Same as [`Timer::new`], but accepts any [`ToTick`] period (e.g. a
+    /// [`core::time::Duration`]) instead of a raw tick count. See the
+    /// module-level docs above for a complete example.
     #[inline]
     pub fn new_with_to_tick<F>(name: &str, timer_period_in_ticks: impl ToTick, auto_reload: bool, param: Option<TimerParam>, callback: F) -> Result<Self>
     where
@@ -227,31 +256,67 @@ impl Timer {
         Self::new(name, timer_period_in_ticks.to_ticks(), auto_reload, param, callback)
     }
 
+    /// Same as [`TimerFn::start`], but accepts any [`ToTick`] value (e.g. a
+    /// [`core::time::Duration`]) instead of a raw tick count.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use osal_rs::os::*;
+    /// use std::sync::Arc;
+    /// use core::time::Duration;
+    ///
+    /// let timer = Timer::new_with_to_tick("t", Duration::from_millis(50), false, None, |_t, _p| Ok(Arc::new(()))).unwrap();
+    /// assert_eq!(timer.start_with_to_tick(Duration::from_millis(10)), osal_rs::utils::OsalRsBool::True);
+    /// ```
     #[inline]
     pub fn start_with_to_tick(&self, ticks_to_wait: impl ToTick) -> OsalRsBool {
         self.start(ticks_to_wait.to_ticks())
     }
 
+    /// Same as [`TimerFn::stop`], but accepts any [`ToTick`] value instead
+    /// of a raw tick count.
     #[inline]
     pub fn stop_with_to_tick(&self, ticks_to_wait: impl ToTick) -> OsalRsBool {
         self.stop(ticks_to_wait.to_ticks())
     }
 
+    /// Same as [`TimerFn::reset`], but accepts any [`ToTick`] value instead
+    /// of a raw tick count.
     #[inline]
     pub fn reset_with_to_tick(&self, ticks_to_wait: impl ToTick) -> OsalRsBool {
         self.reset(ticks_to_wait.to_ticks())
     }
 
+    /// Same as [`TimerFn::change_period`], but accepts any [`ToTick`] values
+    /// instead of raw tick counts.
     #[inline]
     pub fn change_period_with_to_tick(&self, new_period_in_ticks: impl ToTick, new_period_ticks: impl ToTick) -> OsalRsBool {
         self.change_period(new_period_in_ticks.to_ticks(), new_period_ticks.to_ticks())
     }
 
+    /// Same as [`TimerFn::delete`], but accepts any [`ToTick`] value instead
+    /// of a raw tick count.
     #[inline]
     pub fn delete_with_to_tick(&mut self, ticks_to_wait: impl ToTick) -> OsalRsBool {
         self.delete(ticks_to_wait.to_ticks())
     }
 
+    /// Creates a new timer named `name`, firing `callback` every
+    /// `timer_period_in_ticks` ticks if `auto_reload` (one-shot otherwise).
+    /// `param` is handed to the first callback invocation; each invocation
+    /// can return an updated value for the next one. The timer is created
+    /// stopped - call [`TimerFn::start`] to arm it.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use osal_rs::os::*;
+    /// use std::sync::Arc;
+    ///
+    /// let timer = Timer::new("t", 50, false, None, |_timer, _param| Ok(Arc::new(()))).unwrap();
+    /// assert!(!timer.is_null());
+    /// ```
     pub fn new<F>(name: &str, timer_period_in_ticks: TickType, auto_reload: bool, param: Option<TimerParam>, callback: F) -> Result<Self>
     where
         F: Fn(Box<dyn TimerFn>, Option<TimerParam>) -> Result<TimerParam> + Send + Sync + Clone + 'static,
@@ -330,6 +395,21 @@ impl Timer {
 }
 
 impl TimerFn for Timer {
+    /// Returns `true` if this timer has been [`TimerFn::delete`]d (or the
+    /// underlying kernel timer failed to create).
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use osal_rs::os::*;
+    /// use std::sync::Arc;
+    ///
+    /// let mut timer = Timer::new("t", 50, false, None, |_t, _p| Ok(Arc::new(()))).unwrap();
+    /// assert!(!timer.is_null());
+    ///
+    /// timer.delete(0);
+    /// assert!(timer.is_null());
+    /// ```
     fn is_null(&self) -> bool {
         match &self.shared {
             Some(shared) => !shared.ready.load(Ordering::Acquire),
@@ -337,6 +417,8 @@ impl TimerFn for Timer {
         }
     }
 
+    /// Arms the timer to fire after its configured period. See the
+    /// module-level docs above for a complete example.
     fn start(&self, _ticks_to_wait: TickType) -> OsalRsBool {
         let Some(shared) = &self.shared else {
             return OsalRsBool::False;
@@ -345,6 +427,28 @@ impl TimerFn for Timer {
         arm(shared, shared.us.load(Ordering::Acquire))
     }
 
+    /// Disarms the timer; a no-op if it isn't currently running.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use osal_rs::os::*;
+    /// use std::sync::Arc;
+    /// use std::sync::atomic::{AtomicBool, Ordering};
+    ///
+    /// static FIRED: AtomicBool = AtomicBool::new(false);
+    ///
+    /// let timer = Timer::new("t", 20, false, None, |_t, _p| {
+    ///     FIRED.store(true, Ordering::SeqCst);
+    ///     Ok(Arc::new(()))
+    /// }).unwrap();
+    ///
+    /// timer.start(0);
+    /// timer.stop(0); // cancels before it can fire
+    ///
+    /// System::delay(50);
+    /// assert!(!FIRED.load(Ordering::SeqCst));
+    /// ```
     fn stop(&self, _ticks_to_wait: TickType) -> OsalRsBool {
         let Some(shared) = &self.shared else {
             return OsalRsBool::False;
@@ -353,12 +457,38 @@ impl TimerFn for Timer {
         arm(shared, 0)
     }
 
+    /// Restarts the countdown from now, using the current period -
+    /// equivalent to calling [`TimerFn::start`] again, whether the timer was
+    /// previously running or stopped.
     fn reset(&self, ticks_to_wait: TickType) -> OsalRsBool {
         // A relative `timer_settime` call always restarts the countdown
         // from now, whether the timer was previously running or stopped.
         self.start(ticks_to_wait)
     }
 
+    /// Updates the timer's period and immediately (re)arms it with the new
+    /// value.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use osal_rs::os::*;
+    /// use std::sync::Arc;
+    /// use std::sync::atomic::{AtomicBool, Ordering};
+    ///
+    /// static FIRED: AtomicBool = AtomicBool::new(false);
+    ///
+    /// let timer = Timer::new("t", 10_000, false, None, |_t, _p| {
+    ///     FIRED.store(true, Ordering::SeqCst);
+    ///     Ok(Arc::new(()))
+    /// }).unwrap();
+    ///
+    /// // Original 10s period would never fire in time; shrink it to 10ms.
+    /// timer.change_period(10, 0);
+    ///
+    /// System::delay(50);
+    /// assert!(FIRED.load(Ordering::SeqCst));
+    /// ```
     fn change_period(&self, new_period_in_ticks: TickType, ticks_to_wait: TickType) -> OsalRsBool {
         let Some(shared) = &self.shared else {
             return OsalRsBool::False;
@@ -368,6 +498,9 @@ impl TimerFn for Timer {
         self.start(ticks_to_wait)
     }
 
+    /// Destroys the underlying kernel timer and its background thread,
+    /// resetting this [`Timer`] to its "null" state. See
+    /// [`TimerFn::is_null`] for a complete example.
     fn delete(&mut self, _ticks_to_wait: TickType) -> OsalRsBool {
         let Some(shared) = self.shared.take() else {
             return OsalRsBool::False;

@@ -29,10 +29,19 @@
 //!
 //! All items in this module are `unsafe` and require careful handling:
 //! - `attr` pointers must reference a validly sized/aligned [`pthread_attr_t`]
-//! - `thread` pointers must be valid for writes of a [`pthread_t`]
+//! - `thread` pointers must be valid for writes of a [`crate::os::types::ThreadHandle`]
 //! - `start_routine`/`arg` must satisfy the same contract as `pthread_create(3)`
 //!
 //! Use the safe wrappers in parent modules instead of calling these directly.
+//!
+//! # No doc examples here
+//!
+//! This module (and everything in it) is private and unreachable from
+//! outside the crate - none of it is re-exported through [`crate::os`]. Doc
+//! examples are compiled as if by an external user of the crate, so no
+//! runnable `# Examples` are possible here; see the safe wrappers in
+//! [`crate::posix::mutex`], [`crate::posix::thread`], etc. instead, which
+//! wrap these bindings and are fully doc-tested.
 
 #![allow(non_camel_case_types)]
 

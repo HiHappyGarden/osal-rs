@@ -18,6 +18,30 @@
  *
  ***************************************************************************/
 
+//! Event group synchronization primitives for POSIX.
+//!
+//! [`EventGroup`] implements FreeRTOS-style event groups - a shared bit
+//! field that any thread can set/clear, and that other threads can block on
+//! until some combination of bits becomes set - on top of a
+//! `pthread_mutex_t` + `pthread_cond_t` pair, since plain POSIX/pthreads has
+//! no primitive that matches this shape directly.
+//!
+//! # Examples
+//!
+//! ```
+//! use osal_rs::os::*;
+//! use osal_rs::os::types::EventBits;
+//!
+//! const EVENT_A: EventBits = 1 << 0;
+//! const EVENT_B: EventBits = 1 << 1;
+//!
+//! let events = EventGroup::new().unwrap();
+//! events.set(EVENT_A | EVENT_B);
+//!
+//! let bits = events.wait(EVENT_A | EVENT_B, 100);
+//! assert_eq!(bits & (EVENT_A | EVENT_B), EVENT_A | EVENT_B);
+//! ```
+
 use core::cell::UnsafeCell;
 use core::ffi::c_long;
 use core::fmt::{Debug, Display, Formatter};
@@ -55,19 +79,66 @@ fn monotonic_deadline(timeout: Duration) -> timespec {
 	timespec { tv_sec, tv_nsec }
 }
 
+/// POSIX event group: a shared, thread-safe bit field with blocking waits.
+///
+/// See the module-level docs above for a full example and rationale.
 pub struct EventGroup(UnsafeCell<EventGroupHandle>, UnsafeCell<EventBits>);
 
 unsafe impl Send for EventGroup {}
 unsafe impl Sync for EventGroup {}
 
 impl EventGroup {
+	/// Largest usable bit mask: the top byte of [`EventBits`] is reserved
+	/// for bookkeeping (mirroring FreeRTOS, which reserves its own event
+	/// group bits the same way), so only the lower bits may be used as
+	/// application flags.
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use osal_rs::os::EventGroup;
+	/// use osal_rs::os::types::EventBits;
+	///
+	/// // A normal flag bit always falls within the usable mask...
+	/// let flag: EventBits = 1 << 3;
+	/// assert_eq!(EventGroup::MAX_MASK & flag, flag);
+	///
+	/// // ...but the reserved top byte does not.
+	/// let reserved_bit: EventBits = !EventGroup::MAX_MASK;
+	/// assert_eq!(EventGroup::MAX_MASK & reserved_bit, 0);
+	/// ```
 	pub const MAX_MASK: EventBits = EventBits::MAX >> 8;
 
+	/// Blocks like [`EventGroup::wait`], but accepts any [`ToTick`] timeout
+	/// (e.g. a [`core::time::Duration`]) instead of a raw tick count.
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use osal_rs::os::*;
+	/// use core::time::Duration;
+	///
+	/// let events = EventGroup::new().unwrap();
+	/// events.set(1);
+	///
+	/// let bits = events.wait_with_to_tick(1, Duration::from_millis(50));
+	/// assert_eq!(bits & 1, 1);
+	/// ```
 	#[inline]
 	pub fn wait_with_to_tick(&self, mask: EventBits, timeout_ticks: impl ToTick) -> EventBits {
 		self.wait(mask, timeout_ticks.to_ticks())
 	}
 
+	/// Creates a new, empty event group (all bits clear).
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use osal_rs::os::*;
+	///
+	/// let events = EventGroup::new().unwrap();
+	/// assert_eq!(events.get(), 0);
+	/// ```
 	pub fn new() -> Result<Self> {
 
 		let mut mutex: pthread_mutex_t = Default::default();
@@ -111,14 +182,44 @@ impl EventGroup {
 }
 
 impl EventGroupFn for EventGroup {
-	// "Null" means never-initialized-or-already-deleted. Unlike
-	// `Semaphore::is_null`, the bits themselves are not part of this check:
-	// an event group legitimately sits at `0` bits whenever nothing has been
-	// set yet, so that can't be used to detect deletion.
+	/// Returns `true` if this event group is never-initialized-or-already-deleted.
+	///
+	/// Unlike [`crate::os::SemaphoreFn::is_null`], the bits themselves are not
+	/// part of this check: an event group legitimately sits at `0` bits
+	/// whenever nothing has been set yet, so that can't be used to detect
+	/// deletion.
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use osal_rs::os::*;
+	///
+	/// let mut events = EventGroup::new().unwrap();
+	/// assert!(!events.is_null());
+	///
+	/// events.delete();
+	/// assert!(events.is_null());
+	/// ```
 	fn is_null(&self) -> bool {
 		unsafe { (*self.0.get()).is_empty() }
 	}
 
+	/// Sets `bits` in the group (OR'd into the current value) and wakes any
+	/// thread blocked in [`EventGroup::wait`] whose mask may now be
+	/// satisfied. Returns the resulting bits after the update.
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use osal_rs::os::*;
+	///
+	/// let events = EventGroup::new().unwrap();
+	/// let bits = events.set(0b101);
+	/// assert_eq!(bits, 0b101);
+	///
+	/// let bits = events.set(0b010);
+	/// assert_eq!(bits, 0b111);
+	/// ```
 	fn set(&self, bits: EventBits) -> EventBits {
 		if self.is_null() {
 			return 0;
@@ -145,6 +246,20 @@ impl EventGroupFn for EventGroup {
 		new_bits
 	}
 
+	/// ISR-safe variant of [`EventGroup::set`]. POSIX has no interrupt
+	/// context of its own, so this never blocks (`trylock` instead of
+	/// `lock`); it fails with [`Error::QueueFull`] if the mutex happens to be
+	/// contended rather than waiting for it.
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use osal_rs::os::*;
+	///
+	/// let events = EventGroup::new().unwrap();
+	/// events.set_from_isr(0b1).unwrap();
+	/// assert_eq!(events.get(), 0b1);
+	/// ```
 	fn set_from_isr(&self, bits: EventBits) -> Result<()> {
 		if self.is_null() {
 			return Err(Error::NullPtr);
@@ -167,6 +282,19 @@ impl EventGroupFn for EventGroup {
 		Ok(())
 	}
 
+	/// Returns the currently set bits, without waiting for any of them.
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use osal_rs::os::*;
+	///
+	/// let events = EventGroup::new().unwrap();
+	/// assert_eq!(events.get(), 0);
+	///
+	/// events.set(0b11);
+	/// assert_eq!(events.get(), 0b11);
+	/// ```
 	fn get(&self) -> EventBits {
 		if self.is_null() {
 			return 0;
@@ -180,6 +308,19 @@ impl EventGroupFn for EventGroup {
 		}
 	}
 
+	/// ISR-safe variant of [`EventGroup::get`]. Falls back to a racy,
+	/// unlocked read if the mutex happens to be contended, rather than
+	/// blocking the "interrupt".
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use osal_rs::os::*;
+	///
+	/// let events = EventGroup::new().unwrap();
+	/// events.set(0b111);
+	/// assert_eq!(events.get_from_isr(), 0b111);
+	/// ```
 	fn get_from_isr(&self) -> EventBits {
 		if self.is_null() {
 			return 0;
@@ -198,6 +339,21 @@ impl EventGroupFn for EventGroup {
 		}
 	}
 
+	/// Clears `bits` in the group and returns the value the bits held
+	/// *before* clearing.
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use osal_rs::os::*;
+	///
+	/// let events = EventGroup::new().unwrap();
+	/// events.set(0b111);
+	///
+	/// let previous = events.clear(0b010);
+	/// assert_eq!(previous, 0b111);
+	/// assert_eq!(events.get(), 0b101);
+	/// ```
 	fn clear(&self, bits: EventBits) -> EventBits {
 		if self.is_null() {
 			return 0;
@@ -220,6 +376,19 @@ impl EventGroupFn for EventGroup {
 		previous_bits
 	}
 
+	/// ISR-safe variant of [`EventGroup::clear`]. Fails with
+	/// [`Error::QueueFull`] instead of blocking if the mutex is contended.
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use osal_rs::os::*;
+	///
+	/// let events = EventGroup::new().unwrap();
+	/// events.set(0b11);
+	/// events.clear_from_isr(0b01).unwrap();
+	/// assert_eq!(events.get(), 0b10);
+	/// ```
 	fn clear_from_isr(&self, bits: EventBits) -> Result<()> {
 		if self.is_null() {
 			return Err(Error::NullPtr);
@@ -237,6 +406,28 @@ impl EventGroupFn for EventGroup {
 		Ok(())
 	}
 
+	/// Blocks until every bit in `mask` is set, or `timeout_ticks` elapses
+	/// (pass [`TickType::MAX`] to wait forever), whichever comes first.
+	/// Always returns the bits actually observed, whether or not they
+	/// satisfy `mask` - check the return value to tell a timeout apart from
+	/// success.
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use osal_rs::os::*;
+	///
+	/// let events = EventGroup::new().unwrap();
+	/// events.set(0b01);
+	///
+	/// // Only bit 0 is set, so waiting on bit 1 too times out...
+	/// let bits = events.wait(0b11, 10);
+	/// assert_ne!(bits & 0b11, 0b11);
+	///
+	/// // ...but waiting on just the bit that's already set succeeds immediately.
+	/// let bits = events.wait(0b01, 10);
+	/// assert_eq!(bits & 0b01, 0b01);
+	/// ```
 	fn wait(&self, mask: EventBits, timeout_ticks: TickType) -> EventBits {
 		if self.is_null() {
 			return 0;
@@ -286,6 +477,21 @@ impl EventGroupFn for EventGroup {
 		result
 	}
 
+	/// Destroys the underlying pthread objects and resets this event group
+	/// to its "null" state. Safe to call more than once - a second call is a
+	/// no-op - and called automatically on [`Drop`] if not called explicitly.
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use osal_rs::os::*;
+	///
+	/// let mut events = EventGroup::new().unwrap();
+	/// events.delete();
+	/// assert!(events.is_null());
+	///
+	/// events.delete(); // no-op, does not panic
+	/// ```
 	fn delete(&mut self) {
 		if self.is_null() {
 			return;

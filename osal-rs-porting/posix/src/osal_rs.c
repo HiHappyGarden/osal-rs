@@ -26,11 +26,3 @@
 size_t osal_rs_get_pthread_stack_min(void) {
     return PTHREAD_STACK_MIN;
 }
-
-bool osal_rs_use_sched_fifo(void) {
-#if defined(USE_SCHED_FIFO)
-    return true;
-#else
-    return false;
-#endif
-}

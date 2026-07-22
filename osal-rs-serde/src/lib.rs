@@ -37,7 +37,7 @@
 //!
 //! - **Primitives**: `bool`, `u8`, `i8`, `u16`, `i16`, `u32`, `i32`, `u64`, `i64`, `u128`, `i128`, `f32`, `f64`
 //! - **Compound types**: Arrays `[T; N]`, tuples `(T1, T2, T3)` (up to 3 elements), `Option<T>`
-//! - **Collections**: `Vec<T>`, byte slices, strings (with `alloc` feature)
+//! - **Collections**: `Vec<T>`, byte slices, strings (always available - `alloc` is required unconditionally, not feature-gated)
 //! - **Custom types**: Any struct implementing `Serialize`/`Deserialize`
 //! - **Nested structs**: Full support for struct composition
 //!
@@ -292,7 +292,7 @@
 //!
 //! - **Primitives**: All integer types (u8-u128, i8-i128), f32, f64, bool
 //! - **Compound**: Arrays `[T; N]`, tuples (up to 3 elements), `Option<T>`
-//! - **Collections**: `Vec<T>`, `String` (requires `alloc` feature)
+//! - **Collections**: `Vec<T>`, `String` (always available, no feature required)
 //! - **Custom**: Any type implementing `Serialize`/`Deserialize`
 //! - **Nested**: Full support for nested structs
 //!
@@ -333,10 +333,12 @@
 //!
 //! ## Features
 //!
-//! - `default`: Includes `alloc` feature
-//! - `alloc`: Enables Vec, String support
-//! - `std`: Enables standard library (error traits, etc.)
+//! There is no default feature set. Available features:
+//! - `std`: Enables standard library support (e.g. `std::error::Error` for [`Error`])
 //! - `derive`: Enables `#[derive(Serialize, Deserialize)]` macros (**recommended**)
+//!
+//! `alloc` (`Vec`/`String` support) is always available - the crate links
+//! `extern crate alloc` unconditionally, it is not gated behind a feature.
 //!
 //! ## Examples
 //!

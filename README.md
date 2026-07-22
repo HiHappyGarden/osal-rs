@@ -209,13 +209,13 @@ To use OSAL-RS in your project with specific features (exactly one of `freertos`
 
 ```toml
 [dependencies]
-osal-rs = { version = "0.5", features = ["freertos"] }
+osal-rs = { version = "1.0", features = ["freertos"] }
 
 # Or for host development/testing
-osal-rs = { version = "0.5", features = ["posix"] }
+osal-rs = { version = "1.0", features = ["posix"] }
 
 # Or with serialization support
-osal-rs = { version = "0.5", features = ["freertos", "serde"] }
+osal-rs = { version = "1.0", features = ["freertos", "serde"] }
 ```
 
 ## 🧪 _EXPERIMENTAL_ Async/Await Support (feature `async`)
@@ -269,9 +269,9 @@ block_on(async {
 ```toml
 # Cargo.toml
 [dependencies]
-osal-rs = { version = "0.5", features = ["freertos", "async"] }
+osal-rs = { version = "1.0", features = ["freertos", "async"] }
 # or for host development
-osal-rs = { version = "0.5", features = ["posix", "async"] }
+osal-rs = { version = "1.0", features = ["posix", "async"] }
 ```
 
 ```bash

@@ -29,9 +29,11 @@ An extensible, lightweight serialization/deserialization framework for Rust, ins
 - **Tuples**: `(T1, T2)`, `(T1, T2, T3)` up to 3 elements
 - **Option**: `Option<T>` for optional fields
 
-#### Collections (with `alloc` feature)
+#### Collections (always available)
 - **Vec**: `Vec<T>` for dynamic arrays
 - **String**: `String` and `&str`
+
+`alloc` is required unconditionally by this crate - there's no feature to opt out of it.
 
 #### Custom Types
 - Any struct with `#[derive(Serialize, Deserialize)]`
@@ -64,24 +66,24 @@ Add to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-osal-rs-serde = { version = "0.5", features = ["derive"] }
+osal-rs-serde = { version = "1.0", features = ["derive"] }
 ```
 
-Available features:
-- `default`: Includes `alloc` feature for Vec and String support
-- `alloc`: Enables dynamic allocation support (Vec, String)
-- `std`: Enables standard library support (error traits, etc.)
+There is no default feature set. Available features:
+- `std`: Enables standard library support (`std::error::Error` for `Error`)
 - `derive`: Enables `#[derive(Serialize, Deserialize)]` macros (**recommended**)
 
-For no-std environments without allocation:
+`Vec`/`String` support (`alloc`) is always available - the crate links `extern crate alloc` unconditionally, it's not a feature you opt in or out of.
+
+For no-std environments, `derive` alone is enough:
 ```toml
 [dependencies]
-osal-rs-serde = { version = "0.5", default-features = false, features = ["derive"] }
+osal-rs-serde = { version = "1.0", features = ["derive"] }
 ```
 
 For integration tests with derive macros:
 ```bash
-cargo test --no-default-features --features std,derive --test integration_tests
+cargo test --features std,derive --test integration_tests
 ```
 
 ## Project Structure
@@ -278,22 +280,24 @@ struct Point {
 }
 
 impl Serialize for Point {
-    fn serialize<S: Serializer>(&self, serializer: &mut S) -> Result<(), S::Error> {
-        serializer.serialize_i32(self.x)?;
-        serializer.serialize_i32(self.y)?;
+    fn serialize<S: Serializer>(&self, _name: &str, serializer: &mut S) -> Result<(), S::Error> {
+        serializer.serialize_i32("x", self.x)?;
+        serializer.serialize_i32("y", self.y)?;
         Ok(())
     }
 }
 
 impl Deserialize for Point {
-    fn deserialize<D: Deserializer>(deserializer: &mut D) -> Result<Self, D::Error> {
+    fn deserialize<D: Deserializer>(deserializer: &mut D, _name: &str) -> Result<Self, D::Error> {
         Ok(Point {
-            x: deserializer.deserialize_i32()?,
-            y: deserializer.deserialize_i32()?,
+            x: deserializer.deserialize_i32("x")?,
+            y: deserializer.deserialize_i32("y")?,
         })
     }
 }
 ```
+
+Every `serialize_*`/`deserialize_*` method takes a field `name` as its first argument (used by non-binary serializers, e.g. a JSON backend); the top-level `serialize`/`deserialize` methods also take a `name` for the same reason - pass through `""` or ignore it if your format doesn't need it, as `ByteSerializer`/`ByteDeserializer` do.
 
 ### Usage with OSAL-RS Queue
 
@@ -336,7 +340,7 @@ The framework automatically supports serialization/deserialization for:
 
 - **Primitives**: `bool`, `u8`, `i8`, `u16`, `i16`, `u32`, `i32`, `u64`, `i64`, `u128`, `i128`, `f32`, `f64`
 - **Compound**: Arrays `[T; N]`, tuples `(T1, T2)` and `(T1, T2, T3)`, `Option<T>`
-- **Collections** (with `alloc`): `Vec<T>`, `String`, `&str`
+- **Collections**: `Vec<T>`, `String`, `&str`
 - **Custom**: Any struct implementing `Serialize`/`Deserialize` (or using derive)
 - **Nested**: Full support for nested struct composition
 

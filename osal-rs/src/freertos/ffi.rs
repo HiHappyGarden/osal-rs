@@ -43,13 +43,13 @@
 //!
 //! # Examples
 //!
-
+//! ```ignore
 //! // Don't use FFI directly - use safe wrappers instead:
 //! use osal_rs::os::{Thread, ThreadFn};
-//! 
+//!
 //! // This is safe:
 //! let thread = Thread::new("task", 1024, 5);
-//! 
+//!
 //! // This is unsafe and should be avoided:
 //! // unsafe { xTaskCreate(...) }
 //! ```

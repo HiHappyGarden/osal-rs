@@ -77,14 +77,14 @@
 //! Traits are re-exported with a `Fn` suffix to avoid naming conflicts with
 //! concrete implementation types:
 //!
-
+//! ```ignore
 //! // Trait definition (in this module)
 //! pub trait Thread { ... }
 //!
 //! // Re-exported as ThreadFn to avoid conflict
 //! pub use Thread as ThreadFn;
 //!
-//! // Concrete type in freertos module
+//! // Concrete type in freertos/posix module
 //! pub struct Thread { ... }
 //! impl ThreadFn for Thread { ... }
 //! ```
@@ -95,16 +95,16 @@
 //!
 //! Most users should use the `os` module instead of importing traits directly:
 //!
-
+//! ```
 //! use osal_rs::os::*;  // Gets concrete types
 //!
-//! let mutex = Mutex::new(0);  // Uses concrete freertos::Mutex
+//! let mutex = Mutex::new(0);  // Uses the active backend's concrete Mutex
 //! ```
 //!
 //! Advanced users can import traits for generic programming:
 //!
-
-//! use osal_rs::traits::MutexFn;
+//! ```
+//! use osal_rs::os::MutexFn;
 //!
 //! fn use_mutex<M: MutexFn<i32>>(mutex: &M) {
 //!     let guard = mutex.lock();

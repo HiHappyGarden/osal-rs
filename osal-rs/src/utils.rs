@@ -571,12 +571,12 @@ impl Display for dyn AsSyncStr + '_ {
 /// let mut buffer = Bytes::<32>::new();
 /// 
 /// // Create a buffer from a string
-/// let name = Bytes::<16>::new_by_str("TaskName");
+/// let name = Bytes::<16>::from_str("TaskName");
 /// println!("{}", name); // Prints "TaskName"
 /// 
 /// // Create from any type that implements ToString
 /// let number = 42;
-/// let num_bytes = Bytes::<8>::new_by_string(&number);
+/// let num_bytes = Bytes::<8>::from_as_sync_str(&number);
 /// ```
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct Bytes<const SIZE: usize> (pub [u8; SIZE]);
@@ -593,7 +593,7 @@ impl<const SIZE: usize> Deref for Bytes<SIZE> {
     /// ```ignore
     /// use osal_rs::utils::Bytes;
     /// 
-    /// let bytes = Bytes::<8>::new_by_str("test");
+    /// let bytes = Bytes::<8>::from_str("test");
     /// assert_eq!(bytes[0], b't');
     /// ```
     fn deref(&self) -> &Self::Target {
@@ -639,7 +639,7 @@ impl<const SIZE: usize> Display for Bytes<SIZE> {
     /// ```ignore
     /// use osal_rs::utils::Bytes;
     /// 
-    /// let bytes = Bytes::<16>::new_by_str("Hello");
+    /// let bytes = Bytes::<16>::from_str("Hello");
     /// println!("{}", bytes); // Prints "Hello"
     /// ```
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
@@ -903,13 +903,13 @@ impl<const SIZE: usize> Bytes<SIZE> {
     /// ```ignore
     /// use osal_rs::utils::Bytes;
     ///
-    /// let short = Bytes::<16>::new_by_str("Hi");
+    /// let short = Bytes::<16>::from_str("Hi");
     /// // Internal array: [b'H', b'i', 0, 0, 0, ...]
     ///
-    /// let exact = Bytes::<5>::new_by_str("Hello");
+    /// let exact = Bytes::<5>::from_str("Hello");
     /// // Internal array: [b'H', b'e', b'l', b'l', b'o']
     ///
-    /// let long = Bytes::<3>::new_by_str("Hello");
+    /// let long = Bytes::<3>::from_str("Hello");
     /// // Internal array: [b'H', b'e', b'l'] (truncated)
     /// ```
     pub fn from_str(str: &str) -> Self {
@@ -1045,7 +1045,7 @@ impl<const SIZE: usize> Bytes<SIZE> {
 
     /// Creates a new `Bytes` instance from any type implementing `ToString`.
     ///
-    /// This is a convenience wrapper around [`new_by_str`](Self::new_by_str)
+    /// This is a convenience wrapper around [`from_str`](Self::from_str)
     /// that first converts the input to a string.
     ///
     /// # Parameters
@@ -1062,11 +1062,11 @@ impl<const SIZE: usize> Bytes<SIZE> {
     /// use osal_rs::utils::Bytes;
     ///
     /// // From integer
-    /// let num_bytes = Bytes::<8>::new_by_string(&42);
+    /// let num_bytes = Bytes::<8>::from_as_sync_str(&42);
     ///
     /// // From String
     /// let string = String::from("Task");
-    /// let str_bytes = Bytes::<16>::new_by_string(&string);
+    /// let str_bytes = Bytes::<16>::from_as_sync_str(&string);
     ///
     /// // From custom type with ToString
     /// #[derive(Debug)]
@@ -1076,7 +1076,7 @@ impl<const SIZE: usize> Bytes<SIZE> {
     ///         format!("Task-{}", self.0)
     ///     }
     /// }
-    /// let task_bytes = Bytes::<16>::new_by_string(&TaskId(5));
+    /// let task_bytes = Bytes::<16>::from_as_sync_str(&TaskId(5));
     /// ```
     #[inline]
     pub fn from_as_sync_str(str: &impl ToString) -> Self {
@@ -1127,7 +1127,7 @@ impl<const SIZE: usize> Bytes<SIZE> {
     /// ```ignore
     /// use osal_rs::utils::Bytes;
     /// 
-    /// let bytes = Bytes::<16>::new_by_str("Hello World");
+    /// let bytes = Bytes::<16>::from_str("Hello World");
     /// 
     /// let mut output = String::from("                "); // 16 spaces
     /// bytes.fill_str(unsafe { output.as_mut_str() });
@@ -1217,7 +1217,7 @@ impl<const SIZE: usize> Bytes<SIZE> {
     /// ```ignore
     /// use osal_rs::utils::Bytes;
     /// 
-    /// let bytes = Bytes::<16>::new_by_str("Hello");
+    /// let bytes = Bytes::<16>::from_str("Hello");
     /// let c_str = bytes.as_cstr();
     /// 
     /// extern "C" {
@@ -1280,14 +1280,14 @@ impl<const SIZE: usize> Bytes<SIZE> {
     /// ```
     /// use osal_rs::utils::Bytes;
     ///
-    /// let mut bytes = Bytes::<16>::new_by_str("Hello");
+    /// let mut bytes = Bytes::<16>::from_str("Hello");
     /// bytes.append_str(" World");
     /// assert_eq!(bytes.as_str(), "Hello World");
     ///
     /// // Truncation when exceeding buffer size
-    /// let mut small_bytes = Bytes::<8>::new_by_str("Hi");
+    /// let mut small_bytes = Bytes::<8>::from_str("Hi");
     /// small_bytes.append_str(" there friend");
-    /// assert_eq!(small_bytes.as_str(), "Hi ther");
+    /// assert_eq!(small_bytes.as_str(), "Hi there");
     /// ```
     pub fn append_str(&mut self, str: &str) {
         let current_len = self.0.iter().position(|&b| b == 0).unwrap_or(SIZE);
@@ -1317,8 +1317,8 @@ impl<const SIZE: usize> Bytes<SIZE> {
     /// ```ignore
     /// use osal_rs::utils::Bytes;
     ///
-    /// let mut bytes = Bytes::<16>::new_by_str("Hello");
-    /// let other_bytes = Bytes::<8>::new_by_str(" World");
+    /// let mut bytes = Bytes::<16>::from_str("Hello");
+    /// let other_bytes = Bytes::<8>::from_str(" World");
     /// bytes.append_as_sync_str(&other_bytes);
     /// assert_eq!(bytes.as_str(), "Hello World");
     /// ```
@@ -1350,12 +1350,12 @@ impl<const SIZE: usize> Bytes<SIZE> {
     /// ```
     /// use osal_rs::utils::Bytes;
     ///
-    /// let mut bytes = Bytes::<16>::new_by_str("Hello");
+    /// let mut bytes = Bytes::<16>::from_str("Hello");
     /// bytes.append_bytes(b" World");
     /// assert_eq!(bytes.as_str(), "Hello World");
     ///
     /// // Appending arbitrary bytes
-    /// let mut data = Bytes::<16>::new_by_str("Data: ");
+    /// let mut data = Bytes::<16>::from_str("Data: ");
     /// data.append_bytes(&[0x41, 0x42, 0x43]);
     /// assert_eq!(data.as_str(), "Data: ABC");
     /// ```
@@ -1392,16 +1392,16 @@ impl<const SIZE: usize> Bytes<SIZE> {
     /// ```
     /// use osal_rs::utils::Bytes;
     ///
-    /// let mut bytes = Bytes::<16>::new_by_str("Hello");
-    /// let other = Bytes::<8>::new_by_str(" World");
+    /// let mut bytes = Bytes::<16>::from_str("Hello");
+    /// let other = Bytes::<8>::from_str(" World");
     /// bytes.append(&other);
     /// assert_eq!(bytes.as_str(), "Hello World");
     ///
     /// // Appending from a larger buffer
-    /// let mut small = Bytes::<8>::new_by_str("Hi");
-    /// let large = Bytes::<32>::new_by_str(" there friend");
+    /// let mut small = Bytes::<8>::from_str("Hi");
+    /// let large = Bytes::<32>::from_str(" there friend");
     /// small.append(&large);
-    /// assert_eq!(small.as_str(), "Hi ther");
+    /// assert_eq!(small.as_str(), "Hi there");
     /// ```
     pub fn append<const OTHER_SIZE: usize>(&mut self, other: &Bytes<OTHER_SIZE>) {
         let current_len = self.0.iter().position(|&b| b == 0).unwrap_or(SIZE);
@@ -1431,12 +1431,12 @@ impl<const SIZE: usize> Bytes<SIZE> {
     /// ```
     /// use osal_rs::utils::Bytes;
     ///
-    /// let mut bytes = Bytes::<16>::new_by_str("World");
+    /// let mut bytes = Bytes::<16>::from_str("World");
     /// bytes.prepend_str("Hello ");
     /// assert_eq!(bytes.as_str(), "Hello World");
     ///
     /// // Truncation when exceeding buffer size
-    /// let mut small = Bytes::<8>::new_by_str("World");
+    /// let mut small = Bytes::<8>::from_str("World");
     /// small.prepend_str("Hello ");
     /// assert_eq!(small.as_str(), "Hello Wo");
     /// ```
@@ -1470,8 +1470,8 @@ impl<const SIZE: usize> Bytes<SIZE> {
     /// ```ignore
     /// use osal_rs::utils::Bytes;
     ///
-    /// let mut bytes = Bytes::<16>::new_by_str("World");
-    /// let prefix = Bytes::<8>::new_by_str("Hello ");
+    /// let mut bytes = Bytes::<16>::from_str("World");
+    /// let prefix = Bytes::<8>::from_str("Hello ");
     /// bytes.prepend_as_sync_str(&prefix);
     /// assert_eq!(bytes.as_str(), "Hello World");
     /// ```
@@ -1494,12 +1494,12 @@ impl<const SIZE: usize> Bytes<SIZE> {
     /// ```
     /// use osal_rs::utils::Bytes;
     ///
-    /// let mut bytes = Bytes::<16>::new_by_str("World");
+    /// let mut bytes = Bytes::<16>::from_str("World");
     /// bytes.prepend_bytes(b"Hello ");
     /// assert_eq!(bytes.as_str(), "Hello World");
     ///
     /// // Prepending arbitrary bytes
-    /// let mut data = Bytes::<16>::new_by_str("BC");
+    /// let mut data = Bytes::<16>::from_str("BC");
     /// data.prepend_bytes(&[0x41]); // 'A'
     /// assert_eq!(data.as_str(), "ABC");
     /// ```
@@ -1537,14 +1537,14 @@ impl<const SIZE: usize> Bytes<SIZE> {
     /// ```
     /// use osal_rs::utils::Bytes;
     ///
-    /// let mut bytes = Bytes::<16>::new_by_str("World");
-    /// let prefix = Bytes::<8>::new_by_str("Hello ");
+    /// let mut bytes = Bytes::<16>::from_str("World");
+    /// let prefix = Bytes::<8>::from_str("Hello ");
     /// bytes.prepend(&prefix);
     /// assert_eq!(bytes.as_str(), "Hello World");
     ///
     /// // Prepending from a larger buffer with truncation
-    /// let mut small = Bytes::<8>::new_by_str("end");
-    /// let large = Bytes::<32>::new_by_str("begin_");
+    /// let mut small = Bytes::<8>::from_str("end");
+    /// let large = Bytes::<32>::from_str("begin_");
     /// small.prepend(&large);
     /// assert_eq!(small.as_str(), "begin_en");
     /// ```
@@ -1564,7 +1564,7 @@ impl<const SIZE: usize> Bytes<SIZE> {
     /// ```ignore
     /// use osal_rs::utils::Bytes;
     ///
-    /// let mut bytes = Bytes::<16>::new_by_str("Hello");
+    /// let mut bytes = Bytes::<16>::from_str("Hello");
     /// assert!(!bytes.is_empty());
     ///
     /// bytes.clear();
@@ -1593,7 +1593,7 @@ impl<const SIZE: usize> Bytes<SIZE> {
     /// ```ignore
     /// use osal_rs::utils::Bytes;
     ///
-    /// let bytes = Bytes::<16>::new_by_str("Hello");
+    /// let bytes = Bytes::<16>::from_str("Hello");
     /// assert_eq!(bytes.len(), 5);
     ///
     /// let empty = Bytes::<16>::new();
@@ -1623,13 +1623,13 @@ impl<const SIZE: usize> Bytes<SIZE> {
     /// ```ignore
     /// use osal_rs::utils::Bytes;
     /// 
-    /// let bytes = Bytes::<16>::new_by_str("Hello");
+    /// let bytes = Bytes::<16>::from_str("Hello");
     /// assert_eq!(bytes.as_raw_bytes(), b"Hello");
     /// 
     /// let empty = Bytes::<16>::new();
     /// assert_eq!(empty.as_raw_bytes(), b"");
     /// 
-    /// let full = Bytes::<4>::new_by_str("ABCD");
+    /// let full = Bytes::<4>::from_str("ABCD");
     /// assert_eq!(full.as_raw_bytes(), b"ABCD");
     /// ``` 
     #[inline]
@@ -1649,7 +1649,7 @@ impl<const SIZE: usize> Bytes<SIZE> {
     /// let bytes = Bytes::<32>::new();
     /// assert_eq!(bytes.size(), 32);
     /// 
-    /// let other = Bytes::<128>::new_by_str("Hello");
+    /// let other = Bytes::<128>::from_str("Hello");
     /// assert_eq!(other.size(), 128);
     /// ```
     #[inline]
@@ -1674,10 +1674,10 @@ impl<const SIZE: usize> Bytes<SIZE> {
     /// let empty = Bytes::<16>::new();
     /// assert!(empty.is_empty());
     ///
-    /// let bytes = Bytes::<16>::new_by_str("Hello");
+    /// let bytes = Bytes::<16>::from_str("Hello");
     /// assert!(!bytes.is_empty());
     ///
-    /// let mut cleared = Bytes::<16>::new_by_str("Test");
+    /// let mut cleared = Bytes::<16>::from_str("Test");
     /// cleared.clear();
     /// assert!(cleared.is_empty());
     /// ```
@@ -1704,7 +1704,7 @@ impl<const SIZE: usize> Bytes<SIZE> {
     /// let bytes = Bytes::<32>::new();
     /// assert_eq!(bytes.capacity(), 32);
     ///
-    /// let other = Bytes::<128>::new_by_str("Hello");
+    /// let other = Bytes::<128>::from_str("Hello");
     /// assert_eq!(other.capacity(), 128);
     /// ```
     #[inline]
@@ -1743,27 +1743,27 @@ impl<const SIZE: usize> Bytes<SIZE> {
     /// use osal_rs::utils::Bytes;
     ///
     /// // Same length replacement
-    /// let mut bytes = Bytes::<16>::new_by_str("Hello World");
+    /// let mut bytes = Bytes::<16>::from_str("Hello World");
     /// bytes.replace(b"World", b"Rust!").unwrap();
     /// assert_eq!(bytes.as_str(), "Hello Rust!");
     ///
     /// // Shorter replacement
-    /// let mut bytes2 = Bytes::<16>::new_by_str("aabbcc");
+    /// let mut bytes2 = Bytes::<16>::from_str("aabbcc");
     /// bytes2.replace(b"bb", b"X").unwrap();
     /// assert_eq!(bytes2.as_str(), "aaXcc");
     ///
     /// // Longer replacement
-    /// let mut bytes3 = Bytes::<16>::new_by_str("Hi");
+    /// let mut bytes3 = Bytes::<16>::from_str("Hi");
     /// bytes3.replace(b"Hi", b"Hello").unwrap();
     /// assert_eq!(bytes3.as_str(), "Hello");
     ///
     /// // Multiple occurrences
-    /// let mut bytes4 = Bytes::<32>::new_by_str("foo bar foo");
+    /// let mut bytes4 = Bytes::<32>::from_str("foo bar foo");
     /// bytes4.replace(b"foo", b"baz").unwrap();
     /// assert_eq!(bytes4.as_str(), "baz bar baz");
     ///
     /// // Buffer overflow error
-    /// let mut small = Bytes::<8>::new_by_str("Hello");
+    /// let mut small = Bytes::<8>::from_str("Hello");
     /// assert!(small.replace(b"Hello", b"Hello World").is_err());
     /// ```
     pub fn replace(&mut self, find: &[u8], replace: &[u8]) -> Result<()> {
@@ -1836,7 +1836,7 @@ impl<const SIZE: usize> Bytes<SIZE> {
     /// ```ignore
     /// use osal_rs::utils::{Bytes, ToBytes};
     /// 
-    /// let bytes = Bytes::<8>::new_by_str("example");
+    /// let bytes = Bytes::<8>::from_str("example");
     /// let byte_slice = bytes.to_bytes();
     /// assert_eq!(byte_slice, b"example\0\0");
     /// ```
@@ -1859,7 +1859,7 @@ impl<const SIZE: usize> Bytes<SIZE> {
     //// ```ignore
     /// use osal_rs::utils::Bytes;
     /// 
-    /// let mut bytes = Bytes::<16>::new_by_str("Hello");
+    /// let mut bytes = Bytes::<16>::from_str("Hello");
     /// assert_eq!(bytes.pop(), Some(b'o'));
     /// assert_eq!(bytes.as_str(), "Hell");
     /// 
@@ -1897,7 +1897,7 @@ impl<const SIZE: usize> Bytes<SIZE> {
     /// ```ignore
     /// use osal_rs::utils::Bytes;
     ///
-    /// let mut bytes = Bytes::<16>::new_by_str("Hello");
+    /// let mut bytes = Bytes::<16>::from_str("Hello");
     /// assert_eq!(bytes.push(b'!'), Ok(()));
     /// assert_eq!(bytes.as_str(), "Hello!");
     /// ```
@@ -1925,7 +1925,7 @@ impl<const SIZE: usize> Bytes<SIZE> {
     //// ```ignore
     /// use osal_rs::utils::Bytes;
     /// 
-    /// let mut bytes = Bytes::<16>::new_by_str("Hello");
+    /// let mut bytes = Bytes::<16>::from_str("Hello");
     /// assert_eq!(bytes.pop_char(), Some('o'));
     /// assert_eq!(bytes.as_str(), "Hell");
     /// 
@@ -1958,7 +1958,7 @@ impl<const SIZE: usize> Bytes<SIZE> {
     //// ```ignore
     /// use osal_rs::utils::Bytes;
     /// 
-    /// let mut bytes = Bytes::<16>::new_by_str("Hello");
+    /// let mut bytes = Bytes::<16>::from_str("Hello");
     /// assert_eq!(bytes.push_char('!'), Ok(()));
     /// assert_eq!(bytes.as_str(), "Hello!");
     /// 
@@ -1986,7 +1986,7 @@ impl<const SIZE: usize> Bytes<SIZE> {
     //// ```ignore
     /// use osal_rs::utils::Bytes;
     /// 
-    /// let valid_bytes = Bytes::<16>::new_by_str("Hello");
+    /// let valid_bytes = Bytes::<16>::from_str("Hello");
     /// assert!(valid_bytes.is_string());
     /// 
     /// let mut invalid_bytes = Bytes::<16>::new();

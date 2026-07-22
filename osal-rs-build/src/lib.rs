@@ -134,7 +134,7 @@ pub type StackType = {};
     /// Enable the `sched_fifo` feature cfg for the crate build when requested.
     fn enable_sched_fifo(&self) {
         if self.1 {
-            println!("cargo:rustc-cfg=feature=\"sched_fifo\"");
+            println!("cargo:rustc-cfg=feature=\"real_time\"");
         }
     }
 

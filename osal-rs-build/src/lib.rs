@@ -190,8 +190,8 @@ impl TypeGenerator {
     /// osal_rs_build::TypeGenerator::add_rerun_if_changed();
     /// ```
     pub fn add_rerun_if_changed() {
-        println!("cargo:rerun-if-changed=../osal-rs-porting/posix/src/osal_rs.c");
-        println!("cargo:rerun-if-changed=../osal-rs-porting/posix/inc/osal_rs.h");
+        // println!("cargo:rerun-if-changed=../osal-rs-porting/posix/src/osal_rs.c");
+        // println!("cargo:rerun-if-changed=../osal-rs-porting/posix/inc/osal_rs.h");
     }
 
     /// Probes the host architecture (and `SCHED_FIFO` support) by compiling

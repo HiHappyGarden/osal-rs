@@ -34,7 +34,8 @@
 //!
 //! The easiest way to implement serialization is using the derive macro:
 //!
-//! ```
+#![cfg_attr(feature = "derive", doc = "```")]
+#![cfg_attr(not(feature = "derive"), doc = "```ignore")]
 //! use osal_rs_serde::Serialize;
 //!
 //! #[derive(Serialize)]
@@ -77,8 +78,8 @@
 //! - `String` and `&str` (requires `alloc` for String)
 //! - Custom types implementing `Serialize`
 
-#[cfg(feature = "alloc")]
 use alloc::string::String;
+use alloc::vec::Vec;
 
 use crate::error::{Error, Result};
 
@@ -91,7 +92,8 @@ use crate::error::{Error, Result};
 ///
 /// The easiest way to implement this trait is using the derive macro (requires `derive` feature):
 ///
-/// ```
+#[cfg_attr(feature = "derive", doc = "```")]
+#[cfg_attr(not(feature = "derive"), doc = "```ignore")]
 /// use osal_rs_serde::Serialize;
 ///
 /// #[derive(Serialize)]
@@ -196,7 +198,7 @@ pub trait Serializer: Sized {
     fn serialize_str(&mut self, name: &str, v: &str) -> core::result::Result<(), Self::Error>;
 
     /// Serialize a vector of serializable items.
-    fn serialize_vec<T>(&mut self, name: &str, v: &alloc::vec::Vec<T>) -> core::result::Result<(), Self::Error>
+    fn serialize_vec<T>(&mut self, name: &str, v: &Vec<T>) -> core::result::Result<(), Self::Error>
     where
         T: Serialize;
 
@@ -263,7 +265,8 @@ pub trait Serializer: Sized {
 ///
 /// ## With Structs
 ///
-/// ```
+#[cfg_attr(feature = "derive", doc = "```")]
+#[cfg_attr(not(feature = "derive"), doc = "```ignore")]
 /// use osal_rs_serde::{ByteSerializer, Serialize};
 ///
 /// #[derive(Serialize)]
@@ -295,7 +298,7 @@ pub struct ByteSerializer<'a> {
 /// buffer (bounds-checked) or a growable `Vec` (extended on demand).
 enum Buf<'a> {
     Fixed(&'a mut [u8]),
-    Dynamic(&'a mut alloc::vec::Vec<u8>),
+    Dynamic(&'a mut Vec<u8>),
 }
 
 impl<'a> ByteSerializer<'a> {
@@ -311,7 +314,7 @@ impl<'a> ByteSerializer<'a> {
 
     /// Create a new ByteSerializer that writes into a growable `Vec`,
     /// extending it on demand instead of failing when it runs out of room.
-    pub(crate) fn new_dyn(buffer: &'a mut alloc::vec::Vec<u8>) -> Self {
+    pub(crate) fn new_dyn(buffer: &'a mut Vec<u8>) -> Self {
         Self {
             buffer: Buf::Dynamic(buffer),
             position: 0,
@@ -414,7 +417,7 @@ impl<'a> Serializer for ByteSerializer<'a> {
         self.serialize_bytes(name, v.as_bytes())
     }
 
-    fn serialize_vec<T>(&mut self, name: &str, v: &alloc::vec::Vec<T>) -> core::result::Result<(), Self::Error> 
+    fn serialize_vec<T>(&mut self, name: &str, v: &Vec<T>) -> core::result::Result<(), Self::Error> 
     where
         T: Serialize {
         // First write the length as u32
@@ -567,7 +570,7 @@ impl Serialize for &str {
     }
 }
 
-#[cfg(feature = "alloc")]
+
 impl Serialize for String {
     fn serialize<S>(&self, name: &str, serializer: &mut S) -> core::result::Result<(), S::Error> 
     where

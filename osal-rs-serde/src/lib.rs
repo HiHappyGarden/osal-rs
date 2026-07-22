@@ -57,7 +57,8 @@
 //!
 //! #### Basic Struct Example
 //!
-//! ```
+#![cfg_attr(feature = "derive", doc = "```")]
+#![cfg_attr(not(feature = "derive"), doc = "```ignore")]
 //! use osal_rs_serde::{Serialize, Deserialize, to_bytes, from_bytes};
 //!
 //! #[derive(Serialize, Deserialize)]
@@ -87,7 +88,8 @@
 //!
 //! #### Struct with Optional Fields
 //!
-//! ```
+#![cfg_attr(feature = "derive", doc = "```")]
+#![cfg_attr(not(feature = "derive"), doc = "```ignore")]
 //! use osal_rs_serde::{Serialize, Deserialize, to_bytes, from_bytes};
 //!
 //! #[derive(Serialize, Deserialize)]
@@ -114,7 +116,8 @@
 //!
 //! #### Struct with Arrays and Tuples
 //!
-//! ```
+#![cfg_attr(feature = "derive", doc = "```")]
+#![cfg_attr(not(feature = "derive"), doc = "```ignore")]
 //! use osal_rs_serde::{Serialize, Deserialize, to_bytes, from_bytes};
 //!
 //! #[derive(Serialize, Deserialize)]
@@ -141,7 +144,8 @@
 //!
 //! #### Nested Structs
 //!
-//! ```
+#![cfg_attr(feature = "derive", doc = "```")]
+#![cfg_attr(not(feature = "derive"), doc = "```ignore")]
 //! use osal_rs_serde::{Serialize, Deserialize, to_bytes, from_bytes};
 //!
 //! #[derive(Serialize, Deserialize)]
@@ -180,7 +184,8 @@
 //!
 //! #### Complex Embedded System Example
 //!
-//! ```
+#![cfg_attr(feature = "derive", doc = "```")]
+#![cfg_attr(not(feature = "derive"), doc = "```ignore")]
 //! use osal_rs_serde::{Serialize, Deserialize, to_bytes, from_bytes};
 //!
 //! #[derive(Serialize, Deserialize, Debug, PartialEq)]
@@ -347,7 +352,6 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 #![warn(missing_docs)]
 
-#[cfg(feature = "alloc")]
 extern crate alloc;
 
 mod error;

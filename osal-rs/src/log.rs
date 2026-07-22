@@ -177,6 +177,17 @@ use crate::os::{System, SystemFn};
 #[cfg(not(feature = "posix"))]
 use crate::utils::Bytes;
 
+/// Fixed capacity, in bytes, of the stack-allocated buffer the `log_*!`
+/// macros format each message into. Longer messages are truncated by
+/// [`crate::utils::Bytes`].
+///
+/// # Examples
+///
+/// ```
+/// use osal_rs::log::LOG_BUFFER_SIZE;
+///
+/// assert_eq!(LOG_BUFFER_SIZE, 256);
+/// ```
 pub const LOG_BUFFER_SIZE: usize = 256;
 
 /// ANSI escape code for red text color

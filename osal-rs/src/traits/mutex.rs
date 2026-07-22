@@ -393,6 +393,10 @@ impl<M: RawMutex + 'static> RawMutexGuard<M> {
         Self(mutex, true)
     }
 
+    /// Locks `mutex` via [`RawMutex::lock_from_isr`] instead of
+    /// [`RawMutex::lock`], and returns a guard that unlocks the same way on
+    /// drop. Use this instead of [`RawMutexGuard::acquire`] when the calling
+    /// context is (or might be) an interrupt handler.
     pub fn acquire_from_isr(mutex: &'static M) -> Self {
         mutex.lock_from_isr();
         Self(mutex, false)

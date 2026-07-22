@@ -78,7 +78,11 @@ static RUN: AtomicBool = AtomicBool::new(true);
 /// ```
 #[derive(Debug, Clone)]
 pub struct SystemState {
+    /// Metadata for every thread spawned through this crate's
+    /// [`crate::os::Thread`] API, plus the calling thread itself.
     pub tasks: Vec<ThreadMetadata>,
+    /// Total elapsed run time, in milliseconds, at the moment of the
+    /// snapshot (see [`System::get_tick_count`]).
     pub total_run_time: u32,
 }
 
@@ -90,6 +94,10 @@ impl Deref for SystemState {
     }
 }
 
+/// Namespace for system-level operations (scheduler control, timing, thread
+/// introspection) - see the [module docs](self) for an overview and a
+/// runnable example. Zero-sized: never instantiated, only used as
+/// `System::function(...)`.
 pub struct System;
 
 impl System {

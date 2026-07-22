@@ -34,7 +34,8 @@
 //!
 //! The easiest way to implement deserialization is using the derive macro:
 //!
-//! ```
+#![cfg_attr(feature = "derive", doc = "```")]
+#![cfg_attr(not(feature = "derive"), doc = "```ignore")]
 //! use osal_rs_serde::Deserialize;
 //!
 //! #[derive(Deserialize)]
@@ -78,10 +79,8 @@
 //! - `String` (requires `alloc`)
 //! - Custom types implementing `Deserialize`
 
-#[cfg(feature = "alloc")]
 use alloc::string::String;
 
-#[cfg(feature = "alloc")]
 use alloc::vec::Vec;
 
 use crate::error::{Error, Result};
@@ -95,7 +94,8 @@ use crate::error::{Error, Result};
 ///
 /// The easiest way to implement this trait is using the derive macro (requires `derive` feature):
 ///
-/// ```
+#[cfg_attr(feature = "derive", doc = "```")]
+#[cfg_attr(not(feature = "derive"), doc = "```ignore")]
 /// use osal_rs_serde::Deserialize;
 ///
 /// #[derive(Deserialize)]
@@ -196,11 +196,9 @@ pub trait Deserializer: Sized {
     fn deserialize_bytes(&mut self, name: &str, buffer: &mut [u8]) -> core::result::Result<usize, Self::Error>;
 
     /// Deserialize a string.
-    #[cfg(feature = "alloc")]
     fn deserialize_string(&mut self, name: &str) -> core::result::Result<String, Self::Error>;
 
     /// Deserialize a vector of deserializable items.
-    #[cfg(feature = "alloc")]
     fn deserialize_vec<T>(&mut self, name: &str) -> core::result::Result<Vec<T>, Self::Error>
     where 
         T: Deserialize;
@@ -266,7 +264,8 @@ pub trait Deserializer: Sized {
 ///
 /// ## With Structs
 ///
-/// ```
+#[cfg_attr(feature = "derive", doc = "```")]
+#[cfg_attr(not(feature = "derive"), doc = "```ignore")]
 /// use osal_rs_serde::{Deserialize, from_bytes};
 ///
 /// #[derive(Deserialize)]
@@ -423,7 +422,6 @@ impl<'a> Deserializer for ByteDeserializer<'a> {
         Ok(len)
     }
 
-    #[cfg(feature = "alloc")]
     fn deserialize_string(&mut self, _name: &str) -> Result<String> {
         let len = self.deserialize_u32("")? as usize;
         let bytes = self.read_bytes(len)?;
@@ -431,7 +429,6 @@ impl<'a> Deserializer for ByteDeserializer<'a> {
             .map_err(|_| Error::InvalidData)
     }
 
-    #[cfg(feature = "alloc")]
     fn deserialize_vec<T>(&mut self, _name: &str) -> Result<Vec<T>> 
     where 
         T: Deserialize {
@@ -539,7 +536,6 @@ impl Deserialize for f64 {
     }
 }
 
-#[cfg(feature = "alloc")]
 impl Deserialize for String {
     fn deserialize<D: Deserializer>(deserializer: &mut D, name: &str) -> core::result::Result<Self, D::Error> {
         deserializer.deserialize_string(name)
@@ -557,7 +553,6 @@ where
 }
 
 // Vec implementation
-#[cfg(feature = "alloc")]
 impl<T> Deserialize for Vec<T>
 where
     T: Deserialize

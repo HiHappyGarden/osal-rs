@@ -117,8 +117,9 @@
 //! ### Timer Example
 //!
 //! ```
+//! extern crate alloc;
 //! use osal_rs::os::*;
-//! use std::sync::Arc;
+//! use alloc::sync::Arc;
 //! use core::time::Duration;
 //!
 //! let timer = Timer::new_with_to_tick(
@@ -137,7 +138,8 @@
 //!
 //! ### Async/Await Example (feature `async`)
 //!
-//! ```
+#![cfg_attr(feature = "async", doc = "```")]
+#![cfg_attr(not(feature = "async"), doc = "```ignore")]
 //! use osal_rs::os::{block_on, AsyncMutex, AsyncQueue, AsyncSemaphore};
 //!
 //! // Drive a future to completion on the calling RTOS task — no Tokio needed.

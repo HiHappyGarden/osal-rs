@@ -163,7 +163,12 @@ fn test_system_thread_metadata() -> Result<()> {
     for thread_meta in state.tasks.iter() {
         assert!(thread_meta.thread != 0);
         assert!(!thread_meta.name.is_empty());
-        assert!(thread_meta.priority > 0);
+        // 0 is a legitimate, real priority (POSIX SCHED_OTHER threads and
+        // FreeRTOS's idle task both report it), not a sign of missing data.
+        #[cfg(feature = "real_time")]
+        {
+            assert!(thread_meta.priority > 0);
+        }
     }
     log_debug!(TAG, "Verified metadata for {} threads", state.tasks.len());
     log_info!(TAG, "test_system_thread_metadata PASSED");

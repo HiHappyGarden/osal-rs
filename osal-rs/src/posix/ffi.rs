@@ -81,6 +81,18 @@ compile_error!(
      bits/pthreadtypes-arch.h __SIZEOF_PTHREAD_ATTR_T value to posix/ffi.rs"
 );
 
+/// Minimum stack size (in bytes) glibc allows for a thread
+/// (`PTHREAD_STACK_MIN`, `bits/pthread_stack_min.h`), for each architecture
+/// this crate supports (same architecture set as [`PTHREAD_ATTR_T_SIZE`]).
+///
+/// Every supported architecture uses glibc's generic Linux value (16384)
+/// except `aarch64`, which needs a larger minimum (131072) to fit its wider
+/// signal frames.
+#[cfg(any(target_arch = "x86_64", target_arch = "x86", target_arch = "arm", target_arch = "riscv64", target_arch = "riscv32"))]
+pub(super) const PTHREAD_STACK_MIN: usize = 16384;
+#[cfg(target_arch = "aarch64")]
+pub(super) const PTHREAD_STACK_MIN: usize = 131072;
+
 /// Opaque storage for `pthread_attr_t`.
 ///
 /// Rust never reads/writes its fields directly; only its address is handed
@@ -458,9 +470,6 @@ pub(super) const PTHREAD_MUTEX_RECURSIVE: c_int = 1;
 pub(super) const PTHREAD_PRIO_INHERIT: c_int = 1;
 
 unsafe extern "C" {
-
-
-    pub(super) fn osal_rs_get_pthread_stack_min() -> usize;
 
     /// Initialize a thread attributes object with default values.
     pub(super) fn pthread_attr_init(attr: *mut pthread_attr_t) -> c_int;

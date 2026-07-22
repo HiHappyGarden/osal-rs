@@ -58,7 +58,7 @@ use crate::posix::config::TICK_PERIOD_MS;
 #[cfg(feature = "real_time")]
 use crate::posix::ffi::{PTHREAD_EXPLICIT_SCHED, SCHED_FIFO, pthread_attr_setinheritsched, pthread_attr_setschedparam, pthread_attr_setschedpolicy, sched_param};
 use crate::posix::ffi::{
-	__libc_current_sigrtmin, CLOCK_MONOTONIC, ETIMEDOUT, PTHREAD_ONCE_INIT, clock_gettime, osal_rs_get_pthread_stack_min, pthread_attr_init, pthread_attr_setstacksize, pthread_attr_t,
+	__libc_current_sigrtmin, CLOCK_MONOTONIC, ETIMEDOUT, PTHREAD_ONCE_INIT, PTHREAD_STACK_MIN, clock_gettime, pthread_attr_init, pthread_attr_setstacksize, pthread_attr_t,
 	pthread_cond_broadcast, pthread_cond_destroy, pthread_cond_init, pthread_cond_t, pthread_cond_timedwait, pthread_cond_wait, pthread_condattr_init, pthread_condattr_setclock,
 	pthread_condattr_t, pthread_create, pthread_join, pthread_kill, pthread_once, pthread_once_t, pthread_self, pthread_setname_np, sigdelset, sigfillset, sigset_t, signal, sigsuspend,
 	timespec,
@@ -753,9 +753,7 @@ impl ThreadFn for Thread {
             pthread_attr_init (&mut attr);
         }
 
-        let requested_stack_size = unsafe {
-            osal_rs_get_pthread_stack_min()
-        } + self.stack_depth as usize;
+        let requested_stack_size = PTHREAD_STACK_MIN + self.stack_depth as usize;
 
         let min_safe_stack_size = 1024usize * 1024usize;
 
@@ -842,9 +840,7 @@ impl ThreadFn for Thread {
             pthread_attr_init (&mut attr);
         }
 
-        let requested_stack_size = unsafe {
-            osal_rs_get_pthread_stack_min()
-        } + self.stack_depth as usize;
+        let requested_stack_size = PTHREAD_STACK_MIN + self.stack_depth as usize;
 
         let min_safe_stack_size = 1024usize * 1024usize;
 

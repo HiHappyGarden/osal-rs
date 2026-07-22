@@ -26,6 +26,4 @@
 
 size_t osal_rs_get_pthread_stack_min(void);
 
-bool osal_rs_use_sched_fifo(void);
-
 #endif /* OSAL_RS_POSIX_H */

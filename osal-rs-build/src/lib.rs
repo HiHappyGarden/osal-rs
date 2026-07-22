@@ -1,16 +1,3 @@
-#![cfg_attr(target_os = "none", no_std)]
-
-//! Build-time utilities for `osal-rs`'s `build.rs`.
-//!
-//! [`TypeGenerator`] detects the active backend's `TickType`/`UBaseType`/
-//! `BaseType`/`StackType` sizes and writes them as Rust type aliases into
-//! `OUT_DIR/types_generated.rs` (included by `osal-rs` via `include!`),
-//! wires up `cargo:rerun-if-changed` for the C porting sources, and - for
-//! the `posix` backend - compiles and statically links the C porting layer.
-//!
-//! Exactly one of the `posix` or `freertos` features is expected to be
-//! enabled, matching whichever backend `osal-rs` itself is being built with.
-
 /***************************************************************************
  *
  * osal-rs
@@ -30,6 +17,18 @@
  * License along with this library; if not, see <https://www.gnu.org/licenses/>.
  *
  ***************************************************************************/
+#![cfg_attr(target_os = "none", no_std)]
+
+//! Build-time utilities for `osal-rs`'s `build.rs`.
+//!
+//! [`TypeGenerator`] detects the active backend's `TickType`/`UBaseType`/
+//! `BaseType`/`StackType` sizes and writes them as Rust type aliases into
+//! `OUT_DIR/types_generated.rs` (included by `osal-rs` via `include!`),
+//! wires up `cargo:rerun-if-changed` for the C porting sources, and - for
+//! the `posix` backend - compiles and statically links the C porting layer.
+//!
+//! Exactly one of the `posix` or `freertos` features is expected to be
+//! enabled, matching whichever backend `osal-rs` itself is being built with.
 
 use std::env;
 

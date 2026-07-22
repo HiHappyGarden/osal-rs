@@ -36,9 +36,11 @@
 //!
 //! ## Basic logging
 //!
-//! ```ignore
+//! ```
 //! use osal_rs::{log_info, log_error, log_debug};
-//! 
+//!
+//! let error_msg = "disk full";
+//!
 //! log_info!("APP", "Application started");
 //! log_debug!("APP", "Counter value: {}", 42);
 //! log_error!("APP", "Failed to initialize: {}", error_msg);
@@ -46,24 +48,24 @@
 //!
 //! ## Configuring log levels
 //!
-//! ```ignore
+//! ```
 //! use osal_rs::log::*;
-//! 
+//!
 //! // Set log level to WARNING and above
 //! set_level_log(log_levels::LEVEL_WARNING);
-//! 
+//!
 //! // Enable/disable logging
 //! set_enable_log(true);
-//! 
+//!
 //! // Enable/disable color output
 //! set_enable_color(true);
 //! ```
 //!
 //! ## Using print macros
 //!
-//! ```ignore
+//! ```
 //! use osal_rs::{print, println};
-//! 
+//!
 //! print!("Hello");
 //! println!(" World!");
 //! println!("Value: {}", 123);
@@ -209,9 +211,9 @@ pub const RETURN: &str = "\r\n";
 ///
 /// # Usage
 ///
-/// ```ignore
+/// ```
 /// use osal_rs::log::log_levels::*;
-/// use osal_rs::log::set_level_log;
+/// use osal_rs::log::{set_level_log, is_enabled_log};
 ///
 /// // Set minimum level to WARNING (shows WARNING, ERROR, FATAL)
 /// set_level_log(LEVEL_WARNING);
@@ -337,9 +339,9 @@ static mut BUSY: u8 = 0;
 ///
 /// # Examples
 ///
-/// ```ignore
+/// ```
 /// use osal_rs::print;
-/// 
+///
 /// print!("Hello");
 /// print!(" World: {}", 42);
 /// ```
@@ -356,9 +358,9 @@ macro_rules! print {
 ///
 /// # Examples
 ///
-/// ```ignore
+/// ```
 /// use osal_rs::println;
-/// 
+///
 /// println!("Hello World");
 /// println!("Value: {}", 42);
 /// println!();  // Just a newline
@@ -417,12 +419,12 @@ pub fn print_newline() {
 ///
 /// # Examples
 ///
-/// ```ignore
+/// ```
 /// use osal_rs::log::*;
-/// 
+///
 /// // Show only warnings and errors
 /// set_level_log(log_levels::LEVEL_WARNING);
-/// 
+///
 /// // Show all messages
 /// set_level_log(log_levels::LEVEL_DEBUG);
 /// ```
@@ -443,9 +445,9 @@ pub fn set_level_log(level: u8) {
 ///
 /// # Examples
 ///
-/// ```ignore
+/// ```
 /// use osal_rs::log::set_enable_log;
-/// 
+///
 /// set_enable_log(false);  // Disable all logging
 /// // ... logs will not be printed ...
 /// set_enable_log(true);   // Re-enable logging
@@ -468,9 +470,9 @@ pub fn set_enable_log(enabled: bool) {
 ///
 /// # Examples
 ///
-/// ```ignore
+/// ```
 /// use osal_rs::log::get_enable_log;
-/// 
+///
 /// if get_enable_log() {
 ///     println!("Logging is active");
 /// }
@@ -491,9 +493,9 @@ pub fn get_enable_log() -> bool {
 ///
 /// # Examples
 ///
-/// ```ignore
+/// ```
 /// use osal_rs::log::*;
-/// 
+///
 /// if is_enabled_log(log_levels::FLAG_DEBUG) {
 ///     // Debug logging is active
 /// }
@@ -510,9 +512,9 @@ pub fn is_enabled_log(log_type: u8) -> bool {
 ///
 /// # Examples
 ///
-/// ```ignore
+/// ```
 /// use osal_rs::log::*;
-/// 
+///
 /// let level = get_level_log();
 /// ```
 pub fn get_level_log() -> u8 {
@@ -534,9 +536,9 @@ pub fn get_level_log() -> u8 {
 ///
 /// # Examples
 ///
-/// ```ignore
+/// ```
 /// use osal_rs::log::set_enable_color;
-/// 
+///
 /// set_enable_color(true);   // Enable colored output
 /// set_enable_color(false);  // Disable colors
 /// ```
@@ -590,9 +592,9 @@ pub fn set_enable_color(enabled: bool) {
 ///
 /// # Examples
 ///
-/// ```ignore
+/// ```
 /// use osal_rs::log::*;
-/// 
+///
 /// sys_log("APP", log_levels::FLAG_INFO, "Application started");
 /// sys_log("NET", log_levels::FLAG_ERROR, "Connection failed");
 /// ```
@@ -661,9 +663,12 @@ pub fn sys_log(tag: &str, log_type: u8, to_print: &str) {
 ///
 /// # Examples
 ///
-/// ```ignore
+/// ```
 /// use osal_rs::log_debug;
-/// 
+///
+/// let counter = 5;
+/// let status = "OK";
+///
 /// log_debug!("APP", "Initializing subsystem");
 /// log_debug!("APP", "Counter: {}, Status: {}", counter, status);
 /// ```
@@ -691,9 +696,11 @@ macro_rules! log_debug {
 ///
 /// # Examples
 ///
-/// ```ignore
+/// ```
 /// use osal_rs::log_info;
-/// 
+///
+/// let ip_addr = "192.168.1.1";
+///
 /// log_info!("APP", "System initialized successfully");
 /// log_info!("NET", "Connected to server at {}", ip_addr);
 /// ```
@@ -721,9 +728,11 @@ macro_rules! log_info {
 ///
 /// # Examples
 ///
-/// ```ignore
+/// ```
 /// use osal_rs::log_warning;
-/// 
+///
+/// let temp = 85;
+///
 /// log_warning!("MEM", "Memory usage above 80%");
 /// log_warning!("SENSOR", "Temperature high: {} C", temp);
 /// ```
@@ -751,9 +760,11 @@ macro_rules! log_warning {
 ///
 /// # Examples
 ///
-/// ```ignore
+/// ```
 /// use osal_rs::log_error;
-/// 
+///
+/// let error = "timeout";
+///
 /// log_error!("FS", "Failed to open file");
 /// log_error!("NET", "Connection timeout: {}", error);
 /// ```
@@ -781,9 +792,11 @@ macro_rules! log_error {
 ///
 /// # Examples
 ///
-/// ```ignore
+/// ```
 /// use osal_rs::log_fatal;
-/// 
+///
+/// let fault_code = 0x1;
+///
 /// log_fatal!("SYS", "Kernel panic!");
 /// log_fatal!("HW", "Hardware fault detected: {}", fault_code);
 /// ```

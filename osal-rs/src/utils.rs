@@ -113,7 +113,7 @@ use osal_rs_serde::{Deserialize, Serialize};
 ///
 /// ## Basic usage with static errors
 ///
-/// ```ignore
+/// ```
 /// use osal_rs::os::{Queue, QueueFn};
 /// use osal_rs::utils::Error;
 /// 
@@ -126,7 +126,7 @@ use osal_rs_serde::{Deserialize, Serialize};
 ///
 /// ## Using borrowed error messages
 ///
-/// ```ignore
+/// ```
 /// use osal_rs::utils::Error;
 /// 
 /// fn validate_input(input: &str) -> core::result::Result<(), Error> {
@@ -239,7 +239,7 @@ impl<'a> Display for Error<'a> {
 ///
 /// # Examples
 ///
-/// ```ignore
+/// ```
 /// use osal_rs::utils::{CpuRegisterSize, register_bit_size};
 ///
 /// match register_bit_size() {
@@ -271,21 +271,21 @@ pub enum CpuRegisterSize {
 ///
 /// # Examples
 ///
-/// ```ignore
+/// ```
 /// use osal_rs::os::{Semaphore, SemaphoreFn};
 /// use osal_rs::utils::OsalRsBool;
 /// use core::time::Duration;
-/// 
+///
 /// let sem = Semaphore::new(1, 1).unwrap();
-/// 
+///
 /// match sem.wait(Duration::from_millis(100)) {
 ///     OsalRsBool::True => println!("Acquired semaphore"),
 ///     OsalRsBool::False => println!("Failed to acquire"),
 /// }
-/// 
-/// // Can also convert to bool
-/// if sem.signal().into() {
-///     println!("Semaphore signaled");
+///
+/// match sem.signal() {
+///     OsalRsBool::True => println!("Semaphore signaled"),
+///     OsalRsBool::False => println!("Failed to signal"),
 /// }
 /// ```
 #[derive(PartialEq, Eq, Clone, Copy, Debug)]
@@ -304,7 +304,7 @@ pub enum OsalRsBool {
 ///
 /// # Examples
 ///
-/// ```ignore
+/// ```
 /// use osal_rs::os::{Mutex, MutexFn};
 /// use osal_rs::utils::MAX_DELAY;
 /// 
@@ -320,13 +320,17 @@ pub const MAX_DELAY: Duration = Duration::from_millis(usize::MAX as u64);
 ///
 /// # Examples
 ///
-/// ```ignore
+/// ```
 /// use osal_rs::utils::Result;
+///
+/// struct ResourceHandle;
 ///
 /// fn create_resource() -> Result<ResourceHandle> {
 ///     // Returns Result<ResourceHandle, Error<'static>>
-///     Ok(ResourceHandle::new())
+///     Ok(ResourceHandle)
 /// }
+///
+/// assert!(create_resource().is_ok());
 /// ```
 pub type Result<T, E = Error<'static>> = core::result::Result<T, E>;
 
@@ -359,7 +363,7 @@ pub type ConstPtr = *const c_void;
 ///
 /// # Examples
 ///
-/// ```ignore
+/// ```
 /// use osal_rs::utils::{register_bit_size, CpuRegisterSize};
 /// 
 /// match register_bit_size() {
@@ -396,7 +400,7 @@ pub const fn register_bit_size() -> CpuRegisterSize {
 ///
 /// # Examples
 ///
-/// ```ignore
+/// ```
 /// use osal_rs::thread_extract_param;
 /// use osal_rs::utils::Result;
 /// use core::any::Any;
@@ -442,12 +446,18 @@ macro_rules! thread_extract_param {
 /// * The value contained in the static variable if it is `Some`
 /// * Panics if the static variable is `None`, with a message indicating it is not initialized
 /// # Examples
-/// ```ignore
+/// ```
 /// use osal_rs::access_static_option;
-/// static mut CONFIG: Option<Config> = None;
+///
+/// struct Config;
+///
+/// static mut CONFIG: Option<Config> = Some(Config);
+///
 /// fn get_config() -> &'static Config {
 ///     access_static_option!(CONFIG)
 /// }
+///
+/// get_config();
 /// ```
 /// 
 /// Note: This macro assumes that the static variable is of type `Option<T>` and that it is initialized at runtime before being accessed. It is intended for use with static variables that are set up during initialization phases of the program, such as in embedded systems where certain resources are not available at compile time.
@@ -459,15 +469,23 @@ macro_rules! thread_extract_param {
 /// accessing it, such as after an initialization function has been called.
 /// # Alternative
 /// For safer access to static variables, consider using a function that returns a `Result` instead of panicking, allowing the caller to handle the error condition gracefully.
-/// ```ignore
-/// fn get_config() -> Result<&'static Config, Error> {
-///    unsafe {
-///       match &*&raw const CONFIG {
-///         Some(config) => Ok(config),
-///        None => Err(Error::Unhandled("CONFIG is not initialized")),
+/// ```
+/// use osal_rs::utils::{Error, Result};
+///
+/// struct Config;
+///
+/// static mut CONFIG: Option<Config> = Some(Config);
+///
+/// fn get_config() -> Result<&'static Config> {
+///     unsafe {
+///         match &*&raw const CONFIG {
+///             Some(config) => Ok(config),
+///             None => Err(Error::Unhandled("CONFIG is not initialized")),
+///         }
 ///     }
-///  }
 /// }
+///
+/// assert!(get_config().is_ok());
 /// ```
 /// This alternative approach allows for error handling without panicking, which can be more appropriate in many contexts, especially in production code or libraries where robustness is important.
 /// # Note
@@ -499,7 +517,7 @@ macro_rules! access_static_option {
 ///
 /// # Examples
 ///
-/// ```ignore
+/// ```
 /// use osal_rs::utils::AsSyncStr;
 /// 
 /// struct ThreadSafeName {
@@ -564,19 +582,19 @@ impl Display for dyn AsSyncStr + '_ {
 ///
 /// # Examples
 ///
-/// ```ignore
+/// ```
 /// use osal_rs::utils::Bytes;
 /// 
 /// // Create an empty 32-byte buffer
 /// let mut buffer = Bytes::<32>::new();
 /// 
 /// // Create a buffer from a string
-/// let name = Bytes::<16>::new_by_str("TaskName");
+/// let name = Bytes::<16>::from_str("TaskName");
 /// println!("{}", name); // Prints "TaskName"
 /// 
 /// // Create from any type that implements ToString
 /// let number = 42;
-/// let num_bytes = Bytes::<8>::new_by_string(&number);
+/// let num_bytes = Bytes::<8>::from_as_sync_str(&number);
 /// ```
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct Bytes<const SIZE: usize> (pub [u8; SIZE]);
@@ -590,10 +608,10 @@ impl<const SIZE: usize> Deref for Bytes<SIZE> {
     ///
     /// # Examples
     ///
-    /// ```ignore
+    /// ```
     /// use osal_rs::utils::Bytes;
     /// 
-    /// let bytes = Bytes::<8>::new_by_str("test");
+    /// let bytes = Bytes::<8>::from_str("test");
     /// assert_eq!(bytes[0], b't');
     /// ```
     fn deref(&self) -> &Self::Target {
@@ -609,7 +627,7 @@ impl<const SIZE: usize> DerefMut for Bytes<SIZE> {
     ///
     /// # Examples
     ///
-    /// ```ignore
+    /// ```
     /// use osal_rs::utils::Bytes;
     /// 
     /// let mut bytes = Bytes::<8>::new();
@@ -636,10 +654,10 @@ impl<const SIZE: usize> Display for Bytes<SIZE> {
     ///
     /// # Examples
     ///
-    /// ```ignore
+    /// ```
     /// use osal_rs::utils::Bytes;
     /// 
-    /// let bytes = Bytes::<16>::new_by_str("Hello");
+    /// let bytes = Bytes::<16>::from_str("Hello");
     /// println!("{}", bytes); // Prints "Hello"
     /// ```
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
@@ -663,9 +681,9 @@ impl<const SIZE: usize> FromStr for Bytes<SIZE> {
     /// with the string data and padding with spaces if necessary.
     ///
     /// # Examples
-    //// ```ignore
+    /// ```
     /// use osal_rs::utils::Bytes;
-    /// 
+    ///
     /// let bytes: Bytes<16> = "Hello".parse().unwrap();
     /// println!("{}", bytes); // Prints "Hello"
     /// ```
@@ -684,7 +702,7 @@ impl<const SIZE: usize> From<&str> for Bytes<SIZE> {
     ///
     /// # Examples
     ///
-    /// ```ignore
+    /// ```
     /// use osal_rs::utils::Bytes;
     /// 
     /// let bytes: Bytes<16> = "Hello".into();
@@ -785,6 +803,7 @@ impl<const SIZE: usize> Serialize for Bytes<SIZE> {
     /// # Returns
     ///
     /// A reference to the internal byte array.
+    #[inline]
     fn to_bytes(&self) -> &[u8] {
         &self.0
     }
@@ -809,13 +828,14 @@ impl<const SIZE: usize> Deserialize for Bytes<SIZE> {
     ///
     /// # Examples
     ///
-    /// ```ignore
+    /// ```
     /// use osal_rs::utils::Bytes;
     /// use osal_rs::os::Deserialize;
-    /// 
+    ///
     /// let data = b"Hello";
-    /// let bytes = Bytes::<16>::from_bytes(data).unwrap();
+    /// let bytes = <Bytes<16> as Deserialize>::from_bytes(data).unwrap();
     /// // Result: [b'H', b'e', b'l', b'l', b'o', 0, 0, 0, ...]
+    /// assert_eq!(bytes.as_str(), "Hello");
     /// ```
     fn from_bytes(bytes: &[u8]) -> Result<Self> {
         let mut array = [0u8; SIZE];
@@ -829,7 +849,7 @@ impl<const SIZE: usize> Deserialize for Bytes<SIZE> {
 /// Default implementation for `Bytes<SIZE>`.
 /// This provides a default value for `Bytes<SIZE>`, which is a zero-initialized byte array. This allows `Bytes` to be used in contexts that require a default value, such as when using the `Default` trait or when initializing variables without explicit values.
 /// # Examples
-/// ```ignore
+/// ```
 /// use osal_rs::utils::Bytes;
 /// 
 /// let default_bytes: Bytes<16> = Default::default();
@@ -847,7 +867,7 @@ impl<const SIZE: usize> Default for Bytes<SIZE> {
     ///
     /// # Examples
     ///
-    /// ```ignore
+    /// ```
     /// use osal_rs::utils::Bytes;
     /// 
     /// let default_bytes: Bytes<16> = Default::default();
@@ -870,7 +890,7 @@ impl<const SIZE: usize> Bytes<SIZE> {
     ///
     /// # Examples
     ///
-    /// ```ignore
+    /// ```
     /// use osal_rs::utils::Bytes;
     /// 
     /// const BUFFER: Bytes<64> = Bytes::new();
@@ -899,16 +919,16 @@ impl<const SIZE: usize> Bytes<SIZE> {
     ///
     /// # Examples
     ///
-    /// ```ignore
+    /// ```
     /// use osal_rs::utils::Bytes;
     ///
-    /// let short = Bytes::<16>::new_by_str("Hi");
+    /// let short = Bytes::<16>::from_str("Hi");
     /// // Internal array: [b'H', b'i', 0, 0, 0, ...]
     ///
-    /// let exact = Bytes::<5>::new_by_str("Hello");
+    /// let exact = Bytes::<5>::from_str("Hello");
     /// // Internal array: [b'H', b'e', b'l', b'l', b'o']
     ///
-    /// let long = Bytes::<3>::new_by_str("Hello");
+    /// let long = Bytes::<3>::from_str("Hello");
     /// // Internal array: [b'H', b'e', b'l'] (truncated)
     /// ```
     pub fn from_str(str: &str) -> Self {
@@ -951,22 +971,21 @@ impl<const SIZE: usize> Bytes<SIZE> {
     ///
     /// # Examples
     ///
-    /// ```ignore
+    /// ```
     /// use osal_rs::utils::Bytes;
-    /// use core::ffi::c_char;
-    /// use alloc::ffi::CString;
+    /// use std::ffi::CString;
     ///
     /// // From a CString
     /// let c_string = CString::new("Hello").unwrap();
-    /// let bytes = Bytes::<16>::new_by_ptr(c_string.as_ptr());
+    /// let bytes = Bytes::<16>::from_char_ptr(c_string.as_ptr());
     ///
     /// // From a null pointer
-    /// let null_bytes = Bytes::<16>::new_by_ptr(core::ptr::null());
+    /// let null_bytes = Bytes::<16>::from_char_ptr(core::ptr::null());
     /// // Returns zero-initialized Bytes
     ///
     /// // Truncation example
     /// let long_string = CString::new("This is a very long string").unwrap();
-    /// let short_bytes = Bytes::<8>::new_by_ptr(long_string.as_ptr());
+    /// let short_bytes = Bytes::<8>::from_char_ptr(long_string.as_ptr());
     /// // Only first 8 bytes are copied
     /// ```
     pub fn from_char_ptr(ptr: *const c_char) -> Self {
@@ -1005,11 +1024,9 @@ impl<const SIZE: usize> Bytes<SIZE> {
     /// A `Bytes` instance containing the data from the source pointer, or zero-initialized if the pointer is null.
     /// 
     /// # Examples
-    /// ```ignore
+    /// ```
     /// use osal_rs::utils::Bytes;
-    /// use core::ffi::c_uchar;
-    /// use alloc::ffi::CString;
-    /// 
+    ///
     /// // From a C unsigned char pointer
     /// let data = [b'H', b'e', b'l', b'l', b'o', 0];
     /// let bytes = Bytes::<16>::from_uchar_ptr(data.as_ptr());
@@ -1044,7 +1061,7 @@ impl<const SIZE: usize> Bytes<SIZE> {
 
     /// Creates a new `Bytes` instance from any type implementing `ToString`.
     ///
-    /// This is a convenience wrapper around [`new_by_str`](Self::new_by_str)
+    /// This is a convenience wrapper around [`from_str`](Self::from_str)
     /// that first converts the input to a string.
     ///
     /// # Parameters
@@ -1057,15 +1074,15 @@ impl<const SIZE: usize> Bytes<SIZE> {
     ///
     /// # Examples
     ///
-    /// ```ignore
+    /// ```
     /// use osal_rs::utils::Bytes;
     ///
     /// // From integer
-    /// let num_bytes = Bytes::<8>::new_by_string(&42);
+    /// let num_bytes = Bytes::<8>::from_as_sync_str(&42);
     ///
     /// // From String
     /// let string = String::from("Task");
-    /// let str_bytes = Bytes::<16>::new_by_string(&string);
+    /// let str_bytes = Bytes::<16>::from_as_sync_str(&string);
     ///
     /// // From custom type with ToString
     /// #[derive(Debug)]
@@ -1075,7 +1092,7 @@ impl<const SIZE: usize> Bytes<SIZE> {
     ///         format!("Task-{}", self.0)
     ///     }
     /// }
-    /// let task_bytes = Bytes::<16>::new_by_string(&TaskId(5));
+    /// let task_bytes = Bytes::<16>::from_as_sync_str(&TaskId(5));
     /// ```
     #[inline]
     pub fn from_as_sync_str(str: &impl ToString) -> Self {
@@ -1093,7 +1110,7 @@ impl<const SIZE: usize> Bytes<SIZE> {
     /// A `Bytes` instance containing the data from the byte slice.
     /// 
     /// # Examples
-    /// ```ignore
+    /// ```
     /// use osal_rs::utils::Bytes;
     /// 
     /// let data = b"Hello";
@@ -1123,14 +1140,14 @@ impl<const SIZE: usize> Bytes<SIZE> {
     ///
     /// # Examples
     ///
-    /// ```ignore
+    /// ```
     /// use osal_rs::utils::Bytes;
-    /// 
-    /// let bytes = Bytes::<16>::new_by_str("Hello World");
-    /// 
+    ///
+    /// let mut bytes = Bytes::<16>::from_str("Hello World");
+    ///
     /// let mut output = String::from("                "); // 16 spaces
-    /// bytes.fill_str(unsafe { output.as_mut_str() });
-    /// 
+    /// bytes.fill_str(output.as_mut_str());
+    ///
     /// assert_eq!(&output[..11], "Hello World");
     /// ```
     pub fn fill_str(&mut self, dest: &mut str) -> Result<()>{
@@ -1148,7 +1165,7 @@ impl<const SIZE: usize> Bytes<SIZE> {
 
     /// Creates a new `Bytes` instance from a C string pointer.
     ///
-    /// This is a convenience wrapper around [`new_by_ptr`](Self::new_by_ptr) that directly converts a C string pointer to a `Bytes` instance.
+    /// This is a convenience wrapper around [`from_char_ptr`](Self::from_char_ptr) that directly converts a C string pointer to a `Bytes` instance.
     /// If the pointer is null, it returns a zero-initialized `Bytes`. The function copies bytes from the C string into the fixed-size array, truncating if the source is longer than `SIZE`.
     ///
     /// # Parameters
@@ -1169,19 +1186,18 @@ impl<const SIZE: usize> Bytes<SIZE> {
     ///
     /// # Examples
     ///
-    /// ```ignore
+    /// ```
     /// use osal_rs::utils::Bytes;
-    /// use core::ffi::c_char;
-    /// use alloc::ffi::CString;
-    /// 
+    /// use std::ffi::CString;
+    ///
     /// // From a CString
     /// let c_string = CString::new("Hello").unwrap();
     /// let bytes = Bytes::<16>::from_cstr(c_string.as_ptr());
-    /// 
+    ///
     /// // From a null pointer
     /// let null_bytes = Bytes::<16>::from_cstr(core::ptr::null());
     /// // Returns zero-initialized Bytes
-    /// 
+    ///
     /// // Truncation example
     /// let long_string = CString::new("This is a very long string").unwrap();
     /// let short_bytes = Bytes::<8>::from_cstr(long_string.as_ptr());
@@ -1189,6 +1205,10 @@ impl<const SIZE: usize> Bytes<SIZE> {
     /// ```
     #[inline]
     pub fn from_cstr(str: *const c_char) -> Self {
+        if str.is_null() {
+            return Self::new();
+        }
+
         Self::from_bytes(unsafe { CStr::from_ptr(str) }.to_bytes())
     }
 
@@ -1213,16 +1233,16 @@ impl<const SIZE: usize> Bytes<SIZE> {
     ///
     /// # Examples
     ///
-    /// ```ignore
+    /// ```no_run
     /// use osal_rs::utils::Bytes;
-    /// 
-    /// let bytes = Bytes::<16>::new_by_str("Hello");
+    ///
+    /// let bytes = Bytes::<16>::from_str("Hello");
     /// let c_str = bytes.as_cstr();
-    /// 
-    /// extern "C" {
+    ///
+    /// unsafe extern "C" {
     ///     fn print_string(s: *const core::ffi::c_char);
     /// }
-    /// 
+    ///
     /// unsafe {
     ///     print_string(c_str.as_ptr());
     /// }
@@ -1246,7 +1266,7 @@ impl<const SIZE: usize> Bytes<SIZE> {
     ///
     /// # Examples
     ///
-    /// ```ignore
+    /// ```
     /// use osal_rs::utils::Bytes;
     /// 
     /// let mut bytes = Bytes::<16>::new();
@@ -1279,14 +1299,14 @@ impl<const SIZE: usize> Bytes<SIZE> {
     /// ```
     /// use osal_rs::utils::Bytes;
     ///
-    /// let mut bytes = Bytes::<16>::new_by_str("Hello");
+    /// let mut bytes = Bytes::<16>::from_str("Hello");
     /// bytes.append_str(" World");
     /// assert_eq!(bytes.as_str(), "Hello World");
     ///
     /// // Truncation when exceeding buffer size
-    /// let mut small_bytes = Bytes::<8>::new_by_str("Hi");
+    /// let mut small_bytes = Bytes::<8>::from_str("Hi");
     /// small_bytes.append_str(" there friend");
-    /// assert_eq!(small_bytes.as_str(), "Hi ther");
+    /// assert_eq!(small_bytes.as_str(), "Hi there");
     /// ```
     pub fn append_str(&mut self, str: &str) {
         let current_len = self.0.iter().position(|&b| b == 0).unwrap_or(SIZE);
@@ -1313,11 +1333,11 @@ impl<const SIZE: usize> Bytes<SIZE> {
     ///
     /// # Examples
     ///
-    /// ```ignore
+    /// ```
     /// use osal_rs::utils::Bytes;
     ///
-    /// let mut bytes = Bytes::<16>::new_by_str("Hello");
-    /// let other_bytes = Bytes::<8>::new_by_str(" World");
+    /// let mut bytes = Bytes::<16>::from_str("Hello");
+    /// let other_bytes = Bytes::<8>::from_str(" World");
     /// bytes.append_as_sync_str(&other_bytes);
     /// assert_eq!(bytes.as_str(), "Hello World");
     /// ```
@@ -1349,12 +1369,12 @@ impl<const SIZE: usize> Bytes<SIZE> {
     /// ```
     /// use osal_rs::utils::Bytes;
     ///
-    /// let mut bytes = Bytes::<16>::new_by_str("Hello");
+    /// let mut bytes = Bytes::<16>::from_str("Hello");
     /// bytes.append_bytes(b" World");
     /// assert_eq!(bytes.as_str(), "Hello World");
     ///
     /// // Appending arbitrary bytes
-    /// let mut data = Bytes::<16>::new_by_str("Data: ");
+    /// let mut data = Bytes::<16>::from_str("Data: ");
     /// data.append_bytes(&[0x41, 0x42, 0x43]);
     /// assert_eq!(data.as_str(), "Data: ABC");
     /// ```
@@ -1391,16 +1411,16 @@ impl<const SIZE: usize> Bytes<SIZE> {
     /// ```
     /// use osal_rs::utils::Bytes;
     ///
-    /// let mut bytes = Bytes::<16>::new_by_str("Hello");
-    /// let other = Bytes::<8>::new_by_str(" World");
+    /// let mut bytes = Bytes::<16>::from_str("Hello");
+    /// let other = Bytes::<8>::from_str(" World");
     /// bytes.append(&other);
     /// assert_eq!(bytes.as_str(), "Hello World");
     ///
     /// // Appending from a larger buffer
-    /// let mut small = Bytes::<8>::new_by_str("Hi");
-    /// let large = Bytes::<32>::new_by_str(" there friend");
+    /// let mut small = Bytes::<8>::from_str("Hi");
+    /// let large = Bytes::<32>::from_str(" there friend");
     /// small.append(&large);
-    /// assert_eq!(small.as_str(), "Hi ther");
+    /// assert_eq!(small.as_str(), "Hi there");
     /// ```
     pub fn append<const OTHER_SIZE: usize>(&mut self, other: &Bytes<OTHER_SIZE>) {
         let current_len = self.0.iter().position(|&b| b == 0).unwrap_or(SIZE);
@@ -1430,12 +1450,12 @@ impl<const SIZE: usize> Bytes<SIZE> {
     /// ```
     /// use osal_rs::utils::Bytes;
     ///
-    /// let mut bytes = Bytes::<16>::new_by_str("World");
+    /// let mut bytes = Bytes::<16>::from_str("World");
     /// bytes.prepend_str("Hello ");
     /// assert_eq!(bytes.as_str(), "Hello World");
     ///
     /// // Truncation when exceeding buffer size
-    /// let mut small = Bytes::<8>::new_by_str("World");
+    /// let mut small = Bytes::<8>::from_str("World");
     /// small.prepend_str("Hello ");
     /// assert_eq!(small.as_str(), "Hello Wo");
     /// ```
@@ -1466,11 +1486,11 @@ impl<const SIZE: usize> Bytes<SIZE> {
     ///
     /// # Examples
     ///
-    /// ```ignore
+    /// ```
     /// use osal_rs::utils::Bytes;
     ///
-    /// let mut bytes = Bytes::<16>::new_by_str("World");
-    /// let prefix = Bytes::<8>::new_by_str("Hello ");
+    /// let mut bytes = Bytes::<16>::from_str("World");
+    /// let prefix = Bytes::<8>::from_str("Hello ");
     /// bytes.prepend_as_sync_str(&prefix);
     /// assert_eq!(bytes.as_str(), "Hello World");
     /// ```
@@ -1493,12 +1513,12 @@ impl<const SIZE: usize> Bytes<SIZE> {
     /// ```
     /// use osal_rs::utils::Bytes;
     ///
-    /// let mut bytes = Bytes::<16>::new_by_str("World");
+    /// let mut bytes = Bytes::<16>::from_str("World");
     /// bytes.prepend_bytes(b"Hello ");
     /// assert_eq!(bytes.as_str(), "Hello World");
     ///
     /// // Prepending arbitrary bytes
-    /// let mut data = Bytes::<16>::new_by_str("BC");
+    /// let mut data = Bytes::<16>::from_str("BC");
     /// data.prepend_bytes(&[0x41]); // 'A'
     /// assert_eq!(data.as_str(), "ABC");
     /// ```
@@ -1536,14 +1556,14 @@ impl<const SIZE: usize> Bytes<SIZE> {
     /// ```
     /// use osal_rs::utils::Bytes;
     ///
-    /// let mut bytes = Bytes::<16>::new_by_str("World");
-    /// let prefix = Bytes::<8>::new_by_str("Hello ");
+    /// let mut bytes = Bytes::<16>::from_str("World");
+    /// let prefix = Bytes::<8>::from_str("Hello ");
     /// bytes.prepend(&prefix);
     /// assert_eq!(bytes.as_str(), "Hello World");
     ///
     /// // Prepending from a larger buffer with truncation
-    /// let mut small = Bytes::<8>::new_by_str("end");
-    /// let large = Bytes::<32>::new_by_str("begin_");
+    /// let mut small = Bytes::<8>::from_str("end");
+    /// let large = Bytes::<32>::from_str("begin_");
     /// small.prepend(&large);
     /// assert_eq!(small.as_str(), "begin_en");
     /// ```
@@ -1560,10 +1580,10 @@ impl<const SIZE: usize> Bytes<SIZE> {
     ///
     /// # Examples
     ///
-    /// ```ignore
+    /// ```
     /// use osal_rs::utils::Bytes;
     ///
-    /// let mut bytes = Bytes::<16>::new_by_str("Hello");
+    /// let mut bytes = Bytes::<16>::from_str("Hello");
     /// assert!(!bytes.is_empty());
     ///
     /// bytes.clear();
@@ -1589,10 +1609,10 @@ impl<const SIZE: usize> Bytes<SIZE> {
     ///
     /// # Examples
     ///
-    /// ```ignore
+    /// ```
     /// use osal_rs::utils::Bytes;
     ///
-    /// let bytes = Bytes::<16>::new_by_str("Hello");
+    /// let bytes = Bytes::<16>::from_str("Hello");
     /// assert_eq!(bytes.len(), 5);
     ///
     /// let empty = Bytes::<16>::new();
@@ -1619,16 +1639,16 @@ impl<const SIZE: usize> Bytes<SIZE> {
     /// A byte slice containing the content of the buffer up to the first null terminator.
     /// 
     /// # Examples
-    /// ```ignore
+    /// ```
     /// use osal_rs::utils::Bytes;
     /// 
-    /// let bytes = Bytes::<16>::new_by_str("Hello");
+    /// let bytes = Bytes::<16>::from_str("Hello");
     /// assert_eq!(bytes.as_raw_bytes(), b"Hello");
     /// 
     /// let empty = Bytes::<16>::new();
     /// assert_eq!(empty.as_raw_bytes(), b"");
     /// 
-    /// let full = Bytes::<4>::new_by_str("ABCD");
+    /// let full = Bytes::<4>::from_str("ABCD");
     /// assert_eq!(full.as_raw_bytes(), b"ABCD");
     /// ``` 
     #[inline]
@@ -1642,13 +1662,13 @@ impl<const SIZE: usize> Bytes<SIZE> {
     /// # Returns
     /// The fixed size of the buffer in bytes (`SIZE`).
     /// # Examples
-    /// ```ignore
+    /// ```
     /// use osal_rs::utils::Bytes;
     /// 
     /// let bytes = Bytes::<32>::new();
     /// assert_eq!(bytes.size(), 32);
     /// 
-    /// let other = Bytes::<128>::new_by_str("Hello");
+    /// let other = Bytes::<128>::from_str("Hello");
     /// assert_eq!(other.size(), 128);
     /// ```
     #[inline]
@@ -1667,16 +1687,16 @@ impl<const SIZE: usize> Bytes<SIZE> {
     ///
     /// # Examples
     ///
-    /// ```ignore
+    /// ```
     /// use osal_rs::utils::Bytes;
     ///
     /// let empty = Bytes::<16>::new();
     /// assert!(empty.is_empty());
     ///
-    /// let bytes = Bytes::<16>::new_by_str("Hello");
+    /// let bytes = Bytes::<16>::from_str("Hello");
     /// assert!(!bytes.is_empty());
     ///
-    /// let mut cleared = Bytes::<16>::new_by_str("Test");
+    /// let mut cleared = Bytes::<16>::from_str("Test");
     /// cleared.clear();
     /// assert!(cleared.is_empty());
     /// ```
@@ -1697,13 +1717,13 @@ impl<const SIZE: usize> Bytes<SIZE> {
     ///
     /// # Examples
     ///
-    /// ```ignore
+    /// ```
     /// use osal_rs::utils::Bytes;
     ///
     /// let bytes = Bytes::<32>::new();
     /// assert_eq!(bytes.capacity(), 32);
     ///
-    /// let other = Bytes::<128>::new_by_str("Hello");
+    /// let other = Bytes::<128>::from_str("Hello");
     /// assert_eq!(other.capacity(), 128);
     /// ```
     #[inline]
@@ -1738,31 +1758,31 @@ impl<const SIZE: usize> Bytes<SIZE> {
     ///
     /// # Examples
     ///
-    /// ```ignore
+    /// ```
     /// use osal_rs::utils::Bytes;
     ///
     /// // Same length replacement
-    /// let mut bytes = Bytes::<16>::new_by_str("Hello World");
+    /// let mut bytes = Bytes::<16>::from_str("Hello World");
     /// bytes.replace(b"World", b"Rust!").unwrap();
     /// assert_eq!(bytes.as_str(), "Hello Rust!");
     ///
     /// // Shorter replacement
-    /// let mut bytes2 = Bytes::<16>::new_by_str("aabbcc");
+    /// let mut bytes2 = Bytes::<16>::from_str("aabbcc");
     /// bytes2.replace(b"bb", b"X").unwrap();
     /// assert_eq!(bytes2.as_str(), "aaXcc");
     ///
     /// // Longer replacement
-    /// let mut bytes3 = Bytes::<16>::new_by_str("Hi");
+    /// let mut bytes3 = Bytes::<16>::from_str("Hi");
     /// bytes3.replace(b"Hi", b"Hello").unwrap();
     /// assert_eq!(bytes3.as_str(), "Hello");
     ///
     /// // Multiple occurrences
-    /// let mut bytes4 = Bytes::<32>::new_by_str("foo bar foo");
+    /// let mut bytes4 = Bytes::<32>::from_str("foo bar foo");
     /// bytes4.replace(b"foo", b"baz").unwrap();
     /// assert_eq!(bytes4.as_str(), "baz bar baz");
     ///
     /// // Buffer overflow error
-    /// let mut small = Bytes::<8>::new_by_str("Hello");
+    /// let mut small = Bytes::<8>::from_str("Hello");
     /// assert!(small.replace(b"Hello", b"Hello World").is_err());
     /// ```
     pub fn replace(&mut self, find: &[u8], replace: &[u8]) -> Result<()> {
@@ -1832,12 +1852,12 @@ impl<const SIZE: usize> Bytes<SIZE> {
     ///
     /// # Examples
     ///
-    /// ```ignore
-    /// use osal_rs::utils::{Bytes, ToBytes};
-    /// 
-    /// let bytes = Bytes::<8>::new_by_str("example");
+    /// ```
+    /// use osal_rs::utils::Bytes;
+    ///
+    /// let bytes = Bytes::<8>::from_str("example");
     /// let byte_slice = bytes.to_bytes();
-    /// assert_eq!(byte_slice, b"example\0\0");
+    /// assert_eq!(byte_slice, b"example\0");
     /// ```
     #[inline]
     pub fn to_bytes(&self) -> &[u8] {
@@ -1855,10 +1875,10 @@ impl<const SIZE: usize> Bytes<SIZE> {
     /// * `None` - If the buffer is empty
     ///
     /// # Examples
-    //// ```ignore
+    /// ```
     /// use osal_rs::utils::Bytes;
-    /// 
-    /// let mut bytes = Bytes::<16>::new_by_str("Hello");
+    ///
+    /// let mut bytes = Bytes::<16>::from_str("Hello");
     /// assert_eq!(bytes.pop(), Some(b'o'));
     /// assert_eq!(bytes.as_str(), "Hell");
     /// 
@@ -1893,10 +1913,10 @@ impl<const SIZE: usize> Bytes<SIZE> {
     ///
     /// # Examples
     ///
-    /// ```ignore
+    /// ```
     /// use osal_rs::utils::Bytes;
     ///
-    /// let mut bytes = Bytes::<16>::new_by_str("Hello");
+    /// let mut bytes = Bytes::<16>::from_str("Hello");
     /// assert_eq!(bytes.push(b'!'), Ok(()));
     /// assert_eq!(bytes.as_str(), "Hello!");
     /// ```
@@ -1921,10 +1941,10 @@ impl<const SIZE: usize> Bytes<SIZE> {
     /// * `None` - If the buffer is empty or if the byte cannot be converted to a valid character
     ///
     /// # Examples
-    //// ```ignore
+    /// ```
     /// use osal_rs::utils::Bytes;
-    /// 
-    /// let mut bytes = Bytes::<16>::new_by_str("Hello");
+    ///
+    /// let mut bytes = Bytes::<16>::from_str("Hello");
     /// assert_eq!(bytes.pop_char(), Some('o'));
     /// assert_eq!(bytes.as_str(), "Hell");
     /// 
@@ -1954,10 +1974,10 @@ impl<const SIZE: usize> Bytes<SIZE> {
     /// * `Err(Error::StringConversionError)` - If the character is not a valid ASCII character or if the buffer is full
     ///
     /// # Examples
-    //// ```ignore
+    /// ```
     /// use osal_rs::utils::Bytes;
-    /// 
-    /// let mut bytes = Bytes::<16>::new_by_str("Hello");
+    ///
+    /// let mut bytes = Bytes::<16>::from_str("Hello");
     /// assert_eq!(bytes.push_char('!'), Ok(()));
     /// assert_eq!(bytes.as_str(), "Hello!");
     /// 
@@ -1982,10 +2002,10 @@ impl<const SIZE: usize> Bytes<SIZE> {
     /// * `false` - If the content contains invalid UTF-8 sequences
     ///
     /// # Examples
-    //// ```ignore
+    /// ```
     /// use osal_rs::utils::Bytes;
-    /// 
-    /// let valid_bytes = Bytes::<16>::new_by_str("Hello");
+    ///
+    /// let valid_bytes = Bytes::<16>::from_str("Hello");
     /// assert!(valid_bytes.is_string());
     /// 
     /// let mut invalid_bytes = Bytes::<16>::new();
@@ -2019,7 +2039,7 @@ impl<const SIZE: usize> Bytes<SIZE> {
     ///
     /// # Examples
     ///
-    /// ```ignore
+    /// ```
     /// use osal_rs::utils::Bytes;
     ///
     /// let mut b = Bytes::<32>::new();
@@ -2059,7 +2079,7 @@ impl<const SIZE: usize> Bytes<SIZE> {
 ///
 /// # Examples
 ///
-/// ```ignore
+/// ```
 /// use osal_rs::utils::bytes_to_hex;
 /// 
 /// let data = &[0x01, 0x23, 0xAB, 0xFF];
@@ -2098,7 +2118,7 @@ pub fn bytes_to_hex(bytes: &[u8]) -> String {
 ///
 /// # Examples
 ///
-/// ```ignore
+/// ```
 /// use osal_rs::utils::bytes_to_hex_into_slice;
 /// 
 /// let data = &[0x01, 0xAB, 0xFF];
@@ -2145,7 +2165,7 @@ pub fn bytes_to_hex_into_slice(bytes: &[u8], output: &mut [u8]) -> usize {
 ///
 /// # Examples
 ///
-/// ```ignore
+/// ```
 /// use osal_rs::utils::hex_to_bytes;
 /// 
 /// // Lowercase hex
@@ -2199,7 +2219,7 @@ pub fn hex_to_bytes(hex: &str) -> Result<Vec<u8>> {
 ///
 /// # Examples
 ///
-/// ```ignore
+/// ```
 /// use osal_rs::utils::hex_to_bytes_into_slice;
 /// 
 /// let mut buffer = [0u8; 4];

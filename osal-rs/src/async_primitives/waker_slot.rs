@@ -45,6 +45,7 @@ pub struct WakerSlot(AtomicPtr<Waker>);
 
 impl WakerSlot {
     /// Creates an empty slot.
+    #[inline]
     pub const fn new() -> Self {
         Self(AtomicPtr::new(core::ptr::null_mut()))
     }

@@ -46,10 +46,10 @@
 //! ```ignore
 //! // Don't use FFI directly - use safe wrappers instead:
 //! use osal_rs::os::{Thread, ThreadFn};
-//! 
+//!
 //! // This is safe:
 //! let thread = Thread::new("task", 1024, 5);
-//! 
+//!
 //! // This is unsafe and should be avoided:
 //! // unsafe { xTaskCreate(...) }
 //! ```
@@ -83,11 +83,6 @@ pub(super) type TaskState = c_uint;
 pub(super) mod task {
     use super::TaskState;
 
-    pub(in crate::freertos) const RUNNING: TaskState = 0;
-    pub(in crate::freertos) const READY: TaskState = 1;
-    pub(in crate::freertos) const BLOCKED: TaskState = 2;
-    pub(in crate::freertos) const SUSPENDED: TaskState = 3;
-    pub(in crate::freertos) const DELETED: TaskState = 4;
     pub(in crate::freertos) const INVALID: TaskState = 5;
 }
 
@@ -215,8 +210,6 @@ unsafe extern "C" {
 
     pub(super) fn xTaskGetCurrentTaskHandle() -> ThreadHandle;
 
-    pub(super) fn eTaskGetState(xTask: ThreadHandle) -> TaskState;
-
     pub(super) fn uxTaskGetNumberOfTasks() -> UBaseType;
 
     pub(super) fn uxTaskGetSystemState(
@@ -225,11 +218,11 @@ unsafe extern "C" {
         pulTotalRunTime: *mut u32,
     ) -> UBaseType;
 
-    pub(super) fn osal_rs_task_enter_critical();
-    pub(super) fn osal_rs_task_exit_critical();
+    pub(super) fn osal_rs_enter_critical_section();
+    pub(super) fn osal_rs_exit_critical_section();
 
-    pub(super) fn osal_rs_task_enter_critical_from_isr() -> UBaseType;
-    pub(super) fn osal_rs_task_exit_critical_from_isr(uxSavedInterruptStatus: UBaseType);
+    pub(super) fn osal_rs_enter_critical_section_from_isr() -> UBaseType;
+    pub(super) fn osal_rs_exit_critical_section_from_isr(uxSavedInterruptStatus: UBaseType);
 
 
     pub(super) fn xTaskCreate(
@@ -319,10 +312,6 @@ unsafe extern "C" {
     pub(super) fn vEventGroupDelete(xEventGroup: EventGroupHandle);
 
     pub(super) fn xEventGroupCreate() -> EventGroupHandle;
-
-    pub(super) fn osal_rs_critical_section_enter();
-
-    pub(super) fn osal_rs_critical_section_exit();
 
     pub(super) fn osal_rs_port_yield_from_isr(pxHigherPriorityTaskWoken: BaseType);
 

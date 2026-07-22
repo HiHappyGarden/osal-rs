@@ -76,10 +76,7 @@
 //! ## Example: Creating a Thread
 //!
 //! ```ignore
-//! use osal_rs::freertos::thread::Thread;
-//! use osal_rs::freertos::system::System;
-//! use osal_rs::traits::Thread as ThreadTrait;
-//! use osal_rs::traits::System as SystemTrait;
+//! use osal_rs::os::*;
 //!
 //! let mut thread = Thread::new("worker", 1024, 5);
 //! thread.spawn_simple(|| {
@@ -95,17 +92,16 @@
 //! ## Example: Using a Queue
 //!
 //! ```ignore
-//! use osal_rs::freertos::queue::Queue;
-//! use osal_rs::traits::Queue as QueueTrait;
+//! use osal_rs::os::*;
 //!
-//! let queue = Queue::new(10, 16).unwrap();
+//! let queue = Queue::new(10, 4).unwrap();
 //!
 //! // Producer
-//! let data = [1, 2, 3, 4];
+//! let data = [1u8, 2, 3, 4];
 //! queue.post(&data, 100).unwrap();
 //!
 //! // Consumer
-//! let mut buffer = [0u8; 16];
+//! let mut buffer = [0u8; 4];
 //! queue.fetch(&mut buffer, 100).unwrap();
 //! ```
 //!

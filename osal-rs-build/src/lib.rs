@@ -20,307 +20,66 @@
  *
  ***************************************************************************/
 
-#[cfg(not(target_os = "none"))]
 use std::env;
-#[cfg(not(target_os = "none"))]
-use std::fs;
-#[cfg(not(target_os = "none"))]
+
 use std::path::PathBuf;
-#[cfg(not(target_os = "none"))]
+use std::convert::AsRef;
+use std::ffi::OsStr;
+use std::fs;
 use std::process::Command;
 
-#[cfg(target_os = "none")]
-pub struct FreeRtosTypeGenerator;
+pub struct TypeGenerator(PathBuf, bool);
 
-#[cfg(target_os = "none")]
-impl FreeRtosTypeGenerator {
-    pub fn new() -> Self {
-        Self
-    }
-
-    pub fn with_config_path<P>(_config_path: P) -> Self {
-        Self
-    }
-
-    pub fn set_config_path<P>(&mut self, _config_path: P) {}
-
-    pub fn generate_types(&self) {}
-
-    pub fn generate_all(&self) {}
-}
-
-#[cfg(target_os = "none")]
-impl Default for FreeRtosTypeGenerator {
-
-    #[inline]
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-#[cfg(not(target_os = "none"))]
-pub struct FreeRtosTypeGenerator {
-    out_dir: PathBuf,
-    config_path: Option<PathBuf>,
-}
-
-#[cfg(not(target_os = "none"))]
-impl FreeRtosTypeGenerator {
-    pub fn new() -> Self {
-        let out_dir = PathBuf::from(env::var("OUT_DIR").expect("OUT_DIR not set"));
-        Self { 
-            out_dir,
-            config_path: None,
-        }
-    }
-
+impl TypeGenerator {
     /// Create a new generator with a custom FreeRTOSConfig.h path
-    pub fn with_config_path<P: Into<PathBuf>>(config_path: P) -> Self {
+    pub fn new<P>(manifest_path: P) -> Self
+    where P: Into<PathBuf> + AsRef<OsStr>
+    {
+        #[cfg(feature = "posix")]
+        {
+            //Avoid unused_variables
+            let _ = manifest_path;
+        }
+
+        #[cfg(feature = "freertos")]
+        {
+            // Initialize the type generator with the FreeRTOS configuration file path.
+            // This will parse FreeRTOSConfig.h and generate Rust type definitions and constants.
+
+            let manifest_path: PathBuf = manifest_path.into();
+
+            let workspace_root = manifest_path
+                .parent() // Go up to osal-rs/
+                .and_then(|p| p.parent()) // Go up to workspace root
+                .expect("Failed to find workspace root");
+
+
+            // Determine the path to FreeRTOSConfig.h.
+            // Priority: Environment variable > Default location
+            let _freertos_config = if let Ok(config_path) = env::var("FREERTOS_CONFIG_PATH") {
+                // Use the path specified in FREERTOS_CONFIG_PATH environment variable
+                PathBuf::from(config_path)
+            } else {
+                // Default: Look for FreeRTOSConfig.h in <workspace_root>/inc/
+                workspace_root.join("inc/FreeRTOSConfig.h")
+            };
+        }
+
         let out_dir = PathBuf::from(env::var("OUT_DIR").expect("OUT_DIR not set"));
-        Self {
-            out_dir,
-            config_path: Some(config_path.into()),
-        }
+        Self (
+            out_dir, false
+        )
     }
 
-    /// Set the FreeRTOSConfig.h path
-    pub fn set_config_path<P: Into<PathBuf>>(&mut self, config_path: P) {
-        self.config_path = Some(config_path.into());
-    }
-
-    /// Query FreeRTOS type sizes and generate Rust type mappings
-    pub fn generate_types(&self) {
-        let (tick_size, ubase_size, base_size, base_signed, stack_size) = self.query_type_sizes();
-        
-        let tick_type = Self::size_to_type(tick_size, false);
-        let ubase_type = Self::size_to_type(ubase_size, false);
-        let base_type = Self::size_to_type(base_size, base_signed);
-        let stack_type = Self::size_to_type(stack_size, true);
-
-        
-        self.write_generated_types(tick_size, tick_type, ubase_size, ubase_type, base_size, base_type, stack_size, stack_type);
-        
-        println!("cargo:warning=Generated FreeRTOS types: TickType={}, UBaseType={}, BaseType={} StackType={}", 
-                 tick_type, ubase_type, base_type, stack_type);
-    }
-
-    /// Query FreeRTOS configuration values and generate Rust constants
-    // pub fn generate_config(&self) {
-    //     let (cpu_clock_hz, tick_rate_hz, max_priorities, minimal_stack_size, max_task_name_len) = self.query_config_values();
-        
-    //     self.write_generated_config(cpu_clock_hz, tick_rate_hz, max_priorities, minimal_stack_size, max_task_name_len);
-        
-    //     println!("cargo:warning=Generated FreeRTOS config: CPU={}Hz, Tick={}Hz, MaxPrio={}, MinStack={}, MaxTaskNameLen={}", 
-    //              cpu_clock_hz, tick_rate_hz, max_priorities, minimal_stack_size, max_task_name_len);
-    // }
-
-    /// Generate both types and config
-    pub fn generate_all(&self) {
-        self.generate_types();
-        // self.generate_config();
-    }
-
-    /// Query the sizes of FreeRTOS types
-    fn query_type_sizes(&self) -> (u16, u16, u16, bool, u16) {
-        // Create a small C program to query the type sizes
-        let query_program = r#"
-#include <stdio.h>
-#include <stdint.h>
-
-// We need to include FreeRTOS headers - path will be provided by the main build
-// For now, we'll use the compiled library approach
-// This is a placeholder - we'll use the already compiled C library
-
-int main() {
-    // Since we can't easily compile against FreeRTOS in the build script,
-    // we'll use a different approach: parse the compile_commands.json or
-    // use predefined types based on common configurations
-    
-    // Common FreeRTOS configurations:
-    // TickType_t is usually uint32_t (4 bytes) on 32-bit systems
-    // UBaseType_t is usually uint32_t (4 bytes) on 32-bit systems  
-    // BaseType_t is usually int32_t (4 bytes) on 32-bit systems
-    // StackType_t is usually long (4 bytes) on 32-bit systems
-    
-    printf("TICK_TYPE_SIZE=%d\n", 4);
-    printf("UBASE_TYPE_SIZE=%d\n", 4);
-    printf("BASE_TYPE_SIZE=%d\n", 4);
-    printf("BASE_TYPE_SIGNED=1\n");
-    printf("STACK_TYPE_SIZE=%d\n", 4);
-    
-    return 0;
-}
-"#;
-        
-        let query_c = self.out_dir.join("query_types.c");
-        fs::write(&query_c, query_program).expect("Failed to write query program");
-        
-        // Compile the query program
-        let query_exe = self.out_dir.join("query_types");
-        let compile_status = Command::new("gcc")
-            .arg(&query_c)
-            .arg("-o")
-            .arg(&query_exe)
-            .status();
-        
-        if compile_status.is_ok() && compile_status.unwrap().success() {
-            // Run the query program
-            let output = Command::new(&query_exe)
-                .output()
-                .expect("Failed to run query program");
-            
-            let stdout = String::from_utf8_lossy(&output.stdout);
-            let mut tick_size = 4u16;
-            let mut ubase_size = 4u16;
-            let mut base_size = 4u16;
-            let mut base_signed = true;
-            let mut stack_type = 4u16;
-            
-            for line in stdout.lines() {
-                if let Some(val) = line.strip_prefix("TICK_TYPE_SIZE=") {
-                    tick_size = val.parse().unwrap_or(4);
-                } else if let Some(val) = line.strip_prefix("UBASE_TYPE_SIZE=") {
-                    ubase_size = val.parse().unwrap_or(4);
-                } else if let Some(val) = line.strip_prefix("BASE_TYPE_SIZE=") {
-                    base_size = val.parse().unwrap_or(4);
-                } else if let Some(val) = line.strip_prefix("BASE_TYPE_SIGNED=") {
-                    base_signed = val.parse::<u8>().unwrap_or(1) == 1;
-                } else if let Some(val) = line.strip_prefix("STACK_TYPE_SIZE=") {
-                    stack_type = val.parse().unwrap_or(4);
-                } 
-            }
-            
-            (tick_size, ubase_size, base_size, base_signed, stack_type)
-        } else {
-            // Default values for 32-bit ARM Cortex-M (typical for Raspberry Pi Pico)
-            (4, 4, 4, true, 4)
-        }
-    }
-
-    /// Query FreeRTOS configuration values by parsing FreeRTOSConfig.h
-    // fn query_config_values(&self) -> (u64, u64, u64, u64, u64) {
-    //     // Use the provided config path or try to auto-detect it
-    //     let config_file = if let Some(ref path) = self.config_path {
-    //         path.clone()
-    //     } else {
-    //         // Try to get the workspace root
-    //         let workspace_root = env::var("CARGO_MANIFEST_DIR")
-    //             .map(|p| PathBuf::from(p).parent().unwrap().parent().unwrap().to_path_buf())
-    //             .ok();
-            
-    //         if let Some(root) = workspace_root {
-    //             root.join("inc/FreeRTOSConfig.h")
-    //         } else {
-    //             // Fallback: try current directory
-    //             PathBuf::from("FreeRTOSConfig.h")
-    //         }
-    //     };
-        
-    //     // Default values
-    //     let mut cpu_clock_hz = 150_000_000u64;
-    //     let mut tick_rate_hz = 1000u64;
-    //     let mut max_priorities = 32u64;
-    //     let mut minimal_stack_size = 512u64;
-    //     let mut max_task_name_len = 16u64;
-        
-    //     // Try to parse the config file
-    //     if config_file.exists() {
-    //         if let Ok(contents) = fs::read_to_string(&config_file) {
-    //             for line in contents.lines() {
-    //                 let line = line.trim();
-                    
-    //                 // Parse #define configCPU_CLOCK_HZ value
-    //                 if line.starts_with("#define") && line.contains("configCPU_CLOCK_HZ") {
-    //                     if let Some(value) = Self::extract_define_value(line) {
-    //                         cpu_clock_hz = value;
-    //                     }
-    //                 }
-    //                 // Parse #define configTICK_RATE_HZ value
-    //                 else if line.starts_with("#define") && line.contains("configTICK_RATE_HZ") {
-    //                     if let Some(value) = Self::extract_define_value(line) {
-    //                         tick_rate_hz = value;
-    //                     }
-    //                 }
-    //                 // Parse #define configMAX_PRIORITIES value
-    //                 else if line.starts_with("#define") && line.contains("configMAX_PRIORITIES") {
-    //                     if let Some(value) = Self::extract_define_value(line) {
-    //                         max_priorities = value;
-    //                     }
-    //                 }
-    //                 // Parse #define configMINIMAL_STACK_SIZE value
-    //                 else if line.starts_with("#define") && line.contains("configMINIMAL_STACK_SIZE") {
-    //                     if let Some(value) = Self::extract_define_value(line) {
-    //                         minimal_stack_size = value;
-    //                     }
-    //                 }
-    //                 // Parse #define configMAX_TASK_NAME_LEN value
-    //                 else if line.starts_with("#define") && line.contains("configMAX_TASK_NAME_LEN") {
-    //                     if let Some(value) = Self::extract_define_value(line) {
-    //                         max_task_name_len = value;
-    //                     }
-    //                 }
-    //             }
-    //             println!("cargo:warning=Successfully parsed FreeRTOS config from {}", config_file.display());
-    //         } else {
-    //             println!("cargo:warning=Failed to read FreeRTOS config file, using defaults");
-    //         }
-    //     } else {
-    //         println!("cargo:warning=FreeRTOS config file not found at {}, using defaults", config_file.display());
-    //     }
-        
-    //     (cpu_clock_hz, tick_rate_hz, max_priorities, minimal_stack_size, max_task_name_len)
-    // }
-    
-    /// Extract numeric value from a #define line
-    // fn extract_define_value(line: &str) -> Option<u64> {
-    //     // Split by whitespace and get the value part (after the macro name)
-    //     let parts: Vec<&str> = line.split_whitespace().collect();
-    //     if parts.len() >= 3 {
-    //         let value_str = parts[2];
-    //         // Remove common suffixes and parentheses
-    //         let cleaned = value_str
-    //             .trim_end_matches('U')
-    //             .trim_end_matches('L')
-    //             .trim_matches('(')
-    //             .trim_matches(')');
-            
-    //         // Try to parse as decimal or hex
-    //         if let Ok(val) = cleaned.parse::<u64>() {
-    //             return Some(val);
-    //         }
-    //         // Try hex format (0x...)
-    //         if cleaned.starts_with("0x") || cleaned.starts_with("0X") {
-    //             if let Ok(val) = u64::from_str_radix(&cleaned[2..], 16) {
-    //                 return Some(val);
-    //             }
-    //         }
-    //     }
-    //     None
-    // }
-
-    /// Convert a size to the corresponding Rust type
-    fn size_to_type(size: u16, signed: bool) -> &'static str {
-        match (size, signed) {
-            (1, false) => "u8",
-            (1, true) => "i8",
-            (2, false) => "u16",
-            (2, true) => "i16",
-            (4, false) => "u32",
-            (4, true) => "i32",
-            (8, false) => "u64",
-            (8, true) => "i64",
-            // Default to u32 for unknown sizes
-            _ => if signed { "i32" } else { "u32" },
-        }
-    }
 
     /// Write the generated types to a file
+    #[allow(dead_code)]
     fn write_generated_types(
         &self,
         tick_size: u16,
         tick_type: &str,
-        ubase_size: u16,
-        ubase_type: &str,
+        u_base_size: u16,
+        u_base_type: &str,
         base_size: u16,
         base_type: &str,
         stack_size: u16,
@@ -343,64 +102,297 @@ pub type StackType = {};
 
 "#,
             tick_size, tick_type,
-            ubase_size, ubase_type,
+            u_base_size, u_base_type,
             base_size, base_type,
             stack_size, stack_type,
             tick_type,
-            ubase_type,
+            u_base_type,
             base_type,
             stack_type
         );
         
-        let types_rs = self.out_dir.join("types_generated.rs");
+        let types_rs = self.0.join("types_generated.rs");
         fs::write(&types_rs, generated_code).expect("Failed to write generated types");
     }
 
-//     /// Write the generated config constants to a file
-//     fn write_generated_config(
-//         &self,
-//         cpu_clock_hz: u64,
-//         tick_rate_hz: u64,
-//         max_priorities: u64,
-//         minimal_stack_size: u64,
-//         max_task_name_len: u64,
-//     ) {
-//         let generated_code = format!(r#"
-// // Auto-generated by build.rs - DO NOT EDIT MANUALLY
-// // This file contains FreeRTOS configuration constants
+    /// Convert a size to the corresponding Rust type
+    #[allow(unused)]
+    fn size_to_type(size: u16, signed: bool) -> &'static str {
+        match (size, signed) {
+            (1, false) => "u8",
+            (1, true) => "i8",
+            (2, false) => "u16",
+            (2, true) => "i16",
+            (4, false) => "u32",
+            (4, true) => "i32",
+            (8, false) => "u64",
+            (8, true) => "i64",
+            // Default to u32 for unknown sizes
+            _ => if signed { "i32" } else { "u32" },
+        }
+    }
 
-// /// FreeRTOS CPU clock frequency in Hz
-// pub const CPU_CLOCK_HZ: u64 = {};
+    /// Enable the `sched_fifo` feature cfg for the crate build when requested.
+    #[allow(unused)]
+    fn enable_sched_fifo(&self) {
+        if self.1 {
+            println!("cargo:rustc-cfg=feature=\"real_time\"");
+        }
+    }
 
-// /// FreeRTOS tick rate in Hz
-// pub const TICK_RATE_HZ: u64 = {};
-
-// /// Maximum number of FreeRTOS priorities
-// pub const MAX_PRIORITIES: u64 = {};
-
-// /// Minimal stack size for FreeRTOS tasks
-// pub const MINIMAL_STACK_SIZE: u64 = {};
-
-// /// Maximum task name length
-// pub const MAX_TASK_NAME_LEN: u64 = {};
-// "#,
-//             cpu_clock_hz,
-//             tick_rate_hz,
-//             max_priorities,
-//             minimal_stack_size,
-//             max_task_name_len
-//         );
-        
-//         let config_rs = self.out_dir.join("config_generated.rs");
-//         fs::write(&config_rs, generated_code).expect("Failed to write generated config");
-//     }
 }
 
-#[cfg(not(target_os = "none"))]
-impl Default for FreeRtosTypeGenerator {
 
-    #[inline]
-    fn default() -> Self {
-        Self::new()
+#[cfg(feature = "posix")]
+impl TypeGenerator {
+
+    pub fn add_rerun_if_changed() {
+        println!("cargo:rerun-if-changed=../osal-rs-porting/posix/src/osal_rs.c");
+        println!("cargo:rerun-if-changed=../osal-rs-porting/posix/inc/osal_rs.h");
+    }
+
+    pub fn generate_types(&mut self) {
+
+        let query_program = r#"
+#include <stdio.h>
+#include <sys/utsname.h>
+
+int main() {
+    struct utsname buffer;
+    if (uname(&buffer) == 0) {
+        printf("ARCH=%s\n", buffer.machine);
+    }
+#if defined(USE_SCHED_FIFO)
+    printf("SCHED_FIFO=1\n");
+#else
+    printf("SCHED_FIFO=0\n");
+#endif
+    return 0;
+}
+"#;
+
+        let query_c = self.0.join("query_types.c");
+        fs::write(&query_c, query_program).expect("Failed to write query program");
+        
+        // Compile the query program
+        let query_exe = self.0.join("query_types");
+        let compile_status = Command::new("gcc")
+            .arg(&query_c)
+            .arg("-o")
+            .arg(&query_exe)
+            .status();
+        
+        if compile_status.is_ok() && compile_status.unwrap().success() {
+            // Run the query program
+            let output = Command::new(&query_exe)
+                .output()
+                .expect("Failed to run query program");
+            
+            let stdout = String::from_utf8_lossy(&output.stdout);
+
+
+            for line in stdout.lines() {
+                //println!("cargo:warning=line:{line}");
+                if let Some(arch) = line.strip_prefix("ARCH=") {
+                    match arch {
+                        "x86_64" | "aarch64" | "riscv64" => {
+                            // 64-bit architectures: native word size is 8 bytes
+                            let tick_size: u16 = 8;
+                            let u_base_size: u16 = 8;
+                            let base_size: u16 = 8;
+                            let base_signed = true;
+                            let stack_size: u16 = 8;
+
+                            let tick_type = Self::size_to_type(tick_size, false);
+                            let u_base_type = Self::size_to_type(u_base_size, false);
+                            let base_type = Self::size_to_type(base_size, base_signed);
+                            let stack_type = Self::size_to_type(stack_size, true);
+
+                            self.write_generated_types(tick_size, tick_type, u_base_size, u_base_type, base_size, base_type, stack_size, stack_type);
+                        }
+                        "x86" | "arm" | "riscv32" => {
+                            // 32-bit architectures: native word size is 4 bytes
+                            let tick_size: u16 = 4;
+                            let u_base_size: u16 = 4;
+                            let base_size: u16 = 4;
+                            let base_signed = true;
+                            let stack_size: u16 = 4;
+
+                            let tick_type = Self::size_to_type(tick_size, false);
+                            let u_base_type = Self::size_to_type(u_base_size, false);
+                            let base_type = Self::size_to_type(base_size, base_signed);
+                            let stack_type = Self::size_to_type(stack_size, true);
+
+                            self.write_generated_types(tick_size, tick_type, u_base_size, u_base_type, base_size, base_type, stack_size, stack_type);
+                        }
+                        //TODO: mac
+                        //TODO: freebsd
+                        other => panic!("osal-rs-build: unsupported POSIX architecture '{other}'"),
+                    }
+                } else if let Some(value) = line.strip_prefix("SCHED_FIFO=") {
+                    self.1 = value == "1";
+                }
+            }
+
+        } else {
+ 
+
+        }
+
+    }
+
+    /// Compile the POSIX porting C source (osal_rs.c) and archive it into a
+    /// static library, then instruct cargo to link it into the crate.
+    pub fn compile_sources(&self) {
+        let src = "../osal-rs-porting/posix/src/osal_rs.c";
+        let inc_dir = "../osal-rs-porting/posix/inc";
+
+        let obj = self.0.join("osal_rs.o");
+        let compile_status = Command::new("gcc")
+            .arg("-c")
+            .arg(src)
+            .arg("-I")
+            .arg(inc_dir)
+            .arg("-o")
+            .arg(&obj)
+            .status()
+            .expect("Failed to invoke gcc to compile osal_rs.c");
+
+        if !compile_status.success() {
+            panic!("osal-rs-build: failed to compile {src}");
+        }
+
+        let lib = self.0.join("libosal_rs_posix.a");
+        let archive_status = Command::new("ar")
+            .arg("crs")
+            .arg(&lib)
+            .arg(&obj)
+            .status()
+            .expect("Failed to invoke ar to archive osal_rs.o");
+
+        if !archive_status.success() {
+            panic!("osal-rs-build: failed to archive osal_rs.o into libosal_rs_posix.a");
+        }
+
+        println!("cargo:rustc-link-search=native={}", self.0.display());
+        println!("cargo:rustc-link-lib=static=osal_rs_posix");
+    }
+
+    pub fn generate_all(&mut self) {
+        self.generate_types();
+        self.enable_sched_fifo();
+        self.compile_sources();
     }
 }
+
+
+#[cfg(feature = "freertos")]
+impl TypeGenerator {
+
+
+    pub fn add_rerun_if_changed() {
+        println!("cargo:rerun-if-changed=../osal-rs-porting/freeretos/src/osal_rs.c");
+        println!("cargo:rerun-if-changed=../osal-rs-porting/freeretos/inc/osal_rs.h");
+    }
+
+    /// Query FreeRTOS type sizes and generate Rust type mappings
+    pub fn generate_types(&mut self) {
+        let (tick_size, ubase_size, base_size, base_signed, stack_size) = self.query_type_sizes();
+
+        let tick_type = Self::size_to_type(tick_size, false);
+        let ubase_type = Self::size_to_type(ubase_size, false);
+        let base_type = Self::size_to_type(base_size, base_signed);
+        let stack_type = Self::size_to_type(stack_size, true);
+
+
+        self.write_generated_types(tick_size, tick_type, ubase_size, ubase_type, base_size, base_type, stack_size, stack_type);
+
+        println!("cargo:warning=Generated FreeRTOS types: TickType={}, UBaseType={}, BaseType={} StackType={}",
+                 tick_type, ubase_type, base_type, stack_type);
+    }
+
+    /// Generate both types and config
+    #[inline]
+    pub fn generate_all(&mut self) {
+        self.generate_types();
+        self.enable_sched_fifo();
+        // self.generate_config();
+    }
+
+    /// Query the sizes of FreeRTOS types
+    fn query_type_sizes(&mut self) -> (u16, u16, u16, bool, u16) {
+        // Create a small C program to query the type sizes
+        let query_program = r#"
+#include <stdio.h>
+#include <stdint.h>
+
+// We need to include FreeRTOS headers - path will be provided by the main build
+// For now, we'll use the compiled library approach
+// This is a placeholder - we'll use the already compiled C library
+
+int main() {
+    // Since we can't easily compile against FreeRTOS in the build script,
+    // we'll use a different approach: parse the compile_commands.json or
+    // use predefined types based on common configurations
+
+    // Common FreeRTOS configurations:
+    // TickType_t is usually uint32_t (4 bytes) on 32-bit systems
+    // UBaseType_t is usually uint32_t (4 bytes) on 32-bit systems
+    // BaseType_t is usually int32_t (4 bytes) on 32-bit systems
+    // StackType_t is usually long (4 bytes) on 32-bit systems
+
+    printf("TICK_TYPE_SIZE=%d\n", 4);
+    printf("UBASE_TYPE_SIZE=%d\n", 4);
+    printf("BASE_TYPE_SIZE=%d\n", 4);
+    printf("BASE_TYPE_SIGNED=1\n");
+    printf("STACK_TYPE_SIZE=%d\n", 4);
+    return 0;
+}
+"#;
+
+        let query_c = self.0.join("query_types.c");
+        fs::write(&query_c, query_program).expect("Failed to write query program");
+
+        // Compile the query program
+        let query_exe = self.0.join("query_types");
+        let compile_status = Command::new("gcc")
+            .arg(&query_c)
+            .arg("-o")
+            .arg(&query_exe)
+            .status();
+
+        if compile_status.is_ok() && compile_status.unwrap().success() {
+            // Run the query program
+            let output = Command::new(&query_exe)
+                .output()
+                .expect("Failed to run query program");
+
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            let mut tick_size = 4u16;
+            let mut ubase_size = 4u16;
+            let mut base_size = 4u16;
+            let mut base_signed = true;
+            let mut stack_type = 4u16;
+
+            for line in stdout.lines() {
+                if let Some(val) = line.strip_prefix("TICK_TYPE_SIZE=") {
+                    tick_size = val.parse().unwrap_or(4);
+                } else if let Some(val) = line.strip_prefix("UBASE_TYPE_SIZE=") {
+                    ubase_size = val.parse().unwrap_or(4);
+                } else if let Some(val) = line.strip_prefix("BASE_TYPE_SIZE=") {
+                    base_size = val.parse().unwrap_or(4);
+                } else if let Some(val) = line.strip_prefix("BASE_TYPE_SIGNED=") {
+                    base_signed = val.parse::<u8>().unwrap_or(1) == 1;
+                } else if let Some(val) = line.strip_prefix("STACK_TYPE_SIZE=") {
+                    stack_type = val.parse().unwrap_or(4);
+                }
+            }
+
+            (tick_size, ubase_size, base_size, base_signed, stack_type)
+        } else {
+            // Default values for 32-bit ARM Cortex-M (typical for Raspberry Pi Pico)
+            (4, 4, 4, true, 4)
+        }
+    }
+}
+

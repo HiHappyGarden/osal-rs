@@ -37,7 +37,7 @@ pub fn test_semaphore_creation() -> Result<()> {
 
 pub fn test_semaphore_creation_with_count() -> Result<()> {
     log_info!(TAG, "Starting test_semaphore_creation_with_count");
-    let semaphore = Semaphore::new_with_count(3);
+    let semaphore = Semaphore::new(types::UBaseType::MAX, 3);
     assert!(semaphore.is_ok());
     log_info!(TAG, "test_semaphore_creation_with_count PASSED");
     Ok(())
@@ -151,6 +151,26 @@ pub fn test_semaphore_drop() -> Result<()> {
     Ok(())
 }
 
+pub fn test_semaphore_from_isr() -> Result<()> {
+    log_info!(TAG, "Starting test_semaphore_from_isr");
+    let semaphore = Semaphore::new(5, 0)?;
+
+    let signal_result = semaphore.signal_from_isr();
+    log_debug!(TAG, "signal_from_isr result: {:?}", signal_result);
+    assert_eq!(signal_result, OsalRsBool::True);
+
+    let wait_result = semaphore.wait_from_isr();
+    log_debug!(TAG, "wait_from_isr result: {:?}", wait_result);
+    assert_eq!(wait_result, OsalRsBool::True);
+
+    let empty_wait_result = semaphore.wait_from_isr();
+    log_debug!(TAG, "wait_from_isr on empty semaphore: {:?}", empty_wait_result);
+    assert_eq!(empty_wait_result, OsalRsBool::False);
+
+    log_info!(TAG, "test_semaphore_from_isr PASSED");
+    Ok(())
+}
+
 pub fn run_all_tests() -> Result<()> {
     log_info!(TAG, "========== Running Semaphore Tests ==========");
     test_semaphore_creation()?;
@@ -161,6 +181,7 @@ pub fn run_all_tests() -> Result<()> {
     test_semaphore_max_count()?;
     test_semaphore_initial_count()?;
     test_semaphore_binary()?;
+    test_semaphore_from_isr()?;
     test_semaphore_drop()?;
     log_info!(TAG, "========== All Semaphore Tests PASSED ==========");
     Ok(())

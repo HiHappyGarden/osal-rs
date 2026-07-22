@@ -56,7 +56,7 @@ use super::waker::waker_from_semaphore;
 ///
 /// # Examples
 ///
-/// ```ignore
+/// ```
 /// use osal_rs::os::block_on;
 ///
 /// let result = block_on(async { 42_u32 });

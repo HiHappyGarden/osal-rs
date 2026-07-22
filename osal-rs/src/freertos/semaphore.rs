@@ -166,39 +166,16 @@ impl Semaphore {
             Ok(Self (handle))
         }
     }
-
-    /// Creates a counting semaphore with maximum possible count.
-    ///
-    /// Sets `max_count` to `UBaseType::MAX`.
-    ///
-    /// # Parameters
-    ///
-    /// * `initial_count` - Initial count value
-    ///
-    /// # Returns
-    ///
-    /// * `Ok(Semaphore)` - Semaphore created successfully
-    /// * `Err(Error::OutOfMemory)` - Failed to allocate
-    ///
-    /// # Examples
-    ///
-    /// ```ignore
-    /// use osal_rs::os::{Semaphore, SemaphoreFn};
-    /// 
-    /// let sem = Semaphore::new_with_count(0).unwrap();
-    /// ```
-    pub fn new_with_count(initial_count: UBaseType) -> Result<Self> {
-        let handle = xSemaphoreCreateCounting!(UBaseType::MAX, initial_count);
-        if handle.is_null() {
-            Err(Error::OutOfMemory)
-        } else {
-            Ok(Self (handle))
-        }
-    }
-
 }
 
 impl SemaphoreFn for Semaphore {
+
+
+    /// Returns `true` if the underlying OS handle is null, i.e. the thread
+    /// has not been spawned yet or has already been deleted.
+    fn is_null(&self) -> bool {
+		self.0.is_null()
+	}
 
     /// Waits to acquire the semaphore (decrements count).
     ///

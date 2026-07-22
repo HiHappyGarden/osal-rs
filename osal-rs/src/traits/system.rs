@@ -45,15 +45,14 @@
 //! # Critical Sections
 //!
 //! Two types of critical sections are provided:
-//! - **Task-level**: `enter_critical()` / `exit_critical()` - For protecting shared data between tasks
-//! - **ISR-level**: `enter_critical_from_isr()` / `exit_critical_from_isr()` - For ISR context
+//! - **Task-level**: `critical_section_enter()` / `critical_section_exit()` - For protecting shared data between tasks
+//! - **ISR-level**: `critical_section_enter_from_isr()` / `critical_section_exit_from_isr()` - For ISR context
 //!
 //! Critical sections should be kept as short as possible to minimize interrupt latency.
 
 use core::time::Duration;
 
 use crate::os::types::{BaseType, TickType, UBaseType};
-use crate::os::{ThreadState};
 use crate::os::SystemState;
 use crate::utils::OsalRsBool;
 
@@ -66,8 +65,8 @@ use crate::utils::OsalRsBool;
 ///
 /// - **Scheduler**: `start()`, `stop()`, `suspend_all()`, `resume_all()`
 /// - **Timing**: `get_tick_count()`, `get_current_time_us()`, `delay()`, `delay_until()`
-/// - **Critical Sections**: `enter_critical()`, `exit_critical()`, ISR variants
-/// - **System Info**: `get_state()`, `count_threads()`, `get_all_thread()`, `get_free_heap_size()`
+/// - **Critical Sections**: `critical_section_enter()`, `critical_section_exit()`, ISR variants
+/// - **System Info**: `count_threads()`, `get_all_thread()`, `get_free_heap_size()`
 /// - **ISR Support**: `yield_from_isr()`, `end_switching_isr()`, ISR critical sections
 ///
 /// # Examples
@@ -82,9 +81,9 @@ use crate::utils::OsalRsBool;
 /// System::delay(100);  // Delay for 100 ticks
 /// 
 /// // Critical section
-/// System::enter_critical();
+/// System::critical_section_enter();
 /// // Access shared data
-/// System::exit_critical();
+/// System::critical_section_exit();
 /// ```
 pub trait System {
     /// Starts the RTOS scheduler.
@@ -125,29 +124,7 @@ pub trait System {
     /// // This line is never reached
     /// ```
     fn start();
-    
-    /// Gets the current scheduler state.
-    ///
-    /// Returns the current operational state of the RTOS scheduler.
-    ///
-    /// # Returns
-    ///
-    /// The current state of the scheduler (e.g., Running, Suspended, NotStarted)
-    ///
-    /// # Examples
-    ///
-    /// ```ignore
-    /// use osal_rs::os::{System, ThreadState};
-    /// 
-    /// let state = System::get_state();
-    /// match state {
-    ///     ThreadState::Running => println!("Scheduler running"),
-    ///     ThreadState::Suspended => println!("Scheduler suspended"),
-    ///     _ => {}
-    /// }
-    /// ```
-    fn get_state() -> ThreadState;
-    
+
     /// Suspends all tasks.
     ///
     /// Pauses the scheduler, preventing any task switches. The current task
@@ -276,10 +253,10 @@ pub trait System {
     /// use osal_rs::os::System;
     /// 
     /// let duration = Duration::from_millis(100);
-    /// let ticks = System::get_us_from_tick(&duration);
+    /// let ticks = System::get_ms_from_tick(&duration);
     /// System::delay(ticks);
     /// ```
-    fn get_us_from_tick(duration: &Duration) -> TickType;
+    fn get_ms_from_tick(duration: &Duration) -> TickType;
     
     /// Gets the number of threads in the system.
     ///
@@ -385,33 +362,6 @@ pub trait System {
     /// ```
     fn delay_until(previous_wake_time: &mut TickType, time_increment: TickType);
     
-    /// Enters a critical section.
-    ///
-    /// Disables interrupts or scheduler to create an atomic section.
-    /// Must be paired with `critical_section_exit()`. Keep critical
-    /// sections as short as possible.
-    ///
-    /// # Warning
-    ///
-    /// This is a legacy method. Prefer using `enter_critical()` /
-    /// `exit_critical()` for task context.
-    ///
-    /// # Examples
-    ///
-    /// ```ignore
-    /// System::critical_section_enter();
-    /// // Critical code - no interrupts/context switches
-    /// unsafe_shared_operation();
-    /// System::critical_section_exit();
-    /// ```
-    fn critical_section_enter();
-    
-    /// Exits a critical section.
-    ///
-    /// Re-enables interrupts/scheduling after `critical_section_enter()`.
-    /// Must be called from the same context that called `critical_section_enter()`.
-    fn critical_section_exit();
-    
     /// Checks if a timer has expired.
     ///
     /// Utility function to check if a specified duration has elapsed
@@ -481,9 +431,9 @@ pub trait System {
     /// Enters a critical section at task level.
     ///
     /// Disables scheduler and interrupts to protect shared resources.
-    /// Must be paired with [`exit_critical()`](Self::exit_critical).
+    /// Must be paired with [`critical_section_exit()`](Self::critical_section_exit).
     /// This is the task-level version; for ISR context use
-    /// [`enter_critical_from_isr()`](Self::enter_critical_from_isr).
+    /// [`critical_section_enter_from_isr()`](Self::critical_section_enter_from_isr).
     ///
     /// # Critical Section Behavior
     ///
@@ -501,44 +451,44 @@ pub trait System {
     /// ```ignore
     /// use osal_rs::os::System;
     /// 
-    /// System::enter_critical();
+    /// System::critical_section_enter();
     /// // Access shared resource safely
     /// shared_counter += 1;
-    /// System::exit_critical();
+    /// System::critical_section_exit();
     /// ```
-    fn enter_critical();
+    fn critical_section_enter();
 
     /// Exits a critical section at task level.
     ///
-    /// Re-enables scheduler and interrupts after [`enter_critical()`](Self::enter_critical).
-    /// Must be called from the same task that called `enter_critical()`.
+    /// Re-enables scheduler and interrupts after [`critical_section_enter()`](Self::critical_section_enter).
+    /// Must be called from the same task that called `critical_section_enter()`.
     ///
     /// # Nesting
     ///
     /// If critical sections are nested, interrupts are only re-enabled
-    /// when the outermost `exit_critical()` is called.
+    /// when the outermost `critical_section_exit()` is called.
     ///
     /// # Examples
     ///
     /// ```ignore
     /// use osal_rs::os::System;
     /// 
-    /// System::enter_critical();
+    /// System::critical_section_enter();
     /// // Critical section code
     /// shared_data.update();
-    /// System::exit_critical();
+    /// System::critical_section_exit();
     /// ```
-    fn exit_critical();
+    fn critical_section_exit();
 
     /// Enters a critical section from an ISR context.
     ///
     /// ISR-safe version of critical section entry. Returns the interrupt mask state
-    /// that must be passed to [`exit_critical_from_isr()`](Self::exit_critical_from_isr).
-    /// Use this instead of [`enter_critical()`](Self::enter_critical) when in interrupt context.
+    /// that must be passed to [`critical_section_exit_from_isr()`](Self::critical_section_exit_from_isr).
+    /// Use this instead of [`critical_section_enter()`](Self::critical_section_enter) when in interrupt context.
     ///
     /// # Returns
     ///
-    /// Saved interrupt status that must be passed to `exit_critical_from_isr()`
+    /// Saved interrupt status that must be passed to `critical_section_exit_from_isr()`
     ///
     /// # ISR Safety
     ///
@@ -551,25 +501,25 @@ pub trait System {
     /// use osal_rs::os::System;
     /// 
     /// // In an interrupt handler
-    /// let saved_status = System::enter_critical_from_isr();
+    /// let saved_status = System::critical_section_enter_from_isr();
     /// // Critical ISR code - access shared data
     /// shared_isr_data.update();
-    /// System::exit_critical_from_isr(saved_status);
+    /// System::critical_section_exit_from_isr(saved_status);
     /// ```
-    fn enter_critical_from_isr() -> UBaseType;
+    fn critical_section_enter_from_isr() -> UBaseType;
 
     /// Exits a critical section from an ISR context.
     ///
     /// Restores the interrupt mask to the state saved by
-    /// [`enter_critical_from_isr()`](Self::enter_critical_from_isr).
+    /// [`critical_section_enter_from_isr()`](Self::critical_section_enter_from_isr).
     ///
     /// # Parameters
     ///
-    /// * `saved_interrupt_status` - Interrupt status returned by `enter_critical_from_isr()`
+    /// * `saved_interrupt_status` - Interrupt status returned by `critical_section_enter_from_isr()`
     ///
     /// # Important
     ///
-    /// Always pass the exact value returned by the matching `enter_critical_from_isr()`
+    /// Always pass the exact value returned by the matching `critical_section_enter_from_isr()`
     /// call. Using an incorrect value can lead to undefined behavior.
     ///
     /// # Examples
@@ -577,12 +527,12 @@ pub trait System {
     /// ```ignore
     /// use osal_rs::os::System;
     /// 
-    /// let saved = System::enter_critical_from_isr();
+    /// let saved = System::critical_section_enter_from_isr();
     /// // Protected ISR operations
     /// update_shared_buffer();
-    /// System::exit_critical_from_isr(saved);
+    /// System::critical_section_exit_from_isr(saved);
     /// ```
-    fn exit_critical_from_isr(saved_interrupt_status: UBaseType);
+    fn critical_section_exit_from_isr(saved_interrupt_status: UBaseType);
 
     /// Gets the amount of free heap memory.
     ///

@@ -34,91 +34,11 @@ use alloc::sync::Arc;
 use super::ffi::task::INVALID;
 use super::ffi::{ TaskStatus, ThreadHandle, pdPASS, pdTRUE, vTaskDelete, vTaskGetInfo, vTaskResume, vTaskSuspend, xTaskCreate, xTaskGetCurrentTaskHandle};
 use super::types::{StackType, UBaseType, BaseType, TickType};
-use super::thread::ThreadState::*;
+use crate::traits::ThreadState::*;
 use crate::os::ThreadSimpleFnPtr;
-use crate::traits::{ThreadFn, ThreadParam, ThreadFnPtr, ThreadNotification, ToTick, ToPriority};
+use crate::traits::{ThreadFn, ThreadParam, ThreadFnPtr, ThreadNotification, ThreadMetadata, ToTick, ToPriority};
+use crate::traits::MAX_TASK_NAME_LEN;
 use crate::utils::{Bytes, DoublePtr, Error, Result};
-
-const MAX_TASK_NAME_LEN: usize = 16;
-
-/// Represents the possible states of a FreeRTOS task/thread.
-///
-/// # Examples
-///
-/// ```ignore
-/// use osal_rs::os::{Thread, ThreadState};
-/// 
-/// let thread = Thread::current();
-/// let metadata = thread.metadata().unwrap();
-/// 
-/// match metadata.state {
-///     ThreadState::Running => println!("Thread is currently executing"),
-///     ThreadState::Ready => println!("Thread is ready to run"),
-///     ThreadState::Blocked => println!("Thread is waiting for an event"),
-///     ThreadState::Suspended => println!("Thread is suspended"),
-///     _ => println!("Unknown state"),
-/// }
-/// ```
-#[derive(Copy, Clone, Debug, PartialEq)]
-#[repr(u8)]
-pub enum ThreadState {
-    /// Thread is currently executing on a CPU
-    Running = 0,
-    /// Thread is ready to run but not currently executing
-    Ready = 1,
-    /// Thread is blocked waiting for an event (e.g., semaphore, queue)
-    Blocked = 2,
-    /// Thread has been explicitly suspended
-    Suspended = 3,
-    /// Thread has been deleted
-    Deleted = 4,
-    /// Invalid or unknown state
-    Invalid,
-}
-
-/// Metadata and runtime information about a thread.
-///
-/// Contains detailed information about a thread's state, priorities, stack usage,
-/// and runtime statistics.
-///
-/// # Examples
-///
-/// ```ignore
-/// use osal_rs::os::Thread;
-/// 
-/// let thread = Thread::current();
-/// let metadata = thread.metadata().unwrap();
-/// 
-/// println!("Thread: {}", metadata.name);
-/// println!("Priority: {}", metadata.priority);
-/// println!("Stack high water mark: {}", metadata.stack_high_water_mark);
-/// ```
-#[derive(Clone, Debug)]
-pub struct ThreadMetadata {
-    /// FreeRTOS task handle
-    pub thread: ThreadHandle,
-    /// Thread name
-    pub name: Bytes<MAX_TASK_NAME_LEN>,
-    /// Original stack depth allocated for this thread
-    pub stack_depth: StackType,
-    /// Thread priority
-    pub priority: UBaseType,
-    /// Unique thread number assigned by FreeRTOS
-    pub thread_number: UBaseType,
-    /// Current execution state
-    pub state: ThreadState,
-    /// Current priority (may differ from base priority due to priority inheritance)
-    pub current_priority: UBaseType,
-    /// Base priority without inheritance
-    pub base_priority: UBaseType,
-    /// Total runtime counter (requires configGENERATE_RUN_TIME_STATS)
-    pub run_time_counter: UBaseType,
-    /// Minimum remaining stack space ever recorded (lower values indicate higher stack usage)
-    pub stack_high_water_mark: StackType,
-}
-
-unsafe impl Send for ThreadMetadata {}
-unsafe impl Sync for ThreadMetadata {}
 
 /// Converts a FreeRTOS TaskStatus into ThreadMetadata.
 ///
@@ -148,27 +68,6 @@ impl From<(ThreadHandle,TaskStatus)> for ThreadMetadata {
             base_priority: status.1.uxBasePriority,
             run_time_counter: status.1.ulRunTimeCounter,
             stack_high_water_mark: status.1.usStackHighWaterMark,
-        }
-    }
-}
-
-/// Provides default values for ThreadMetadata.
-///
-/// Creates a metadata instance with null/zero values, representing an
-/// invalid or uninitialized thread.
-impl Default for ThreadMetadata {
-    fn default() -> Self {
-        ThreadMetadata {
-            thread: null_mut(),
-            name: Bytes::new(),
-            stack_depth: 0,
-            priority: 0,
-            thread_number: 0,
-            state: Invalid,
-            current_priority: 0,
-            base_priority: 0,
-            run_time_counter: 0,
-            stack_high_water_mark: 0,
         }
     }
 }
@@ -388,7 +287,7 @@ impl Thread {
     /// println!("Stack high water mark: {}", metadata.stack_high_water_mark);
     /// ```
     pub fn get_metadata(thread: &Thread) -> ThreadMetadata {
-        if thread.handle.is_null() {
+        if thread.is_null() {
             return ThreadMetadata::default();
         }
         Self::get_metadata_from_handle(thread.handle)
@@ -424,7 +323,7 @@ impl Thread {
     /// ```
     #[inline]
     pub fn wait_notification_with_to_tick(&self, bits_to_clear_on_entry: u32, bits_to_clear_on_exit: u32 , timeout_ticks: impl ToTick) -> Result<u32> {
-        if self.handle.is_null() {
+        if self.is_null() {
             return Err(Error::NullPtr);
         }
         self.wait_notification(bits_to_clear_on_entry, bits_to_clear_on_exit, timeout_ticks.to_ticks())
@@ -478,20 +377,28 @@ unsafe extern "C" fn callback_c_wrapper(param_ptr: *mut c_void) {
 /// - Performs raw pointer conversions
 /// - Is called from C code (FreeRTOS)
 /// - Directly calls vTaskDelete after execution
+///
+/// The callback's `Result<ThreadParam>` is discarded, matching `callback_c_wrapper`:
+/// FreeRTOS task functions are `void`, so there is no exit-value channel for `join()`
+/// to retrieve it through.
 unsafe extern "C" fn simple_callback_wrapper(param_ptr: *mut c_void) {
     if param_ptr.is_null() {
         return;
     }
 
     let func: Box<Arc<ThreadSimpleFnPtr>> = unsafe { Box::from_raw(param_ptr as *mut _) };
-    func();
+    let _ = func();
 
-    unsafe { vTaskDelete( xTaskGetCurrentTaskHandle()); } 
+    unsafe { vTaskDelete( xTaskGetCurrentTaskHandle()); }
 }
 
 
 
 impl ThreadFn for Thread {
+
+    fn is_null(&self) -> bool {
+        self.handle.is_null()
+    }
 
     /// Spawns a new thread with a callback.
     /// 
@@ -562,7 +469,7 @@ impl ThreadFn for Thread {
     /// ```
     fn spawn_simple<F>(&mut self, callback: F) -> Result<Self>
     where
-        F: Fn() + Send + Sync + 'static,
+        F: Fn() -> Result<ThreadParam> + Send + Sync + 'static,
     {
         let func: Arc<ThreadSimpleFnPtr> = Arc::new(callback);
         let boxed_func = Box::new(func);
@@ -605,8 +512,8 @@ impl ThreadFn for Thread {
     /// thread.delete();
     /// ```
     fn delete(&self) {
-        if !self.handle.is_null() {
-            unsafe { vTaskDelete( self.handle ); } 
+        if !self.is_null() {
+            unsafe { vTaskDelete( self.handle ); }
         }
     }
 
@@ -626,8 +533,8 @@ impl ThreadFn for Thread {
     /// thread.resume();
     /// ```
     fn suspend(&self) {
-        if !self.handle.is_null() {
-            unsafe { vTaskSuspend( self.handle ); } 
+        if !self.is_null() {
+            unsafe { vTaskSuspend( self.handle ); }
         }
     }
 
@@ -639,8 +546,8 @@ impl ThreadFn for Thread {
     /// thread.resume();
     /// ```
     fn resume(&self) {
-        if !self.handle.is_null() {
-            unsafe { vTaskResume( self.handle ); } 
+        if !self.is_null() {
+            unsafe { vTaskResume( self.handle ); }
         }
     }
 
@@ -650,8 +557,8 @@ impl ThreadFn for Thread {
     ///
     /// Always returns `Ok(0)`
     fn join(&self, _retval: DoublePtr) -> Result<i32> {
-        if !self.handle.is_null() {
-            unsafe { vTaskDelete( self.handle ); } 
+        if !self.is_null() {
+            unsafe { vTaskDelete( self.handle ); }
         }
         Ok(0)
     }
@@ -719,7 +626,7 @@ impl ThreadFn for Thread {
     /// thread.notify(ThreadNotification::SetValueWithOverwrite(42)).unwrap();
     /// ```
     fn notify(&self, notification: ThreadNotification) -> Result<()> {
-        if self.handle.is_null() {
+        if self.is_null() {
             return Err(Error::NullPtr);
         }
 
@@ -760,7 +667,7 @@ impl ThreadFn for Thread {
     /// thread.notify_from_isr(ThreadNotification::Increment, &mut woken).ok();
     /// ```
     fn notify_from_isr(&self, notification: ThreadNotification, higher_priority_task_woken: &mut BaseType) -> Result<()> {
-        if self.handle.is_null() {
+        if self.is_null() {
             return Err(Error::NullPtr);
         }
 
@@ -806,7 +713,7 @@ impl ThreadFn for Thread {
     /// }
     /// ```
     fn wait_notification(&self, bits_to_clear_on_entry: u32, bits_to_clear_on_exit: u32 , timeout_ticks: TickType) -> Result<u32> {
-        if self.handle.is_null() {
+        if self.is_null() {
             return Err(Error::NullPtr);
         }
 

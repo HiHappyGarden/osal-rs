@@ -18,21 +18,10 @@
  *
  ***************************************************************************/
 
-#include "osal_rs_freertos.h"
+#include "osal_rs.h"
 
 #include <stdarg.h>
 #include <stdio.h>
-
-void osal_rs_critical_section_enter(void)
-{
-    taskENTER_CRITICAL();
-}
-
-
-void osal_rs_critical_section_exit(void)
-{
-    taskEXIT_CRITICAL();
-}
 
 void osal_rs_port_yield_from_isr(BaseType_t pxHigherPriorityTaskWoken)
 {
@@ -104,22 +93,22 @@ uint32_t osal_rs_config_max_task_name_len(void)
     return configMAX_TASK_NAME_LEN;
 }
 
-void osal_rs_task_enter_critical( void )
+void osal_rs_enter_critical_section( void )
 {
     taskENTER_CRITICAL();
 }
 
-void osal_rs_task_exit_critical( void )
+void osal_rs_exit_critical_section( void )
 {
     taskEXIT_CRITICAL();
 }
 
-UBaseType_t osal_rs_task_enter_critical_from_isr(void)
+UBaseType_t osal_rs_enter_critical_section_from_isr(void)
 {
     return taskENTER_CRITICAL_FROM_ISR();
 }
 
-void osal_rs_task_exit_critical_from_isr(UBaseType_t saved_interrupt_status)
+void osal_rs_exit_critical_section_from_isr(UBaseType_t saved_interrupt_status)
 {
     taskEXIT_CRITICAL_FROM_ISR(saved_interrupt_status);
 }

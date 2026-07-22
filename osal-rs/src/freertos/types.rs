@@ -52,7 +52,7 @@
 //! let delay_ticks: TickType = 1000;
 //!
 //! // Using handles (typically obtained from create functions)
-//! let handle: ThreadHandle = std::ptr::null_mut();
+//! let handle: ThreadHandle = core::ptr::null();
 //! ```
 
 // Include build-time generated types from FreeRTOS configuration

@@ -57,7 +57,8 @@
 //!
 //! #### Basic Struct Example
 //!
-//! ```ignore
+#![cfg_attr(feature = "derive", doc = "```")]
+#![cfg_attr(not(feature = "derive"), doc = "```ignore")]
 //! use osal_rs_serde::{Serialize, Deserialize, to_bytes, from_bytes};
 //!
 //! #[derive(Serialize, Deserialize)]
@@ -87,7 +88,8 @@
 //!
 //! #### Struct with Optional Fields
 //!
-//! ```ignore
+#![cfg_attr(feature = "derive", doc = "```")]
+#![cfg_attr(not(feature = "derive"), doc = "```ignore")]
 //! use osal_rs_serde::{Serialize, Deserialize, to_bytes, from_bytes};
 //!
 //! #[derive(Serialize, Deserialize)]
@@ -114,7 +116,8 @@
 //!
 //! #### Struct with Arrays and Tuples
 //!
-//! ```ignore
+#![cfg_attr(feature = "derive", doc = "```")]
+#![cfg_attr(not(feature = "derive"), doc = "```ignore")]
 //! use osal_rs_serde::{Serialize, Deserialize, to_bytes, from_bytes};
 //!
 //! #[derive(Serialize, Deserialize)]
@@ -141,7 +144,8 @@
 //!
 //! #### Nested Structs
 //!
-//! ```ignore
+#![cfg_attr(feature = "derive", doc = "```")]
+#![cfg_attr(not(feature = "derive"), doc = "```ignore")]
 //! use osal_rs_serde::{Serialize, Deserialize, to_bytes, from_bytes};
 //!
 //! #[derive(Serialize, Deserialize)]
@@ -180,7 +184,8 @@
 //!
 //! #### Complex Embedded System Example
 //!
-//! ```ignore
+#![cfg_attr(feature = "derive", doc = "```")]
+#![cfg_attr(not(feature = "derive"), doc = "```ignore")]
 //! use osal_rs_serde::{Serialize, Deserialize, to_bytes, from_bytes};
 //!
 //! #[derive(Serialize, Deserialize, Debug, PartialEq)]
@@ -229,7 +234,7 @@
 //!
 //! ### Manual Implementation (For Custom Behavior)
 //!
-//! ```ignore
+//! ```
 //! use osal_rs_serde::{Serialize, Deserialize, Serializer, Deserializer};
 //!
 //! struct Point {
@@ -238,7 +243,7 @@
 //! }
 //!
 //! impl Serialize for Point {
-//!     fn serialize<S: Serializer>(&self, serializer: &mut S) -> Result<(), S::Error> {
+//!     fn serialize<S: Serializer>(&self, _name: &str, serializer: &mut S) -> Result<(), S::Error> {
 //!         serializer.serialize_i32("x", self.x)?;
 //!         serializer.serialize_i32("y", self.y)?;
 //!         Ok(())
@@ -347,7 +352,6 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 #![warn(missing_docs)]
 
-#[cfg(feature = "alloc")]
 extern crate alloc;
 
 mod error;
@@ -369,7 +373,7 @@ pub use osal_rs_serde_derive::{Serialize, Deserialize};
 ///
 /// # Examples
 ///
-/// ```ignore
+/// ```
 /// use osal_rs_serde::to_bytes;
 ///
 /// let value = 42u32;
@@ -392,7 +396,8 @@ where
 ///
 /// # Examples
 ///
-/// ```ignore
+/// ```
+/// extern crate alloc;
 /// use osal_rs_serde::to_dyn_bytes;
 /// use alloc::vec::Vec;
 ///
@@ -405,7 +410,7 @@ pub fn to_dyn_bytes<T>(value: &T, buffer: &mut Vec<u8>) -> Result<usize>
 where 
     T: Serialize
 {
-    let mut serializer = ByteSerializer::new(buffer);
+    let mut serializer = ByteSerializer::new_dyn(buffer);
     value.serialize("", &mut serializer)?;
     Ok(serializer.position())
 }
@@ -416,7 +421,7 @@ where
 ///
 /// # Examples
 ///
-/// ```ignore
+/// ```
 /// use osal_rs_serde::from_bytes;
 ///
 /// let buffer = [42u8, 0, 0, 0];

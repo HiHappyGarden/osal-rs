@@ -55,6 +55,8 @@
 //!
 //! - [`ThreadFn`] - Thread/task creation and management
 //! - [`ThreadNotification`] - Thread notification mechanisms
+//! - [`ThreadState`] - Thread execution state
+//! - [`ThreadMetadata`] - Thread runtime information (name, priority, stack usage, state)
 //! - [`ToPriority`] - Priority conversion trait
 //!
 //! ## Timers
@@ -82,7 +84,7 @@
 //! // Re-exported as ThreadFn to avoid conflict
 //! pub use Thread as ThreadFn;
 //!
-//! // Concrete type in freertos module
+//! // Concrete type in freertos/posix module
 //! pub struct Thread { ... }
 //! impl ThreadFn for Thread { ... }
 //! ```
@@ -93,16 +95,16 @@
 //!
 //! Most users should use the `os` module instead of importing traits directly:
 //!
-//! ```ignore
+//! ```
 //! use osal_rs::os::*;  // Gets concrete types
 //!
-//! let mutex = Mutex::new(0);  // Uses concrete freertos::Mutex
+//! let mutex = Mutex::new(0);  // Uses the active backend's concrete Mutex
 //! ```
 //!
 //! Advanced users can import traits for generic programming:
 //!
-//! ```ignore
-//! use osal_rs::traits::MutexFn;
+//! ```
+//! use osal_rs::os::MutexFn;
 //!
 //! fn use_mutex<M: MutexFn<i32>>(mutex: &M) {
 //!     let guard = mutex.lock();
@@ -173,8 +175,12 @@ pub use crate::traits::semaphore::Semaphore as SemaphoreFn;
 // Re-export system trait with Fn suffix for scheduler, timing, and critical section control
 pub use crate::traits::system::System as SystemFn;
 
-// Re-export thread trait and related types (ThreadParam, function pointers, notifications, priority conversion)
-pub use crate::traits::thread::{Thread as ThreadFn, ThreadParam, ThreadFnPtr, ThreadSimpleFnPtr, ThreadNotification, ToPriority};
+// Re-export thread trait and related types (ThreadParam, function pointers, notifications, priority conversion,
+// state/metadata shared by all backends)
+pub use crate::traits::thread::{Thread as ThreadFn, ThreadParam, ThreadFnPtr, ThreadSimpleFnPtr, ThreadNotification, ThreadState, ThreadMetadata, ToPriority};
+
+// Internal thread-name length shared by backend `Thread`/`ThreadMetadata` implementations
+pub(crate) use crate::traits::thread::MAX_TASK_NAME_LEN;
 
 // Re-export tick conversion traits (ToTick, FromTick)
 pub use crate::traits::tick::*;

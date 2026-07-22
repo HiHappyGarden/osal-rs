@@ -12,38 +12,218 @@ OSAL-RS provides a unified API for developing multi-platform embedded applicatio
 
 ### Workspace Components
 
-- **osal-rs**: Main Operating System Abstraction Layer with FreeRTOS support
-- **osal-rs-build**: Build configuration tools and helpers
-- **osal-rs-porting**: C FFI bridge layer for FreeRTOS integration
+- **osal-rs**: Main Operating System Abstraction Layer, with **FreeRTOS** and **POSIX** backends
+- **osal-rs-build**: Build configuration tools and helpers (FreeRTOS type generation, POSIX porting shim compilation)
+- **osal-rs-porting**: C FFI bridge layer for the FreeRTOS and POSIX backends
 - **osal-rs-tests**: Comprehensive test suite for all components
 - **osal-rs-serde**: ✨ Extensible serialization/deserialization framework with derive macros
 
 ## Current Implementation Status
 
 - ✅ **FreeRTOS**: Fully implemented and tested
+- ✅ **POSIX**: Fully implemented and tested (glibc/Linux) - native host backend for running, testing and simulating OSAL-RS applications without embedded hardware
 - ✅ **Serialization**: Complete osal-rs-serde implementation with derive macros
-- 🚧 **POSIX**: Planned for future releases
+- 🧪 **Async/Await**: Experimental, backend-agnostic, works on both FreeRTOS and POSIX
 - 🚧 **Other RTOSes**: Under consideration
 
-## Features
+## Supported Backends
 
-### Core OSAL Features
+OSAL-RS selects its implementation at compile time via Cargo features. There is **no default backend** - exactly one of `freertos` / `posix` must be enabled explicitly, or the crate fails to build. Enabling neither trips a `compile_error!`; enabling both is equally unsupported, since the two backends are mutually exclusive by design.
+
+### FreeRTOS Backend (`freertos`)
+
+For bare-metal embedded targets (`no_std`). FreeRTOS provides preemptive multitasking with priority-based scheduling, mutexes with priority inheritance, semaphores, queues and software timers.
+
+**Requirements:**
+1. FreeRTOS kernel properly configured and linked into your project
+2. C porting layer from `osal-rs-porting/freeretos/` compiled and linked (an FFI bridge between Rust and FreeRTOS)
+3. CMake build system set up for your embedded project (see [CMake Integration](#cmake-integration))
+4. Rust toolchain with the appropriate embedded target installed
+
+**Configuration** - ensure your `FreeRTOSConfig.h` includes:
+
+```c
+#define configTICK_RATE_HZ               1000
+#define configUSE_MUTEXES                1
+#define configUSE_RECURSIVE_MUTEXES      1
+#define configUSE_COUNTING_SEMAPHORES    1
+#define configUSE_TIMERS                 1
+#define configUSE_QUEUE_SETS             1
+#define configSUPPORT_DYNAMIC_ALLOCATION 1
+```
+
+**Build:**
+
+```bash
+# Install Rust target (example for ARM Cortex-M33)
+rustup target add thumbv8m.main-none-eabi
+
+# Build with FreeRTOS support
+cargo build --release --target thumbv8m.main-none-eabi --features freertos
+```
+
+### POSIX Backend (`posix`)
+
+Runs on any POSIX/pthreads host so OSAL-RS applications - and their tests and doc examples - can execute for real on Linux/macOS without embedded hardware or a cross toolchain. Enabling `posix` disables `no_std` and builds the crate against `std`.
+
+**Requirements:**
+- A **glibc**/Linux host (see note below)
+- No special build steps: unlike `freertos`, the small POSIX porting shim in `osal-rs-porting/posix/` is compiled and linked automatically by `osal-rs-build` - no CMake, cross toolchain or RTOS kernel sources required
+
+**Build:**
+
+```bash
+# Native development / host testing
+cargo build --features posix
+```
+
+#### POSIX Backend: glibc Requirement
+
+The `posix` backend links directly against **glibc** (the GNU C Library), not just any C compiler. It relies on glibc-specific internals - struct layouts (`pthread_attr_t`, `pthread_mutex_t`, `pthread_cond_t`, `sigset_t`, etc.) and the `__libc_current_sigrtmin()` extension used to implement thread suspend/resume via real-time signals.
+
+This means:
+- The **compiler** doesn't matter - gcc or clang both work fine.
+- The **C library** does matter - targets linking against **musl** (e.g. `x86_64-unknown-linux-musl`) or non-glibc platforms (e.g. macOS/BSD libc) are **not supported** by the `posix` backend.
+
+#### Real-Time Scheduling (`real_time`)
+
+Threads spawned by the `posix` backend normally inherit the creating thread's scheduling policy/priority. The `real_time` feature switches them to the real-time `SCHED_FIFO` policy instead.
+
+You don't need to request this feature yourself: `osal-rs-build`'s build script probes the host at compile time and automatically turns `real_time` on whenever the OS/kernel supports `SCHED_FIFO`. It's a plain Cargo feature only so it can be inspected via `cfg(feature = "real_time")`; a plain `cargo build --features posix` is enough to get it on a capable host.
+
+### Caveats of the POSIX Backend
+
+- `System::start()` simply spins until [`System::stop()`] is called from another thread - there is no scheduler to hand control to, unlike FreeRTOS where it never returns.
+- Timers each spawn their own background thread and permanently block `SIGALRM` on the thread that creates them; create a new `Timer` rather than reusing one that already fired as a one-shot.
+
+## Quick Start
+
+```rust
+use osal_rs::os::*;
+
+fn main() {
+    // Create a thread
+    let mut thread = Thread::new(
+        "worker",
+        4096,  // stack size
+        5,     // priority
+    );
+
+    thread.spawn_simple(|| {
+        loop {
+            println!("Working...");
+            System::delay(1000);
+        }
+    }).unwrap();
+
+    // Start the scheduler (never returns on FreeRTOS; spins until `System::stop()` on POSIX)
+    System::start();
+}
+```
+
+```rust
+use osal_rs::os::*;
+use std::sync::Arc;
+
+let counter = Arc::new(Mutex::new(0));
+let counter_clone = counter.clone();
+
+let mut thread = Thread::new("incrementer", 2048, 5);
+thread.spawn_simple(move || {
+    let mut guard = counter_clone.lock().unwrap();
+    *guard += 1;
+    Ok(Arc::new(()))
+}).unwrap();
+```
+
+```rust
+use osal_rs::os::*;
+
+let queue = Queue::new(10, 4).unwrap();
+
+// Send data
+let data = [1u8, 2, 3, 4];
+queue.post(&data, 100).unwrap();
+
+// Receive data
+let mut buffer = [0u8; 4];
+queue.fetch(&mut buffer, 100).unwrap();
+```
+
+The same code compiles and runs unchanged against either backend - just switch the `freertos`/`posix` feature flags.
+
+## Core OSAL Features
+
 - **Thread Management**: Create, manage, and synchronize threads with priorities
 - **Synchronization Primitives**: Mutexes (recursive & non-recursive), binary & counting semaphores, event groups
 - **Message Queues**: Type-safe inter-thread communication with blocking/non-blocking operations
 - **Software Timers**: Periodic and one-shot timers with callbacks
-- **Memory Allocation**: Custom allocator integration for heap management
+- **Memory Allocation**: Custom allocator integration for heap management (`freertos`) or the system allocator (`posix`)
 - **Time Management**: Duration handling and tick-based timing
 - **System Control**: Scheduler control, task notifications, and system information
-- **No-std Support**: Fully compatible with bare-metal embedded systems
-- **🆕 _EXPERIMENTAL_ Async/Await**: Backend-agnostic `async`/`await` support without Tokio (see below)
+- **No-std Support**: Fully compatible with bare-metal embedded systems (`freertos` backend)
+- **Host Testing**: Native `std` execution for tests, examples and simulation (`posix` backend)
+- **🧪 _EXPERIMENTAL_ Async/Await**: Backend-agnostic `async`/`await` support without Tokio (see below)
 
-### 🆕 _EXPERIMENTAL_ Async/Await Support (feature `async`) 
+## Cargo Features
+
+OSAL-RS provides several Cargo features to customize the build configuration for different platforms and use cases:
+
+### Available Features
+
+| Feature | Default | Description |
+|---------|---------|-------------|
+| `freertos` | ❌ | Enable the FreeRTOS backend implementation for embedded RTOS development. Mutually exclusive with `posix` - exactly one of the two is required. |
+| `posix` | ❌ | Enable the POSIX/native backend implementation for host environments. Requires **glibc** (see note above). Mutually exclusive with `freertos` - exactly one of the two is required. |
+| `real_time` | ❌ | POSIX only: schedules spawned threads with the real-time `SCHED_FIFO` policy instead of inheriting the creating thread's policy/priority. Not meant to be requested by hand - `osal-rs-build`'s build script enables it automatically when the host OS/kernel supports `SCHED_FIFO`. |
+| `async` | ❌ | Enable backend-agnostic async/await support (`block_on`, `AsyncQueue`, `AsyncSemaphore`, `AsyncMutex`). Works with both `freertos` and `posix`. No Tokio required. |
+| `serde` | ❌ | Enable serialization/deserialization support via `osal-rs-serde`. Includes derive macros for automatic implementation. |
+
+There is no default feature set: you must explicitly pick `freertos` or `posix` or the build fails.
+
+### Feature Combinations
+
+```bash
+# FreeRTOS embedded development
+cargo build --target thumbv8m.main-none-eabi --features freertos
+
+# FreeRTOS with async support
+cargo build --target thumbv8m.main-none-eabi --features freertos,async
+
+# FreeRTOS with serialization support
+cargo build --target thumbv8m.main-none-eabi --features freertos,serde
+
+# Native development (POSIX) - real_time is auto-detected, no need to request it
+cargo build --features posix
+
+# Native development with async support
+cargo build --features posix,async
+
+# Native development with serialization
+cargo build --features posix,serde
+```
+
+### Using Features in Cargo.toml
+
+To use OSAL-RS in your project with specific features (exactly one of `freertos`/`posix` is required):
+
+```toml
+[dependencies]
+osal-rs = { version = "0.5", features = ["freertos"] }
+
+# Or for host development/testing
+osal-rs = { version = "0.5", features = ["posix"] }
+
+# Or with serialization support
+osal-rs = { version = "0.5", features = ["freertos", "serde"] }
+```
+
+## 🧪 _EXPERIMENTAL_ Async/Await Support (feature `async`)
 
 OSAL-RS includes a **backend-agnostic async runtime** that works on both FreeRTOS and POSIX
 without Tokio or any external async runtime.
 
-#### Design
+### Design
 
 | Component | Description |
 |-----------|-------------|
@@ -54,10 +234,10 @@ without Tokio or any external async runtime.
 
 - **No Tokio, no `std`**: built on `core::future::Future` + OSAL semaphores as the blocking primitive.
 - **Per-task executor**: `block_on` runs on the calling RTOS task; no thread pool is needed.
-- **Lock-free waker storage**: `WakerSlot` uses `AtomicPtr<Waker>` — no RTOS overhead for waker updates.
+- **Lock-free waker storage**: `WakerSlot` uses `AtomicPtr<Waker>` - no RTOS overhead for waker updates.
 - **Race-condition safe**: the classic *store-waker-then-retry* double-check pattern is used in every `poll` implementation.
 
-#### Quick Example
+### Quick Example
 
 ```rust
 use osal_rs::os::{block_on, AsyncMutex, AsyncQueue, AsyncSemaphore};
@@ -84,14 +264,14 @@ block_on(async {
 });
 ```
 
-#### Enable the feature
+### Enable the feature
 
 ```toml
 # Cargo.toml
 [dependencies]
 osal-rs = { version = "0.5", features = ["freertos", "async"] }
 # or for host development
-osal-rs = { version = "0.5", default-features = false, features = ["posix", "async"] }
+osal-rs = { version = "0.5", features = ["posix", "async"] }
 ```
 
 ```bash
@@ -99,10 +279,10 @@ osal-rs = { version = "0.5", default-features = false, features = ["posix", "asy
 cargo build --release --target thumbv8m.main-none-eabi --features freertos,async
 
 # POSIX host (for tests / simulation)
-cargo build --no-default-features --features posix,async
+cargo build --features posix,async
 ```
 
-### 🆕 osal-rs-serde Features
+## osal-rs-serde Features
 
 A complete serialization framework designed specifically for embedded systems:
 
@@ -115,7 +295,7 @@ A complete serialization framework designed specifically for embedded systems:
 - **Compile-Time Guarantees**: Type-safe serialization with static checks
 - **Standalone**: Can be used independently in any Rust project
 
-#### osal-rs-serde Quick Example
+### osal-rs-serde Quick Example
 
 ```rust
 use osal_rs_serde::{Serialize, Deserialize, to_bytes, from_bytes};
@@ -144,7 +324,7 @@ let restored: SensorData = from_bytes(&buffer[..len]).unwrap();
 assert_eq!(data, restored);
 ```
 
-#### Integration with OSAL Queues
+### Integration with OSAL Queues
 
 Perfect for inter-task communication:
 
@@ -177,34 +357,11 @@ For comprehensive documentation, examples, and advanced features, see:
 - [osal-rs-serde/derive README](osal-rs-serde/derive/README.md) - Derive macro guide
 - `osal-rs-serde/examples/` - Working code examples
 
-## Prerequisites
-
-Before using OSAL-RS in your project, ensure that:
-
-1. **FreeRTOS is properly configured** in your project
-2. **FreeRTOS is linked** to your final binary
-3. **C porting layer files** from `osal-rs-porting` must be compiled and linked to your project
-4. **CMake build system** is set up for your embedded project
-5. **Rust toolchain** with appropriate target support is installed
-
-### Configuration
-
-OSAL-RS requires proper FreeRTOS configuration. Ensure your `FreeRTOSConfig.h` includes:
-
-```c
-#define configUSE_MUTEXES                1
-#define configUSE_RECURSIVE_MUTEXES      1
-#define configUSE_COUNTING_SEMAPHORES    1
-#define configUSE_TIMERS                 1
-#define configUSE_QUEUE_SETS             1
-#define configSUPPORT_DYNAMIC_ALLOCATION 1
-```
-
 ## CMake Integration
 
-OSAL-RS is designed to be integrated into CMake-based projects. Here are several integration examples:
+CMake integration is only needed for the **FreeRTOS** backend, since it must link against your project's FreeRTOS kernel and C porting layer. The **POSIX** backend needs no CMake step - `cargo build --features posix` is enough (see [Supported Backends](#supported-backends)).
 
-**Important**: Always ensure that the C porting layer files from `osal-rs-porting/freertos/` are compiled and linked to your project, as they provide the necessary FFI bridge between Rust and FreeRTOS.
+**Important**: Always ensure that the C porting layer files from `osal-rs-porting/freeretos/` are compiled and linked to your project, as they provide the necessary FFI bridge between Rust and FreeRTOS.
 
 ### Basic CMake Integration
 
@@ -219,11 +376,11 @@ add_subdirectory(freertos)
 
 # Add OSAL-RS porting layer
 add_library(osal_rs_porting STATIC
-    osal-rs-porting/freertos/src/osal_rs_freertos.c
+    osal-rs-porting/freeretos/src/osal_rs.c
 )
 
 target_include_directories(osal_rs_porting PUBLIC
-    osal-rs-porting/freertos/inc
+    osal-rs-porting/freeretos/inc
     ${FREERTOS_INCLUDE_DIRS}
 )
 
@@ -298,56 +455,6 @@ endfunction()
 add_osal_rs_library(osal_rs "thumbv8m.main-none-eabi" "release")
 ```
 
-### Integration with Corrosion (Recommended)
-
-For a more seamless Rust-CMake integration, use [Corrosion](https://github.com/corrosion-rs/corrosion):
-
-```cmake
-cmake_minimum_required(VERSION 3.20)
-project(my_embedded_project C CXX)
-
-# Include Corrosion
-include(FetchContent)
-FetchContent_Declare(
-    Corrosion
-    GIT_REPOSITORY https://github.com/corrosion-rs/corrosion.git
-    GIT_TAG v0.4
-)
-FetchContent_MakeAvailable(Corrosion)
-
-# Import OSAL-RS crate
-corrosion_import_crate(
-    MANIFEST_PATH osal-rs/Cargo.toml
-    FEATURES freertos
-)
-
-# Configure FreeRTOS
-add_subdirectory(freertos)
-
-# OSAL-RS porting layer
-add_library(osal_rs_porting STATIC
-    osal-rs-porting/freertos/src/osal_rs_freertos.c
-)
-
-target_include_directories(osal_rs_porting PUBLIC
-    osal-rs-porting/freertos/inc
-    ${FREERTOS_INCLUDE_DIRS}
-)
-
-target_link_libraries(osal_rs_porting PUBLIC
-    freertos
-)
-
-# Your application
-add_executable(my_app src/main.c)
-
-target_link_libraries(my_app PRIVATE
-    osal-rs
-    osal_rs_porting
-    freertos
-)
-```
-
 ### Cross-Compilation Setup
 
 Example CMake toolchain file for ARM Cortex-M:
@@ -404,148 +511,21 @@ export FREERTOS_CONFIG_PATH="/path/to/your/FreeRTOSConfig.h"
 cargo build --release --target thumbv8m.main-none-eabi --features freertos
 ```
 
-#### Using with Corrosion
-
-```cmake
-# Set environment variable for Corrosion
-set(FREERTOS_CONFIG_PATH "${CMAKE_SOURCE_DIR}/inc/custom/FreeRTOSConfig.h")
-
-corrosion_import_crate(
-    MANIFEST_PATH osal-rs/Cargo.toml
-    FEATURES freertos
-)
-
-# Set environment for the build
-corrosion_set_env_vars(osal-rs
-    FREERTOS_CONFIG_PATH=${FREERTOS_CONFIG_PATH}
-)
-```
-
 **Note**: The build system will automatically regenerate Rust type bindings from the specified `FreeRTOSConfig.h` during the build process.
-
-
-## Usage Example
-
-```rust
-use osal_rs::os::*;
-
-fn main() {
-    // Create a thread
-    let thread = Thread::new(
-        "my_thread",
-        4096,
-        ThreadPriority::Normal,
-        || {
-            loop {
-                println!("Hello from thread!");
-                Duration::from_millis(1000).sleep();
-            }
-        }
-    );
-
-    // Create a mutex
-    let mutex = Mutex::new().unwrap();
-    
-    // Use synchronization
-    {
-        let _guard = mutex.lock();
-        // Critical section
-    }
-
-    // Create a queue
-    let queue: Queue<u32> = Queue::new(10).unwrap();
-    queue.send(42, Duration::from_millis(100)).unwrap();
-    
-    let value = queue.receive(Duration::from_millis(100)).unwrap();
-    println!("Received: {}", value);
-}
-```
-
-## Building
-
-### For FreeRTOS targets:
-
-```bash
-# Install Rust target (example for ARM Cortex-M4F)
-rustup target add thumbv8m.main-none-eabi
-
-# Build with FreeRTOS support
-cargo build --release --target thumbv8m.main-none-eabi --features freertos
-```
-
-### For native development/testing:
-
-```bash
-# Build with POSIX support
-cargo build --no-default-features --features posix
-```
-
-## Cargo Features
-
-OSAL-RS provides several Cargo features to customize the build configuration for different platforms and use cases:
-
-### Available Features
-
-| Feature | Default | Description |
-|---------|---------|-------------|
-| `freertos` | ✅ | Enable FreeRTOS backend implementation. This is the default and fully implemented feature for embedded RTOS development. |
-| `posix` | ❌ | Enable POSIX/native backend implementation for host environments. |
-| `async` | ❌ | Enable backend-agnostic async/await support (`block_on`, `AsyncQueue`, `AsyncSemaphore`, `AsyncMutex`). Works with both `freertos` and `posix`. No Tokio required. |
-| `serde` | ❌ | Enable serialization/deserialization support via `osal-rs-serde`. Includes derive macros for automatic implementation. |
-
-### Feature Combinations
-
-#### FreeRTOS Embedded Development (Default)
-```bash
-cargo build --target thumbv8m.main-none-eabi --features freertos
-```
-
-#### FreeRTOS with Async Support
-```bash
-cargo build --target thumbv8m.main-none-eabi --features freertos,async
-```
-
-#### FreeRTOS with Serialization Support
-```bash
-cargo build --target thumbv8m.main-none-eabi --features freertos,serde
-```
-
-#### Native Development (POSIX)
-```bash
-cargo build --no-default-features --features posix
-```
-
-#### Native Development with Async Support
-```bash
-cargo build --no-default-features --features posix,async
-```
-
-#### Native Development with Serialization
-```bash
-cargo build --no-default-features --features posix,serde
-```
-
-### Using Features in Cargo.toml
-
-To use OSAL-RS in your project with specific features:
-
-```toml
-[dependencies]
-osal-rs = { version = "0.4", features = ["freertos"] }
-
-# Or with serialization support
-osal-rs = { version = "0.4", features = ["freertos", "serde"] }
-```
 
 ## Project Structure
 
 ```
 osal-rs/
-├── osal-rs/              # Main library crate
+├── osal-rs/              # Main library crate (freertos + posix backends)
 ├── osal-rs-build/        # Build utilities
 ├── osal-rs-tests/        # Test suite
+├── osal-rs-serde/        # Serialization framework
 └── osal-rs-porting/      # Platform-specific C/C++ code
-    └── freertos/         # FreeRTOS porting layer
+    ├── freeretos/        # FreeRTOS porting layer
+    │   ├── inc/          # Header files
+    │   └── src/          # Implementation
+    └── posix/            # POSIX porting layer (glibc shim, built automatically)
         ├── inc/          # Header files
         └── src/          # Implementation
 ```
@@ -561,10 +541,6 @@ Contributions are welcome! Please feel free to submit pull requests or open issu
 ## Author
 
 Antonio Salsi - [passy.linux@zresa.it](mailto:passy.linux@zresa.it)
-
-## Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request.
 
 ## Links
 

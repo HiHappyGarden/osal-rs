@@ -105,6 +105,10 @@ use super::ToTick;
 /// ```
 pub trait Semaphore {
 
+    /// Returns `true` if the underlying OS handle is null, i.e. the thread
+    /// has not been spawned yet or has already been deleted.
+    fn is_null(&self) -> bool;
+
     /// Waits to acquire the semaphore (blocking).
     ///
     /// Decrements the semaphore count if greater than zero. If the count

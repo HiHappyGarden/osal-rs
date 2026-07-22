@@ -25,6 +25,7 @@ crate-type = ["staticlib", "rlib"]
 
 
 [features]
+default = ["posix", "serde", "async"]
 freertos = ["osal-rs-build/freertos"]
 posix = ["osal-rs-build/posix"]
 serde = ["osal-rs-serde"]

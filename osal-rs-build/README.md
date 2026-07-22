@@ -1,6 +1,6 @@
 # osal-rs-build
 
-Build utilities for [osal-rs](https://github.com/HiHappyGarden/osal-rs) - FreeRTOS type generation at compile time.
+Build-time utilities for [osal-rs](https://github.com/HiHappyGarden/osal-rs)'s `build.rs` - platform type generation and, for the POSIX backend, C porting layer compilation.
 
 [![Crates.io](https://img.shields.io/crates/v/osal-rs-build.svg)](https://crates.io/crates/osal-rs-build)
 [![Documentation](https://docs.rs/osal-rs-build/badge.svg)](https://docs.rs/osal-rs-build)
@@ -8,25 +8,23 @@ Build utilities for [osal-rs](https://github.com/HiHappyGarden/osal-rs) - FreeRT
 
 ## Overview
 
-`osal-rs-build` is a build-time utility crate that automatically generates Rust type mappings for FreeRTOS primitives. It queries the sizes of FreeRTOS types and creates corresponding Rust type definitions, ensuring type safety and compatibility across different target platforms.
+`osal-rs-build` is the build-time helper crate behind `osal-rs`'s two backends. Its [`TypeGenerator`] type:
 
-## Features
+- Detects the active backend's `TickType`/`UBaseType`/`BaseType`/`StackType` sizes and writes them as Rust type aliases into `OUT_DIR/types_generated.rs` (included by `osal-rs` via `include!`)
+- Wires up `cargo:rerun-if-changed` for the relevant C porting sources
+- For the `posix` backend, also compiles and statically links the C porting layer (`osal-rs-porting/posix/`)
+- Detects whether the host supports real-time (`SCHED_FIFO`) scheduling and turns on the `real_time` cfg for `osal-rs` accordingly - this is automatic, not something the consuming crate has to request
 
-- **Automatic Type Detection**: Detects FreeRTOS type sizes at build time
-- **Platform Agnostic**: Works with different architectures (ARM Cortex-M, RISC-V, etc.)
-- **Compile-time Generation**: Creates type mappings during the build process
-- **Zero Runtime Overhead**: All processing happens at build time
+Exactly one of the `freertos` / `posix` features is expected to be enabled, matching whichever backend `osal-rs` itself is being built with.
 
-## Supported FreeRTOS Types
+## Cargo Features
 
-The crate generates Rust mappings for the following FreeRTOS types:
+| Feature | Default | Description |
+|---------|---------|-------------|
+| `freertos` | ❌ | Generate types for the FreeRTOS backend. |
+| `posix` | ❌ | Generate types for the POSIX backend and compile/link its C porting shim. |
 
-| FreeRTOS Type | Description | Rust Mapping |
-|---------------|-------------|--------------|
-| `TickType_t` | Timer tick counter | `u8`, `u16`, `u32`, or `u64` |
-| `UBaseType_t` | Unsigned base type | `u8`, `u16`, `u32`, or `u64` |
-| `BaseType_t` | Signed base type | `i8`, `i16`, `i32`, or `i64` |
-| `StackType_t` | Stack element type | `u8`, `u16`, `u32`, or `u64` |
+There is no default: pick exactly one, matching the feature enabled on `osal-rs` itself.
 
 ## Installation
 
@@ -34,117 +32,87 @@ Add this to your `Cargo.toml`:
 
 ```toml
 [build-dependencies]
-osal-rs-build = "0.4"
+osal-rs-build = { version = "1.0", default-features = false, features = ["posix"] }
+# or ["freertos"]
 ```
 
 ## Usage
 
-In your `build.rs` file:
+`osal-rs`'s own `build.rs` is the reference consumer. In your `build.rs`:
 
 ```rust
-use osal_rs_build::FreeRtosTypeGenerator;
+use std::env;
+use std::path::PathBuf;
+use osal_rs_build::TypeGenerator;
 
 fn main() {
-    // Create a generator and generate types
-    let generator = FreeRtosTypeGenerator::new();
-    generator.generate_types();
-    
-    // Or generate everything (types and config)
+    println!("cargo:rerun-if-changed=build.rs");
+
+    let manifest_dir = env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR not set");
+    let mut generator = TypeGenerator::new(&PathBuf::from(manifest_dir));
+
+    TypeGenerator::add_rerun_if_changed();
     generator.generate_all();
 }
 ```
 
-### With Custom FreeRTOS Config
+`TypeGenerator::new` takes the crate's manifest directory (`CARGO_MANIFEST_DIR`). For the `freertos` feature it walks up two parent directories to find the workspace root, used to locate `FreeRTOSConfig.h`; for `posix` the argument is accepted but unused.
 
-If you have a custom `FreeRTOSConfig.h` location:
+`generate_all()`:
+- **`posix`**: probes the host architecture and `SCHED_FIFO` support by compiling and running a small C program via `gcc`, writes `types_generated.rs`, enables the `real_time` cfg if the probe found `SCHED_FIFO` support, then compiles `osal-rs-porting/posix/src/osal_rs.c` and links it as a static library
+- **`freertos`**: writes `types_generated.rs` (see note on type detection below) and enables the `real_time` cfg if supported
 
-```rust
-use osal_rs_build::FreeRtosTypeGenerator;
+### With a Custom FreeRTOSConfig.h Location
 
-fn main() {
-    let generator = FreeRtosTypeGenerator::with_config_path("path/to/FreeRTOSConfig.h");
-    generator.generate_all();
-}
+By default the generator looks for `FreeRTOSConfig.h` at `<workspace_root>/inc/FreeRTOSConfig.h`. Override it with the `FREERTOS_CONFIG_PATH` environment variable:
+
+```bash
+export FREERTOS_CONFIG_PATH=/path/to/FreeRTOSConfig.h
+cargo build --features freertos
 ```
 
 ### In Your Rust Code
 
-After running the build script, include the generated types in your code:
+The generated types are consumed via `include!`, not as a normal module:
 
 ```rust
-// In your lib.rs or main.rs
+// In osal-rs's lib.rs (or your own crate built the same way)
 include!(concat!(env!("OUT_DIR"), "/types_generated.rs"));
 
-// Now you can use the generated types
+// Now the generated aliases are in scope
 fn example_task() {
     let tick: TickType = 1000;
     let priority: UBaseType = 5;
 }
 ```
 
-## How It Works
+## Generated Types
 
-1. **Build Time Detection**: The generator creates a small C program to query FreeRTOS type sizes
-2. **Compilation**: Compiles and executes the query program using GCC
-3. **Type Mapping**: Maps detected sizes to appropriate Rust types
-4. **Code Generation**: Writes generated type aliases to `types_generated.rs` in the `OUT_DIR`
+Both backends produce the same four Rust type aliases, sized for the architecture:
 
-### Default Values
+| Type | Description |
+|------|-------------|
+| `TickType` | Timer tick counter |
+| `UBaseType` | Unsigned base type |
+| `BaseType` | Signed base type |
+| `StackType` | Stack element type |
 
-If type detection fails (e.g., no C compiler available), the generator falls back to default values suitable for 32-bit ARM Cortex-M platforms (like Raspberry Pi Pico):
+- **`posix`**: sizes are derived from the detected host architecture - 8 bytes (`u64`/`i64`) on `x86_64`/`aarch64`/`riscv64`, 4 bytes (`u32`/`i32`) on `x86`/`arm`/`riscv32`. Other architectures fail the build with a clear panic rather than silently guessing.
+- **`freertos`**: type detection from an actual `FreeRTOSConfig.h`/toolchain is not implemented yet - the generator currently always emits the common 32-bit mapping (4-byte types), which matches typical Cortex-M configurations (e.g. Raspberry Pi Pico). If your target uses different FreeRTOS type sizes, this crate does not yet detect that.
 
-- `TickType_t`: 4 bytes → `u32`
-- `UBaseType_t`: 4 bytes → `u32`
-- `BaseType_t`: 4 bytes (signed) → `i32`
-- `StackType_t`: 4 bytes → `u32`
+## Real-Time Scheduling Detection (`SCHED_FIFO`)
+
+For the `posix` backend, the same architecture probe also checks whether the host supports `SCHED_FIFO` real-time scheduling and, if so, emits `cargo:rustc-cfg=feature="real_time"` for the crate being built. This is fully automatic - `osal-rs` consumers don't request or configure it, it just reflects what the host supports.
 
 ## Requirements
 
 - Rust 1.85.0 or later
-- GCC compiler (for type detection, optional)
-- FreeRTOS headers (optional, for custom configurations)
+- `gcc` and `ar` available on `PATH` (used to compile/run the architecture probe, and - for `posix` - to build and archive the C porting shim)
 
-## Example Projects
-
-This crate is used by:
+## Used By
 
 - [osal-rs](https://github.com/HiHappyGarden/osal-rs) - Operating System Abstraction Layer for Rust
 - [hi-happy-garden-rs](https://github.com/HiHappyGarden/hi-happy-garden-rs) - Embedded Rust project for Raspberry Pi Pico
-
-## Build Script Example
-
-Complete `build.rs` example:
-
-```rust
-use osal_rs_build::FreeRtosTypeGenerator;
-
-fn main() {
-    println!("cargo:rerun-if-changed=build.rs");
-    
-    // Create the generator
-    let generator = FreeRtosTypeGenerator::new();
-    
-    // Generate FreeRTOS type mappings
-    generator.generate_types();
-    
-    // The generated file will be available at:
-    // ${OUT_DIR}/types_generated.rs
-}
-```
-
-## API Documentation
-
-### `FreeRtosTypeGenerator`
-
-The main struct for generating FreeRTOS type mappings.
-
-#### Methods
-
-- `new() -> Self`: Creates a new generator with default settings
-- `with_config_path<P: Into<PathBuf>>(config_path: P) -> Self`: Creates a generator with a custom FreeRTOS config path
-- `set_config_path<P: Into<PathBuf>>(&mut self, config_path: P)`: Sets the FreeRTOS config path
-- `generate_types(&self)`: Generates only type mappings
-- `generate_all(&self)`: Generates types and configuration constants
 
 ## License
 

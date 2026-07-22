@@ -20,40 +20,24 @@
 
 //! Build script for OSAL-RS library.
 //!
-//! This build script runs at compile time to perform several critical setup tasks:
+//! Delegates to [`osal_rs_build::TypeGenerator`] to generate the `TickType`/
+//! `UBaseType`/`BaseType`/`StackType` aliases the crate `include!`s from
+//! `OUT_DIR/types_generated.rs`, wire up `cargo:rerun-if-changed` for the
+//! active backend's C porting sources, and - for `posix` - compile and link
+//! the C porting shim. See `osal-rs-build`'s own docs for exactly what each
+//! backend does at build time (POSIX probes the host architecture and
+//! `SCHED_FIFO` support for real; the FreeRTOS path currently always emits
+//! the common 32-bit type mapping rather than parsing `FreeRTOSConfig.h`).
 //!
-//! # Purpose
+//! # FreeRTOSConfig.h Location (freertos backend)
 //!
-//! 1. **Generate FreeRTOS type mappings**: Creates Rust bindings for FreeRTOS C types
-//! 2. **Extract configuration constants**: Reads `FreeRTOSConfig.h` and exposes constants to Rust
-//! 3. **Set up rebuild triggers**: Ensures the library rebuilds when FFI code changes
-//!
-//! # What It Generates
-//!
-//! The script generates Rust source files containing:
-//! - Type aliases for FreeRTOS types (e.g., `TickType`, `BaseType`)
-//! - Configuration constants (e.g., `configTICK_RATE_HZ`, `configMAX_PRIORITIES`)
-//! - Platform-specific type sizes and layouts
-//!
-//! These generated files are included by the `osal-rs` crate at compile time via
-//! `include!` macros.
-//!
-//! # Configuration
-//!
-//! ## FreeRTOSConfig.h Location
-//!
-//! The script searches for `FreeRTOSConfig.h` in the following order:
-//!
+//! Determined by `TypeGenerator` from:
 //! 1. **Environment variable**: `FREERTOS_CONFIG_PATH` (if set)
 //! 2. **Default location**: `<workspace_root>/inc/FreeRTOSConfig.h`
 //!
-//! ### Setting Custom Config Path
-//!
-//! To use a custom configuration file location, set the environment variable:
-//!
 //! ```bash
 //! export FREERTOS_CONFIG_PATH=/path/to/FreeRTOSConfig.h
-//! cargo build
+//! cargo build --features freertos
 //! ```
 //!
 //! Or in `.cargo/config.toml`:
@@ -65,30 +49,18 @@
 //!
 //! # Rebuild Triggers
 //!
-//! The library will rebuild if any of these files change:
-//! - `build.rs` (this file)
-//! - `osal_rs_ffi_freertos.c` (FFI implementation)
-//! - `osal_rs_ffi_freertos.h` (FFI header)
+//! Rebuilds on changes to `build.rs` itself and to the active backend's C
+//! porting sources (`osal-rs-porting/freeretos/` or `osal-rs-porting/posix/`).
+//!
+//! # Feature Requirements
+//!
+//! Exactly one of `freertos` / `posix` must be enabled: enabling neither or
+//! both trips one of the two `compile_error!`s below.
 //!
 //! # Build Dependencies
 //!
-//! Requires:
-//! - `osal-rs-build` crate (provides `FreeRtosTypeGenerator`)
-//! - Valid `FreeRTOSConfig.h` file
-//! - C compiler for parsing FreeRTOS headers
-//!
-//! # Troubleshooting
-//!
-//! If the build fails:
-//! 1. Verify `FreeRTOSConfig.h` exists at the expected location
-//! 2. Check that `FREERTOS_CONFIG_PATH` is correct (if set)
-//! 3. Ensure FreeRTOS headers are accessible
-//! 4. Check build output for specific error messages
-//!
-//! # See Also
-//!
-//! - `osal-rs-build` crate for the type generation implementation
-//! - `FreeRTOSConfig.h` for FreeRTOS configuration options
+//! Requires the `osal-rs-build` crate (`TypeGenerator`) and, for `posix`,
+//! `gcc`/`ar` on `PATH`.
 
 use osal_rs_build::TypeGenerator;
 use std::env;
@@ -96,44 +68,22 @@ use std::path::PathBuf;
 
 /// Main entry point for the build script.
 ///
-/// This function performs the following tasks in order:
-///
-/// 1. **Sets rebuild triggers**: Configures cargo to rebuild when FFI files change
-/// 2. **Locates workspace root**: Determines the workspace root directory
-/// 3. **Finds FreeRTOSConfig.h**: Searches for the configuration file
-/// 4. **Generates type bindings**: Creates Rust type mappings from FreeRTOS C types
-///
-/// # Rebuild Triggers
-///
-/// The script tells cargo to rebuild if these files change:
-/// - `build.rs` - This build script itself
-/// - `osal_rs_ffi_freertos.c` - FFI implementation in C
-/// - `osal_rs_ffi_freertos.h` - FFI header declarations
-///
-/// # FreeRTOSConfig.h Discovery
-///
-/// The configuration file is located using this precedence:
-/// 1. Environment variable `FREERTOS_CONFIG_PATH` (if set)
-/// 2. Default path: `<workspace_root>/inc/FreeRTOSConfig.h`
-///
-/// # Generation Process
-///
-/// Uses `FreeRtosTypeGenerator` to:
-/// - Parse FreeRTOSConfig.h for configuration constants
-/// - Generate Rust type aliases for FreeRTOS types
-/// - Create platform-specific type definitions
-/// - Write generated code to source files in the build output directory
+/// Builds a [`TypeGenerator`] from `CARGO_MANIFEST_DIR`, then - for whichever
+/// of `freertos`/`posix` is active - registers rerun-if-changed triggers via
+/// `TypeGenerator::add_rerun_if_changed()` and runs `generator.generate_all()`
+/// to write `types_generated.rs` (and, for `posix`, compile and link the C
+/// porting shim).
 ///
 /// # Panics
 ///
-/// - If `CARGO_MANIFEST_DIR` environment variable is not set (cargo always sets this)
-/// - If workspace root cannot be determined from manifest path
-/// - If FreeRTOSConfig.h cannot be found or parsed (handled by `FreeRtosTypeGenerator`)
+/// - If `CARGO_MANIFEST_DIR` is not set (cargo always sets this)
+/// - If neither or both of `freertos`/`posix` are enabled (`compile_error!`)
+/// - If generation fails (handled by `TypeGenerator`, e.g. missing `gcc`/`ar`)
 ///
 /// # Environment Variables
 ///
 /// - `CARGO_MANIFEST_DIR` - Set by cargo, points to the crate's directory
-/// - `FREERTOS_CONFIG_PATH` - Optional, custom path to FreeRTOSConfig.h
+/// - `FREERTOS_CONFIG_PATH` - Optional, custom path to `FreeRTOSConfig.h` (freertos backend)
 fn main() {
     // Tell cargo to rerun this build script if any of these files change.
     // This ensures the generated bindings stay synchronized with the FFI implementation.

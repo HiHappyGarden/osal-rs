@@ -1,6 +1,6 @@
 [package]
 name = "osal-rs-serde"
-version = "0.5.1"
+version = "1.0.0"
 edition = "2024"
 rust-version = "1.85.0"
 authors = ["Antonio Salsi"]
@@ -20,7 +20,7 @@ std = []
 derive = ["osal-rs-serde-derive"]
 
 [dependencies]
-osal-rs-serde-derive = { version = "0.5", path = "derive", optional = true }
+osal-rs-serde-derive = { version = "1.0", path = "derive", optional = true }
 
 [[example]]
 name = "basic"

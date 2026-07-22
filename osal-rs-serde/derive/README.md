@@ -16,7 +16,7 @@ Add the `derive` feature to enable these macros:
 
 ```toml
 [dependencies]
-osal-rs-serde = { version = "0.4", features = ["derive"] }
+osal-rs-serde = { version = "1.0", features = ["derive"] }
 ```
 
 Then use the macros on your structs:
@@ -123,7 +123,7 @@ struct Outer {
 }
 ```
 
-### Collections (with `alloc` feature)
+### Collections (always available)
 
 ```rust
 #[derive(Serialize, Deserialize)]
@@ -271,8 +271,8 @@ struct Point {
 
 // The macro generates approximately:
 impl Serialize for Point {
-    fn serialize<S: Serializer>(&self, serializer: &mut S) -> Result<(), S::Error> {
-        serializer.serialize_struct_start("Point", 2)?;
+    fn serialize<S: Serializer>(&self, name: &str, serializer: &mut S) -> Result<(), S::Error> {
+        serializer.serialize_struct_start(name, 2)?;
         serializer.serialize_field("x", &self.x)?;
         serializer.serialize_field("y", &self.y)?;
         serializer.serialize_struct_end()?;
@@ -292,6 +292,8 @@ impl Deserialize for Point {
     }
 }
 ```
+
+`name` is whatever the caller passes: `""` for a top-level call (e.g. via `to_bytes`/`from_bytes`), or the field name when the struct is nested inside another via `serialize_field`/`deserialize_field`. `ByteSerializer`/`ByteDeserializer` ignore it entirely since the binary format has no field names; a JSON-style serializer would use it as the key.
 
 ## Debugging
 
@@ -327,7 +329,7 @@ The derive macros generate efficient code with:
 - No runtime overhead compared to manual implementation
 - Inlining opportunities for the compiler
 - Zero-cost abstractions
-- No allocations (except for Vec/String with `alloc` feature)
+- No allocations, except where `Vec`/`String` fields themselves allocate
 
 ## Best Practices
 
@@ -361,6 +363,6 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 ## Links
 
 - [Repository](https://github.com/HiHappyGarden/osal-rs)
-- [Documentation](https://docs.rs/osal-rs-serde)
-- [Crates.io](https://crates.io/crates/osal-rs-serde)
+- [Documentation](https://docs.rs/osal-rs-serde-derive)
+- [Crates.io](https://crates.io/crates/osal-rs-serde-derive)
 

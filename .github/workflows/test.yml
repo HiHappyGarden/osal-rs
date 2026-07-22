@@ -1,0 +1,32 @@
+name: Test
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install latest Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Test (posix, async, serde)
+        run: cargo test -p osal-rs --features posix,async,serde
+
+      - name: Test (posix, async)
+        run: cargo test -p osal-rs --features posix,async
+
+      - name: Test (posix)
+        run: cargo test -p osal-rs --features posix

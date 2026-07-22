@@ -145,7 +145,7 @@ fn main() {
     let manifest_dir = env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR not set");
     
 
-    let generator = TypeGenerator::new(&PathBuf::from(manifest_dir));
+    let mut generator = TypeGenerator::new(&PathBuf::from(manifest_dir));
 
     #[cfg(all(not(feature = "posix"), feature = "freertos"))]
     {

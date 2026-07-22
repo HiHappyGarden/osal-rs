@@ -28,7 +28,7 @@ use std::ffi::OsStr;
 use std::fs;
 use std::process::Command;
 
-pub struct TypeGenerator(PathBuf);
+pub struct TypeGenerator(PathBuf, bool);
 
 impl TypeGenerator {
     /// Create a new generator with a custom FreeRTOSConfig.h path
@@ -67,7 +67,7 @@ impl TypeGenerator {
 
         let out_dir = PathBuf::from(env::var("OUT_DIR").expect("OUT_DIR not set"));
         Self (
-            out_dir
+            out_dir, false
         )
     }
 
@@ -131,6 +131,13 @@ pub type StackType = {};
         }
     }
 
+    /// Enable the `sched_fifo` feature cfg for the crate build when requested.
+    fn enable_sched_fifo(&self) {
+        if self.1 {
+            println!("cargo:rustc-cfg=feature=\"sched_fifo\"");
+        }
+    }
+
 }
 
 
@@ -142,7 +149,7 @@ impl TypeGenerator {
         println!("cargo:rerun-if-changed=../osal-rs-porting/posix/inc/osal_rs.h");
     }
 
-    pub fn generate_types(&self) {
+    pub fn generate_types(&mut self) {
 
         let query_program = r#"
 #include <stdio.h>
@@ -151,8 +158,13 @@ impl TypeGenerator {
 int main() {
     struct utsname buffer;
     if (uname(&buffer) == 0) {
-        printf("%s\n", buffer.machine);
+        printf("ARCH=%s\n", buffer.machine);
     }
+#if defined(USE_SCHED_FIFO)
+    printf("SCHED_FIFO=1\n");
+#else
+    printf("SCHED_FIFO=0\n");
+#endif
     return 0;
 }
 "#;
@@ -175,46 +187,51 @@ int main() {
                 .expect("Failed to run query program");
             
             let stdout = String::from_utf8_lossy(&output.stdout);
-            
+
+
             for line in stdout.lines() {
-                //println!("cargo:warning=line:{line}"); 
-                match line {
-                    "x86_64" | "aarch64" | "riscv64" => {
-                        // 64-bit architectures: native word size is 8 bytes
-                        let tick_size: u16 = 8;
-                        let u_base_size: u16 = 8;
-                        let base_size: u16 = 8;
-                        let base_signed = true;
-                        let stack_size: u16 = 8;
+                //println!("cargo:warning=line:{line}");
+                if let Some(arch) = line.strip_prefix("ARCH=") {
+                    match arch {
+                        "x86_64" | "aarch64" | "riscv64" => {
+                            // 64-bit architectures: native word size is 8 bytes
+                            let tick_size: u16 = 8;
+                            let u_base_size: u16 = 8;
+                            let base_size: u16 = 8;
+                            let base_signed = true;
+                            let stack_size: u16 = 8;
 
-                        let tick_type = Self::size_to_type(tick_size, false);
-                        let u_base_type = Self::size_to_type(u_base_size, false);
-                        let base_type = Self::size_to_type(base_size, base_signed);
-                        let stack_type = Self::size_to_type(stack_size, true);
+                            let tick_type = Self::size_to_type(tick_size, false);
+                            let u_base_type = Self::size_to_type(u_base_size, false);
+                            let base_type = Self::size_to_type(base_size, base_signed);
+                            let stack_type = Self::size_to_type(stack_size, true);
 
-                        self.write_generated_types(tick_size, tick_type, u_base_size, u_base_type, base_size, base_type, stack_size, stack_type);
+                            self.write_generated_types(tick_size, tick_type, u_base_size, u_base_type, base_size, base_type, stack_size, stack_type);
+                        }
+                        "x86" | "arm" | "riscv32" => {
+                            // 32-bit architectures: native word size is 4 bytes
+                            let tick_size: u16 = 4;
+                            let u_base_size: u16 = 4;
+                            let base_size: u16 = 4;
+                            let base_signed = true;
+                            let stack_size: u16 = 4;
+
+                            let tick_type = Self::size_to_type(tick_size, false);
+                            let u_base_type = Self::size_to_type(u_base_size, false);
+                            let base_type = Self::size_to_type(base_size, base_signed);
+                            let stack_type = Self::size_to_type(stack_size, true);
+
+                            self.write_generated_types(tick_size, tick_type, u_base_size, u_base_type, base_size, base_type, stack_size, stack_type);
+                        }
+                        //TODO: mac
+                        //TODO: freebsd
+                        other => panic!("osal-rs-build: unsupported POSIX architecture '{other}'"),
                     }
-                    "x86" | "arm" | "riscv32" => {
-                        // 32-bit architectures: native word size is 4 bytes
-                        let tick_size: u16 = 4;
-                        let u_base_size: u16 = 4;
-                        let base_size: u16 = 4;
-                        let base_signed = true;
-                        let stack_size: u16 = 4;
-
-                        let tick_type = Self::size_to_type(tick_size, false);
-                        let u_base_type = Self::size_to_type(u_base_size, false);
-                        let base_type = Self::size_to_type(base_size, base_signed);
-                        let stack_type = Self::size_to_type(stack_size, true);
-
-                        self.write_generated_types(tick_size, tick_type, u_base_size, u_base_type, base_size, base_type, stack_size, stack_type);
-                    }
-                    //TODO: mac
-                    //TODO: freebsd
-                    other => panic!("osal-rs-build: unsupported POSIX architecture '{other}'"),
+                } else if let Some(value) = line.strip_prefix("SCHED_FIFO=") {
+                    self.1 = value == "1";
                 }
             }
-            
+
         } else {
  
 
@@ -260,8 +277,9 @@ int main() {
     }
 
     #[inline]
-    pub fn generate_all(&self) {
+    pub fn generate_all(&mut self) {
         self.generate_types();
+        self.enable_sched_fifo();
         self.compile_sources();
     }
 }
@@ -277,30 +295,31 @@ impl TypeGenerator {
     }
 
     /// Query FreeRTOS type sizes and generate Rust type mappings
-    pub fn generate_types(&self) {
+    pub fn generate_types(&mut self) {
         let (tick_size, ubase_size, base_size, base_signed, stack_size) = self.query_type_sizes();
-        
+
         let tick_type = Self::size_to_type(tick_size, false);
         let ubase_type = Self::size_to_type(ubase_size, false);
         let base_type = Self::size_to_type(base_size, base_signed);
         let stack_type = Self::size_to_type(stack_size, true);
 
-        
+
         self.write_generated_types(tick_size, tick_type, ubase_size, ubase_type, base_size, base_type, stack_size, stack_type);
-        
-        println!("cargo:warning=Generated FreeRTOS types: TickType={}, UBaseType={}, BaseType={} StackType={}", 
+
+        println!("cargo:warning=Generated FreeRTOS types: TickType={}, UBaseType={}, BaseType={} StackType={}",
                  tick_type, ubase_type, base_type, stack_type);
     }
 
     /// Generate both types and config
     #[inline]
-    pub fn generate_all(&self) {
+    pub fn generate_all(&mut self) {
         self.generate_types();
+        self.enable_sched_fifo();
         // self.generate_config();
     }
 
     /// Query the sizes of FreeRTOS types
-    fn query_type_sizes(&self) -> (u16, u16, u16, bool, u16) {
+    fn query_type_sizes(&mut self) -> (u16, u16, u16, bool, u16) {
         // Create a small C program to query the type sizes
         let query_program = r#"
 #include <stdio.h>
@@ -314,26 +333,25 @@ int main() {
     // Since we can't easily compile against FreeRTOS in the build script,
     // we'll use a different approach: parse the compile_commands.json or
     // use predefined types based on common configurations
-    
+
     // Common FreeRTOS configurations:
     // TickType_t is usually uint32_t (4 bytes) on 32-bit systems
-    // UBaseType_t is usually uint32_t (4 bytes) on 32-bit systems  
+    // UBaseType_t is usually uint32_t (4 bytes) on 32-bit systems
     // BaseType_t is usually int32_t (4 bytes) on 32-bit systems
     // StackType_t is usually long (4 bytes) on 32-bit systems
-    
+
     printf("TICK_TYPE_SIZE=%d\n", 4);
     printf("UBASE_TYPE_SIZE=%d\n", 4);
     printf("BASE_TYPE_SIZE=%d\n", 4);
     printf("BASE_TYPE_SIGNED=1\n");
     printf("STACK_TYPE_SIZE=%d\n", 4);
-    
     return 0;
 }
 "#;
-        
+
         let query_c = self.0.join("query_types.c");
         fs::write(&query_c, query_program).expect("Failed to write query program");
-        
+
         // Compile the query program
         let query_exe = self.0.join("query_types");
         let compile_status = Command::new("gcc")
@@ -341,20 +359,20 @@ int main() {
             .arg("-o")
             .arg(&query_exe)
             .status();
-        
+
         if compile_status.is_ok() && compile_status.unwrap().success() {
             // Run the query program
             let output = Command::new(&query_exe)
                 .output()
                 .expect("Failed to run query program");
-            
+
             let stdout = String::from_utf8_lossy(&output.stdout);
             let mut tick_size = 4u16;
             let mut ubase_size = 4u16;
             let mut base_size = 4u16;
             let mut base_signed = true;
             let mut stack_type = 4u16;
-            
+
             for line in stdout.lines() {
                 if let Some(val) = line.strip_prefix("TICK_TYPE_SIZE=") {
                     tick_size = val.parse().unwrap_or(4);
@@ -366,9 +384,9 @@ int main() {
                     base_signed = val.parse::<u8>().unwrap_or(1) == 1;
                 } else if let Some(val) = line.strip_prefix("STACK_TYPE_SIZE=") {
                     stack_type = val.parse().unwrap_or(4);
-                } 
+                }
             }
-            
+
             (tick_size, ubase_size, base_size, base_signed, stack_type)
         } else {
             // Default values for 32-bit ARM Cortex-M (typical for Raspberry Pi Pico)

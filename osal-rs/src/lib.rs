@@ -26,8 +26,8 @@
 //!
 //! OSAL-RS provides a unified, safe Rust API for working with different real-time
 //! operating systems. It currently ships two backends, selected at compile time
-//! via feature flags:
-//! - **FreeRTOS** (feature `freertos`, default) - for bare-metal embedded targets
+//! via feature flags - there is no default, exactly one must be enabled:
+//! - **FreeRTOS** (feature `freertos`) - for bare-metal embedded targets
 //! - **POSIX** (feature `posix`) - runs on any pthreads-capable host (Linux, macOS)
 //!   so applications, tests and doc examples can execute natively without
 //!   embedded hardware or a cross toolchain
@@ -187,15 +187,16 @@
 //!
 //! | Feature | Default | Description |
 //! |---------|---------|-------------|
-//! | `freertos` | ✅ | FreeRTOS backend |
+//! | `freertos` | ❌ | FreeRTOS backend |
 //! | `posix` | ❌ | POSIX/host backend |
 //! | `async` | ❌ | Async/await without Tokio |
 //! | `serde` | ❌ | Serialization via `osal-rs-serde` |
-//! | `real_time` | ❌ | POSIX only: schedule spawned threads with `SCHED_FIFO` instead of inheriting the creating thread's policy/priority |
+//! | `real_time` | ❌ | POSIX only: schedules spawned threads with `SCHED_FIFO` instead of inheriting the creating thread's policy/priority. Not meant to be requested by hand - the build script auto-enables it when the host OS/kernel supports real-time scheduling |
 //!
-//! Exactly one of `freertos`/`posix` must be enabled; `freertos` takes
-//! precedence if both are (see the `cfg` gates on the `freertos`/`posix`
-//! modules above).
+//! There is no default backend: exactly one of `freertos`/`posix` must be
+//! enabled explicitly. Enabling neither trips the `compile_error!` below;
+//! enabling both is equally unsupported (the two are mutually exclusive by
+//! `cfg`, so the crate fails to build either way).
 //!
 //! ## Requirements
 //!
@@ -291,7 +292,8 @@ compile_error!("Enable either the `freertos` backend or the `posix` host backend
 /// This module contains the concrete implementation of all OSAL abstractions
 /// for FreeRTOS, including threads, mutexes, queues, timers, etc.
 ///
-/// Enabled with the `freertos` feature flag (on by default).
+/// Enabled with the `freertos` feature flag (no default backend - must be
+/// requested explicitly).
 #[cfg(all(not(feature = "posix"), feature = "freertos"))]
 mod freertos;
 

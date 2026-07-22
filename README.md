@@ -28,9 +28,9 @@ OSAL-RS provides a unified API for developing multi-platform embedded applicatio
 
 ## Supported Backends
 
-OSAL-RS selects its implementation at compile time via Cargo features. Exactly one of `freertos` / `posix` must be enabled; if both are enabled, `freertos` takes precedence.
+OSAL-RS selects its implementation at compile time via Cargo features. There is **no default backend** - exactly one of `freertos` / `posix` must be enabled explicitly, or the crate fails to build. Enabling neither trips a `compile_error!`; enabling both is equally unsupported, since the two backends are mutually exclusive by design.
 
-### FreeRTOS Backend (`freertos`, default)
+### FreeRTOS Backend (`freertos`)
 
 For bare-metal embedded targets (`no_std`). FreeRTOS provides preemptive multitasking with priority-based scheduling, mutexes with priority inheritance, semaphores, queues and software timers.
 
@@ -74,7 +74,7 @@ Runs on any POSIX/pthreads host so OSAL-RS applications - and their tests and do
 
 ```bash
 # Native development / host testing
-cargo build --no-default-features --features posix
+cargo build --features posix
 ```
 
 #### POSIX Backend: glibc Requirement
@@ -85,13 +85,11 @@ This means:
 - The **compiler** doesn't matter - gcc or clang both work fine.
 - The **C library** does matter - targets linking against **musl** (e.g. `x86_64-unknown-linux-musl`) or non-glibc platforms (e.g. macOS/BSD libc) are **not supported** by the `posix` backend.
 
-#### Optional: Real-Time Scheduling (`real_time`)
+#### Real-Time Scheduling (`real_time`)
 
-By default, threads spawned by the `posix` backend inherit the creating thread's scheduling policy/priority. Enabling the `real_time` feature alongside `posix` schedules spawned threads with the real-time `SCHED_FIFO` policy instead:
+Threads spawned by the `posix` backend normally inherit the creating thread's scheduling policy/priority. The `real_time` feature switches them to the real-time `SCHED_FIFO` policy instead.
 
-```bash
-cargo build --no-default-features --features posix,real_time
-```
+You don't need to request this feature yourself: `osal-rs-build`'s build script probes the host at compile time and automatically turns `real_time` on whenever the OS/kernel supports `SCHED_FIFO`. It's a plain Cargo feature only so it can be inspected via `cfg(feature = "real_time")`; a plain `cargo build --features posix` is enough to get it on a capable host.
 
 ### Caveats of the POSIX Backend
 
@@ -175,16 +173,18 @@ OSAL-RS provides several Cargo features to customize the build configuration for
 
 | Feature | Default | Description |
 |---------|---------|-------------|
-| `freertos` | ✅ | Enable the FreeRTOS backend implementation for embedded RTOS development. |
-| `posix` | ❌ | Enable the POSIX/native backend implementation for host environments. Requires **glibc** (see note above). |
-| `real_time` | ❌ | POSIX only: schedule spawned threads with the real-time `SCHED_FIFO` policy instead of inheriting the creating thread's policy/priority. |
+| `freertos` | ❌ | Enable the FreeRTOS backend implementation for embedded RTOS development. Mutually exclusive with `posix` - exactly one of the two is required. |
+| `posix` | ❌ | Enable the POSIX/native backend implementation for host environments. Requires **glibc** (see note above). Mutually exclusive with `freertos` - exactly one of the two is required. |
+| `real_time` | ❌ | POSIX only: schedules spawned threads with the real-time `SCHED_FIFO` policy instead of inheriting the creating thread's policy/priority. Not meant to be requested by hand - `osal-rs-build`'s build script enables it automatically when the host OS/kernel supports `SCHED_FIFO`. |
 | `async` | ❌ | Enable backend-agnostic async/await support (`block_on`, `AsyncQueue`, `AsyncSemaphore`, `AsyncMutex`). Works with both `freertos` and `posix`. No Tokio required. |
 | `serde` | ❌ | Enable serialization/deserialization support via `osal-rs-serde`. Includes derive macros for automatic implementation. |
+
+There is no default feature set: you must explicitly pick `freertos` or `posix` or the build fails.
 
 ### Feature Combinations
 
 ```bash
-# FreeRTOS embedded development (default)
+# FreeRTOS embedded development
 cargo build --target thumbv8m.main-none-eabi --features freertos
 
 # FreeRTOS with async support
@@ -193,29 +193,26 @@ cargo build --target thumbv8m.main-none-eabi --features freertos,async
 # FreeRTOS with serialization support
 cargo build --target thumbv8m.main-none-eabi --features freertos,serde
 
-# Native development (POSIX)
-cargo build --no-default-features --features posix
+# Native development (POSIX) - real_time is auto-detected, no need to request it
+cargo build --features posix
 
 # Native development with async support
-cargo build --no-default-features --features posix,async
+cargo build --features posix,async
 
 # Native development with serialization
-cargo build --no-default-features --features posix,serde
-
-# Native development with real-time (SCHED_FIFO) thread scheduling
-cargo build --no-default-features --features posix,real_time
+cargo build --features posix,serde
 ```
 
 ### Using Features in Cargo.toml
 
-To use OSAL-RS in your project with specific features:
+To use OSAL-RS in your project with specific features (exactly one of `freertos`/`posix` is required):
 
 ```toml
 [dependencies]
 osal-rs = { version = "0.5", features = ["freertos"] }
 
 # Or for host development/testing
-osal-rs = { version = "0.5", default-features = false, features = ["posix"] }
+osal-rs = { version = "0.5", features = ["posix"] }
 
 # Or with serialization support
 osal-rs = { version = "0.5", features = ["freertos", "serde"] }
@@ -274,7 +271,7 @@ block_on(async {
 [dependencies]
 osal-rs = { version = "0.5", features = ["freertos", "async"] }
 # or for host development
-osal-rs = { version = "0.5", default-features = false, features = ["posix", "async"] }
+osal-rs = { version = "0.5", features = ["posix", "async"] }
 ```
 
 ```bash
@@ -282,7 +279,7 @@ osal-rs = { version = "0.5", default-features = false, features = ["posix", "asy
 cargo build --release --target thumbv8m.main-none-eabi --features freertos,async
 
 # POSIX host (for tests / simulation)
-cargo build --no-default-features --features posix,async
+cargo build --features posix,async
 ```
 
 ## osal-rs-serde Features

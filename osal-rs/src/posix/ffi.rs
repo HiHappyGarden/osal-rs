@@ -293,17 +293,17 @@ pub(super) type sighandler_t = usize;
 ///
 /// Value is stable across every glibc-supported architecture (defined in
 /// the generic `bits/sched.h`, not per-arch).
-#[cfg(feature = "sched_fifo")]
+#[cfg(feature = "real_time")]
 pub(super) const SCHED_FIFO: c_int = 1;
 
 /// Scheduling-inheritance attribute: use the policy/priority set on the
 /// `pthread_attr_t` itself instead of inheriting the creating thread's.
-#[cfg(feature = "sched_fifo")]
+#[cfg(feature = "real_time")]
 pub(super) const PTHREAD_EXPLICIT_SCHED: c_int = 1;
 
 /// Mirrors glibc's `struct sched_param` (`<bits/sched.h>`), which on Linux
 /// has no fields beyond `sched_priority`.
-#[cfg(feature = "sched_fifo")]
+#[cfg(feature = "real_time")]
 #[repr(C)]
 #[derive(Copy, Clone)]
 pub(super) struct sched_param {
@@ -451,7 +451,7 @@ pub(super) const PTHREAD_PRIO_INHERIT: c_int = 1;
 unsafe extern "C" {
 
 
-    pub(super) fn get_pthread_stack_min() -> usize;
+    pub(super) fn osal_rs_get_pthread_stack_min() -> usize;
 
     /// Initialize a thread attributes object with default values.
     pub(super) fn pthread_attr_init(attr: *mut pthread_attr_t) -> c_int;
@@ -462,15 +462,15 @@ unsafe extern "C" {
     /// Set whether a thread inherits the creating thread's scheduling
     /// policy/priority (`PTHREAD_INHERIT_SCHED`) or uses `attr`'s own,
     /// explicitly-set policy/priority (`PTHREAD_EXPLICIT_SCHED`).
-    #[cfg(feature = "sched_fifo")]
+    #[cfg(feature = "real_time")]
     pub(super) fn pthread_attr_setinheritsched(attr: *mut pthread_attr_t, inheritsched: c_int) -> c_int;
 
     /// Set the scheduling policy attribute (e.g. [`SCHED_FIFO`]).
-    #[cfg(feature = "sched_fifo")]
+    #[cfg(feature = "real_time")]
     pub(super) fn pthread_attr_setschedpolicy(attr: *mut pthread_attr_t, policy: c_int) -> c_int;
 
     /// Set the scheduling parameters (priority) attribute.
-    #[cfg(feature = "sched_fifo")]
+    #[cfg(feature = "real_time")]
     pub(super) fn pthread_attr_setschedparam(attr: *mut pthread_attr_t, param: *const sched_param) -> c_int;
 
     /// Create a new thread running `start_routine(arg)`, writing its ID to `thread`.

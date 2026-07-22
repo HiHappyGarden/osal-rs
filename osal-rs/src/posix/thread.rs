@@ -30,10 +30,10 @@ use alloc::sync::Arc;
 
 use crate::os::{Mutex, MutexFn, MutexGuard, ThreadSimpleFnPtr};
 use crate::posix::config::TICK_PERIOD_MS;
-#[cfg(feature = "sched_fifo")]
+#[cfg(feature = "real_time")]
 use crate::posix::ffi::{PTHREAD_EXPLICIT_SCHED, SCHED_FIFO, pthread_attr_setinheritsched, pthread_attr_setschedparam, pthread_attr_setschedpolicy, sched_param};
 use crate::posix::ffi::{
-	__libc_current_sigrtmin, CLOCK_MONOTONIC, ETIMEDOUT, PTHREAD_ONCE_INIT, clock_gettime, get_pthread_stack_min, pthread_attr_init, pthread_attr_setstacksize, pthread_attr_t,
+	__libc_current_sigrtmin, CLOCK_MONOTONIC, ETIMEDOUT, PTHREAD_ONCE_INIT, clock_gettime, osal_rs_get_pthread_stack_min, pthread_attr_init, pthread_attr_setstacksize, pthread_attr_t,
 	pthread_cond_broadcast, pthread_cond_destroy, pthread_cond_init, pthread_cond_t, pthread_cond_timedwait, pthread_cond_wait, pthread_condattr_init, pthread_condattr_setclock,
 	pthread_condattr_t, pthread_create, pthread_join, pthread_kill, pthread_once, pthread_once_t, pthread_self, pthread_setname_np, sigdelset, sigfillset, sigset_t, signal, sigsuspend,
 	timespec,
@@ -578,7 +578,7 @@ impl ThreadFn for Thread {
         }
 
         let requested_stack_size = unsafe {
-            get_pthread_stack_min()
+            osal_rs_get_pthread_stack_min()
         } + self.stack_depth as usize;
 
         let min_safe_stack_size = 1024usize * 1024usize;
@@ -587,7 +587,7 @@ impl ThreadFn for Thread {
             pthread_attr_setstacksize (&mut attr, if requested_stack_size < min_safe_stack_size {  min_safe_stack_size } else { requested_stack_size });
         }
 
-        #[cfg(feature = "sched_fifo")]
+        #[cfg(feature = "real_time")]
         unsafe {
             let fifo_param = sched_param {
                 sched_priority: self.priority as core::ffi::c_int,
@@ -650,7 +650,7 @@ impl ThreadFn for Thread {
         }
 
         let requested_stack_size = unsafe {
-            get_pthread_stack_min()
+            osal_rs_get_pthread_stack_min()
         } + self.stack_depth as usize;
 
         let min_safe_stack_size = 1024usize * 1024usize;
@@ -659,7 +659,7 @@ impl ThreadFn for Thread {
             pthread_attr_setstacksize (&mut attr, if requested_stack_size < min_safe_stack_size {  min_safe_stack_size } else { requested_stack_size });
         }
 
-        #[cfg(feature = "sched_fifo")]
+        #[cfg(feature = "real_time")]
         unsafe {
             let fifo_param = sched_param {
                 sched_priority: self.priority as core::ffi::c_int,

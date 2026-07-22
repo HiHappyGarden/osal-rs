@@ -31,6 +31,7 @@ serde = ["osal-rs-serde"]
 async = []
 # POSIX: schedule spawned threads with the real-time SCHED_FIFO policy
 # instead of inheriting the creating thread's scheduling policy/priority.
+# automatically enabled on compile time
 sched_fifo = []
 
 

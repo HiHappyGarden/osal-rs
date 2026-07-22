@@ -18,6 +18,34 @@
  *
  ***************************************************************************/
 
+//! Mutex implementations for POSIX, with priority inheritance.
+//!
+//! [`Mutex<T>`] is the data-guarding, RAII-style mutex most application code
+//! should use (see the example below). [`RawMutex`] is the lower-level
+//! primitive it's built on - a bare, lock/unlock pair with no data attached
+//! and no guard - for callers that need to manage locking by hand (e.g. to
+//! pair a mutex with a condition variable, as [`crate::posix::thread`] does).
+//!
+//! Both are backed by a `pthread_mutex_t` configured with
+//! `PTHREAD_PRIO_INHERIT` (a low-priority holder blocking a higher-priority
+//! waiter is temporarily boosted, avoiding priority inversion) and
+//! `PTHREAD_MUTEX_RECURSIVE` (the owning thread may lock it again without
+//! deadlocking, as long as it unlocks the same number of times).
+//!
+//! # Examples
+//!
+//! ```
+//! use osal_rs::os::*;
+//!
+//! let mutex = Mutex::new(0);
+//! {
+//!     let mut guard = mutex.lock().unwrap();
+//!     *guard += 1;
+//! } // Lock released here
+//!
+//! assert_eq!(*mutex.lock().unwrap(), 1);
+//! ```
+
 use core::cell::UnsafeCell;
 use core::fmt::{Debug, Display, Formatter};
 use core::marker::PhantomData;
@@ -33,12 +61,27 @@ use crate::posix::types::MutexHandle;
 use crate::traits::{MutexFn, MutexGuardFn, RawMutexFn};
 use crate::utils::{Error, OsalRsBool, Result};
 
+/// Low-level POSIX mutex: lock/unlock only, no guarded data and no RAII
+/// guard. Most application code should use [`Mutex<T>`] instead; `RawMutex`
+/// is for callers that need to manage the lock/unlock pairing themselves.
 pub struct RawMutex(UnsafeCell<MutexHandle>);
 
 unsafe impl Send for RawMutex {}
 unsafe impl Sync for RawMutex {}
 
 impl RawMutex {
+	/// Creates a new, unlocked mutex with priority inheritance enabled.
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use osal_rs::os::*;
+	/// use osal_rs::utils::OsalRsBool;
+	///
+	/// let mutex = RawMutex::new().unwrap();
+	/// assert_eq!(mutex.lock(), OsalRsBool::True);
+	/// assert_eq!(mutex.unlock(), OsalRsBool::True);
+	/// ```
 	pub fn new() -> Result<Self> {
 		let mut mutex_attr: pthread_mutexattr_t = Default::default();
 		let mut mutex: MutexHandle = Default::default();
@@ -61,10 +104,36 @@ impl RawMutex {
 
 impl RawMutexFn for RawMutex {
 
+	/// Returns `true` if this mutex is never-initialized-or-already-deleted.
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use osal_rs::os::*;
+	///
+	/// let mut mutex = RawMutex::new().unwrap();
+	/// assert!(!mutex.is_null());
+	///
+	/// mutex.delete();
+	/// assert!(mutex.is_null());
+	/// ```
 	fn is_null(&self) -> bool {
 		unsafe { (*self.0.get()).is_empty() }
 	}
 
+	/// Locks the mutex, blocking the calling thread until it becomes
+	/// available. Returns [`OsalRsBool::True`] on success.
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use osal_rs::os::*;
+	/// use osal_rs::utils::OsalRsBool;
+	///
+	/// let mutex = RawMutex::new().unwrap();
+	/// assert_eq!(mutex.lock(), OsalRsBool::True);
+	/// mutex.unlock();
+	/// ```
 	fn lock(&self) -> OsalRsBool {
 		if self.is_null() {
 			return OsalRsBool::False;
@@ -76,6 +145,21 @@ impl RawMutexFn for RawMutex {
 		}
 	}
 
+	/// ISR-safe variant of [`RawMutex::lock`]. POSIX has no interrupt
+	/// context of its own, so this never blocks (`trylock` instead of
+	/// `lock`); it returns [`OsalRsBool::False`] if the mutex is already
+	/// held rather than waiting for it.
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use osal_rs::os::*;
+	/// use osal_rs::utils::OsalRsBool;
+	///
+	/// let mutex = RawMutex::new().unwrap();
+	/// assert_eq!(mutex.lock_from_isr(), OsalRsBool::True);
+	/// mutex.unlock_from_isr();
+	/// ```
 	fn lock_from_isr(&self) -> OsalRsBool {
 		if self.is_null() {
 			return OsalRsBool::False;
@@ -89,6 +173,19 @@ impl RawMutexFn for RawMutex {
 		}
 	}
 
+	/// Unlocks the mutex. Must be called by the thread that currently holds
+	/// the lock.
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use osal_rs::os::*;
+	/// use osal_rs::utils::OsalRsBool;
+	///
+	/// let mutex = RawMutex::new().unwrap();
+	/// mutex.lock();
+	/// assert_eq!(mutex.unlock(), OsalRsBool::True);
+	/// ```
 	fn unlock(&self) -> OsalRsBool {
 		if self.is_null() {
 			return OsalRsBool::False;
@@ -100,10 +197,25 @@ impl RawMutexFn for RawMutex {
 		}
 	}
 
+	/// ISR-safe variant of [`RawMutex::unlock`]; identical on POSIX, since
+	/// unlocking never blocks.
 	fn unlock_from_isr(&self) -> OsalRsBool {
 		self.unlock()
 	}
 
+	/// Destroys the underlying pthread mutex and resets it to its "null"
+	/// state. Safe to call more than once, and called automatically on
+	/// [`Drop`] if not called explicitly.
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use osal_rs::os::*;
+	///
+	/// let mut mutex = RawMutex::new().unwrap();
+	/// mutex.delete();
+	/// assert!(mutex.is_null());
+	/// ```
 	fn delete(&mut self) {
 		if self.is_null() {
 			return;
@@ -146,6 +258,23 @@ impl Display for RawMutex {
 	}
 }
 
+/// A mutex protecting a `T`, unlocked through RAII guards rather than
+/// explicit lock/unlock calls. Built on [`RawMutex`], so it shares the same
+/// priority-inheritance and recursive-locking behavior.
+///
+/// # Examples
+///
+/// ```
+/// use osal_rs::os::*;
+///
+/// let mutex = Mutex::new(0);
+/// {
+///     let mut guard = mutex.lock().unwrap();
+///     *guard += 1;
+/// } // Lock released here, when `guard` drops.
+///
+/// assert_eq!(*mutex.lock().unwrap(), 1);
+/// ```
 pub struct Mutex<T: ?Sized> {
 	inner: RawMutex,
 	data: UnsafeCell<T>,
@@ -155,6 +284,16 @@ unsafe impl<T: ?Sized + Send> Send for Mutex<T> {}
 unsafe impl<T: ?Sized + Send> Sync for Mutex<T> {}
 
 impl<T: ?Sized> Mutex<T> {
+	/// Wraps `data` in a new, unlocked mutex.
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use osal_rs::os::*;
+	///
+	/// let mutex = Mutex::new(vec![1, 2, 3]);
+	/// assert_eq!(mutex.lock().unwrap().len(), 3);
+	/// ```
 	pub fn new(data: T) -> Self
 	where
 		T: Sized,
@@ -175,6 +314,21 @@ impl<T: ?Sized> MutexFn<T> for Mutex<T> {
 	type Guard<'a> = MutexGuard<'a, T> where Self: 'a, T: 'a;
 	type GuardFromIsr<'a> = MutexGuardFromIsr<'a, T> where Self: 'a, T: 'a;
 
+	/// Blocks the calling thread until the mutex is available, then returns
+	/// a RAII guard that unlocks it on [`Drop`].
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use osal_rs::os::*;
+	///
+	/// let mutex = Mutex::new(10);
+	/// let mut guard = mutex.lock().unwrap();
+	/// *guard += 5;
+	/// drop(guard);
+	///
+	/// assert_eq!(*mutex.lock().unwrap(), 15);
+	/// ```
 	fn lock(&self) -> Result<Self::Guard<'_>> {
 		match self.inner.lock() {
 			OsalRsBool::True => Ok(MutexGuard {
@@ -185,6 +339,23 @@ impl<T: ?Sized> MutexFn<T> for Mutex<T> {
 		}
 	}
 
+	/// ISR-safe variant of [`Mutex::lock`]: never blocks, failing with
+	/// [`Error::MutexLockFailed`] instead of waiting if the mutex is already
+	/// held (POSIX has no real interrupt context of its own, so this is the
+	/// non-blocking equivalent expected of `_from_isr` methods).
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use osal_rs::os::*;
+	///
+	/// let mutex = Mutex::new(0);
+	/// let mut guard = mutex.lock_from_isr().unwrap();
+	/// *guard = 42;
+	/// drop(guard);
+	///
+	/// assert_eq!(*mutex.lock().unwrap(), 42);
+	/// ```
 	fn lock_from_isr(&self) -> Result<Self::GuardFromIsr<'_>> {
 		match self.inner.lock_from_isr() {
 			OsalRsBool::True => Ok(MutexGuardFromIsr {
@@ -195,6 +366,18 @@ impl<T: ?Sized> MutexFn<T> for Mutex<T> {
 		}
 	}
 
+	/// Consumes the mutex, returning the wrapped value without needing to
+	/// lock it (the type system already guarantees exclusive access here).
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use osal_rs::os::*;
+	///
+	/// let mutex = Mutex::new(String::from("hello"));
+	/// let value = mutex.into_inner().unwrap();
+	/// assert_eq!(value, "hello");
+	/// ```
 	fn into_inner(self) -> Result<T>
 	where
 		Self: Sized,
@@ -203,12 +386,36 @@ impl<T: ?Sized> MutexFn<T> for Mutex<T> {
 		Ok(self.data.into_inner())
 	}
 
+	/// Returns a mutable reference to the wrapped value without locking (a
+	/// `&mut Mutex<T>` already guarantees exclusive access).
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use osal_rs::os::*;
+	///
+	/// let mut mutex = Mutex::new(1);
+	/// *mutex.get_mut() += 1;
+	/// assert_eq!(*mutex.lock().unwrap(), 2);
+	/// ```
 	fn get_mut(&mut self) -> &mut T {
 		self.get_mut_ref()
 	}
 }
 
 impl<T: ?Sized> Mutex<T> {
+	/// Same as [`MutexFn::lock_from_isr`], exposed as an inherent method so
+	/// it's callable without importing the [`MutexFn`] trait.
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use osal_rs::os::*;
+	///
+	/// let mutex = Mutex::new(0);
+	/// let mut guard = mutex.lock_from_isr_explicit().unwrap();
+	/// *guard = 7;
+	/// ```
 	pub fn lock_from_isr_explicit(&self) -> Result<MutexGuardFromIsr<'_, T>> {
 		match self.inner.lock_from_isr() {
 			OsalRsBool::True => Ok(MutexGuardFromIsr {
@@ -221,6 +428,20 @@ impl<T: ?Sized> Mutex<T> {
 }
 
 impl<T> Mutex<T> {
+	/// Convenience constructor for the common case of sharing a mutex
+	/// between threads: equivalent to `Arc::new(Mutex::new(data))`.
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use osal_rs::os::*;
+	///
+	/// let shared = Mutex::new_arc(0);
+	/// let clone_for_worker = shared.clone();
+	///
+	/// *clone_for_worker.lock().unwrap() += 1;
+	/// assert_eq!(*shared.lock().unwrap(), 1);
+	/// ```
 	pub fn new_arc(data: T) -> Arc<Self> {
 		Arc::new(Self::new(data))
 	}
@@ -240,6 +461,8 @@ impl<T: ?Sized> Display for Mutex<T> {
 	}
 }
 
+/// RAII guard returned by [`Mutex::lock`]. Unlocks the mutex when dropped;
+/// derefs to `&T`/`&mut T` in the meantime.
 pub struct MutexGuard<'a, T: ?Sized + 'a> {
 	mutex: &'a Mutex<T>,
 	_phantom: PhantomData<&'a mut T>,
@@ -279,6 +502,19 @@ impl<'a, T: ?Sized> Drop for MutexGuard<'a, T> {
 }
 
 impl<'a, T: ?Sized> MutexGuardFn<'a, T> for MutexGuard<'a, T> {
+	/// Replaces the guarded value with a clone of `t`, without needing a
+	/// separate `*guard = t.clone()` statement.
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use osal_rs::os::*;
+	///
+	/// let mutex = Mutex::new(0);
+	/// let mut guard = mutex.lock().unwrap();
+	/// guard.update(&42);
+	/// assert_eq!(*guard, 42);
+	/// ```
 	fn update(&mut self, t: &T)
 	where
 		T: Clone,
@@ -287,6 +523,9 @@ impl<'a, T: ?Sized> MutexGuardFn<'a, T> for MutexGuard<'a, T> {
 	}
 }
 
+/// RAII guard returned by [`Mutex::lock_from_isr`]/[`Mutex::lock_from_isr_explicit`].
+/// Unlocks the mutex (via the non-blocking `_from_isr` path) when dropped;
+/// derefs to `&T`/`&mut T` in the meantime.
 pub struct MutexGuardFromIsr<'a, T: ?Sized + 'a> {
 	mutex: &'a Mutex<T>,
 	_phantom: PhantomData<&'a mut T>,
@@ -313,6 +552,18 @@ impl<'a, T: ?Sized> Drop for MutexGuardFromIsr<'a, T> {
 }
 
 impl<'a, T: ?Sized> MutexGuardFn<'a, T> for MutexGuardFromIsr<'a, T> {
+	/// See [`MutexGuard::update`]; behaves identically here.
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use osal_rs::os::*;
+	///
+	/// let mutex = Mutex::new(0);
+	/// let mut guard = mutex.lock_from_isr().unwrap();
+	/// guard.update(&7);
+	/// assert_eq!(*guard, 7);
+	/// ```
 	fn update(&mut self, t: &T)
 	where
 		T: Clone,

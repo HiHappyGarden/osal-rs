@@ -18,6 +18,31 @@
  *
  ***************************************************************************/
 
+//! Task/thread creation, management, and notifications for POSIX.
+//!
+//! [`Thread`] wraps a pthread, adding what pthreads lacks natively but
+//! FreeRTOS tasks provide directly: suspend/resume (emulated with a pair of
+//! real-time signals), a single-slot notification value
+//! (`notify`/`wait_notification`, backed by a process-wide table keyed by
+//! thread handle), and metadata queries (`get_metadata`, backed by a similar
+//! registry so [`crate::os::System`] can enumerate every thread spawned
+//! through this API).
+//!
+//! # Examples
+//!
+//! ```
+//! use osal_rs::os::*;
+//! use std::sync::Arc;
+//!
+//! let mut thread = Thread::new("worker", 1024, 5);
+//! let spawned = thread.spawn_simple(|| {
+//!     println!("Working...");
+//!     Ok(Arc::new(()))
+//! }).unwrap();
+//!
+//! spawned.join(core::ptr::null_mut()).unwrap();
+//! ```
+
 use core::cell::UnsafeCell;
 use core::ffi::{c_int, c_long, c_void};
 use core::fmt::{Debug, Display, Formatter};
@@ -386,6 +411,18 @@ unsafe impl Send for Thread {}
 unsafe impl Sync for Thread {}
 
 impl Thread {
+    /// Describes a not-yet-spawned thread: `name`/`stack_depth`/`priority`
+    /// are recorded now and used when [`ThreadFn::spawn`]/`spawn_simple` is
+    /// called on it. [`ThreadFn::is_null`] is `true` until then.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use osal_rs::os::*;
+    ///
+    /// let thread = Thread::new("worker", 1024, 5);
+    /// assert!(thread.is_null());
+    /// ```
     pub fn new(name: &str, stack_depth: StackType, priority: UBaseType) -> Self {
         Self {
             handle: 0,
@@ -397,6 +434,19 @@ impl Thread {
         }
     }
 
+    /// Wraps an already-running thread's handle (e.g. one obtained from
+    /// [`ThreadFn::get_current`]), rather than spawning a new one. Fails
+    /// with [`Error::NullPtr`] if `handle` is the null sentinel (`0`).
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use osal_rs::os::*;
+    ///
+    /// let current = Thread::get_current();
+    /// let wrapped = Thread::new_with_handle(*current, "current", 0, 0).unwrap();
+    /// assert!(!wrapped.is_null());
+    /// ```
     pub fn new_with_handle(handle: ThreadHandle, name: &str, stack_depth: StackType, priority: UBaseType) -> Result<Self> {
         if handle == 0 {
             return Err(Error::NullPtr);
@@ -412,16 +462,67 @@ impl Thread {
         })
     }
 
+    /// Same as [`Thread::new`], but accepts any [`ToPriority`] value instead
+    /// of a raw [`UBaseType`] priority.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use osal_rs::os::*;
+    /// use osal_rs::os::types::UBaseType;
+    ///
+    /// enum Priority { High }
+    ///
+    /// impl ToPriority for Priority {
+    ///     fn to_priority(&self) -> UBaseType { 5 }
+    /// }
+    ///
+    /// let thread = Thread::new_with_to_priority("worker", 1024, Priority::High);
+    /// assert!(thread.is_null());
+    /// ```
     #[inline]
     pub fn new_with_to_priority(name: &str, stack_depth: StackType, priority: impl ToPriority) -> Self {
         Self::new(name, stack_depth, priority.to_priority())
     }
 
+    /// Same as [`Thread::new_with_handle`], but accepts any [`ToPriority`]
+    /// value instead of a raw [`UBaseType`] priority.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use osal_rs::os::*;
+    /// use osal_rs::os::types::UBaseType;
+    ///
+    /// enum Priority { Normal }
+    ///
+    /// impl ToPriority for Priority {
+    ///     fn to_priority(&self) -> UBaseType { 0 }
+    /// }
+    ///
+    /// let current = Thread::get_current();
+    /// let wrapped = Thread::new_with_handle_and_to_priority(*current, "current", 0, Priority::Normal).unwrap();
+    /// assert!(!wrapped.is_null());
+    /// ```
     #[inline]
     pub fn new_with_handle_and_to_priority(handle: ThreadHandle, name: &str, stack_depth: StackType, priority: impl ToPriority) -> Result<Self> {
         Self::new_with_handle(handle, name, stack_depth, priority.to_priority())
     }
 
+    /// Looks up a [`ThreadMetadata`] snapshot for a raw [`ThreadHandle`],
+    /// without needing a [`Thread`] value. Used by
+    /// [`crate::os::SystemFn::get_all_thread`] to report threads it only knows
+    /// by handle.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use osal_rs::os::*;
+    ///
+    /// let current = Thread::get_current();
+    /// let metadata = Thread::get_metadata_from_handle(*current);
+    /// assert_eq!(metadata.thread, *current);
+    /// ```
     pub fn get_metadata_from_handle(handle: ThreadHandle) -> ThreadMetadata {
         if handle == 0 {
             return ThreadMetadata::default();
@@ -447,6 +548,21 @@ impl Thread {
         }
     }
 
+    /// Builds a [`ThreadMetadata`] snapshot from a [`Thread`] value
+    /// directly - same information as [`Thread::get_metadata_from_handle`],
+    /// but also works for a not-yet-spawned thread (reported as
+    /// [`ThreadState::Invalid`]).
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use osal_rs::os::*;
+    ///
+    /// let thread = Thread::new("worker", 1024, 3);
+    /// let metadata = Thread::get_metadata(&thread);
+    /// assert_eq!(metadata.state, ThreadState::Invalid);
+    /// assert_eq!(metadata.priority, 3);
+    /// ```
     pub fn get_metadata(thread: &Thread) -> ThreadMetadata {
         // Name/stack/priority reflect what was passed to `new()` regardless of
         // whether the thread has been spawned yet; only `state`/`thread` depend
@@ -472,6 +588,22 @@ impl Thread {
         }
     }
 
+    /// Blocks like [`ThreadFn::wait_notification`], but accepts any
+    /// [`ToTick`] timeout (e.g. a [`core::time::Duration`]) instead of a raw
+    /// tick count.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use osal_rs::os::*;
+    /// use core::time::Duration;
+    ///
+    /// let current = Thread::get_current();
+    /// current.notify(ThreadNotification::SetValueWithOverwrite(7)).unwrap();
+    ///
+    /// let value = current.wait_notification_with_to_tick(0, 0, Duration::from_millis(50)).unwrap();
+    /// assert_eq!(value, 7);
+    /// ```
     #[inline]
     pub fn wait_notification_with_to_tick(&self, bits_to_clear_on_entry: u32, bits_to_clear_on_exit: u32, timeout_ticks: impl ToTick) -> Result<u32> {
         self.wait_notification(bits_to_clear_on_entry, bits_to_clear_on_exit, timeout_ticks.to_ticks())
@@ -557,10 +689,49 @@ unsafe extern "C" fn simple_callback_c_wrapper(param_ptr: *mut c_void) -> *mut c
 
 impl ThreadFn for Thread {
 
+    /// Returns `true` if this handle refers to no thread - either
+    /// [`Thread::new`] was never followed by `spawn`/`spawn_simple`, or the
+    /// pthread ID happens to be the reserved `0` sentinel.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use osal_rs::os::*;
+    ///
+    /// let thread = Thread::new("worker", 1024, 5);
+    /// assert!(thread.is_null());
+    /// ```
     fn is_null(&self) -> bool {
         self.handle == 0
     }
 
+    /// Spawns a new pthread running `callback(self_handle, param)`, passing
+    /// through an arbitrary [`ThreadParam`] (an `Arc<dyn Any + Send + Sync>`)
+    /// that the callback can downcast back to its concrete type. Prefer
+    /// [`ThreadFn::spawn_simple`] when no parameter is needed.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use osal_rs::os::*;
+    /// use std::sync::Arc;
+    /// use std::sync::atomic::{AtomicI32, Ordering};
+    ///
+    /// static RECEIVED: AtomicI32 = AtomicI32::new(0);
+    ///
+    /// let mut thread = Thread::new("worker", 1024, 5);
+    /// let param: ThreadParam = Arc::new(42i32);
+    ///
+    /// let spawned = thread.spawn(Some(param), |_handle, param| {
+    ///     if let Some(value) = param.and_then(|p| p.downcast_ref::<i32>().copied()) {
+    ///         RECEIVED.store(value, Ordering::SeqCst);
+    ///     }
+    ///     Ok(Arc::new(()))
+    /// }).unwrap();
+    ///
+    /// spawned.join(core::ptr::null_mut()).unwrap();
+    /// assert_eq!(RECEIVED.load(Ordering::SeqCst), 42);
+    /// ```
     fn spawn<F>(&mut self, param: Option<ThreadParam>, callback: F) -> Result<Self>
     where
         F: Fn(Box<dyn ThreadFn>, Option<ThreadParam>) -> Result<ThreadParam>,
@@ -634,6 +805,23 @@ impl ThreadFn for Thread {
         })
     }
 
+    /// Spawns a new pthread running `callback()`. Simpler than
+    /// [`ThreadFn::spawn`] when no parameter needs to be passed in.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use osal_rs::os::*;
+    /// use std::sync::Arc;
+    ///
+    /// let mut thread = Thread::new("worker", 1024, 5);
+    /// let spawned = thread.spawn_simple(|| {
+    ///     println!("Working...");
+    ///     Ok(Arc::new(()))
+    /// }).unwrap();
+    ///
+    /// spawned.join(core::ptr::null_mut()).unwrap();
+    /// ```
     fn spawn_simple<F>(&mut self, callback: F) -> Result<Self>
     where
         F: Fn() -> Result<ThreadParam> + Send + Sync + 'static,
@@ -704,12 +892,62 @@ impl ThreadFn for Thread {
         })
     }
 
+    /// Joins the thread (blocking until it finishes) and forgets its
+    /// registry/notification-slot entries, discarding any error from the
+    /// underlying `pthread_join`. Prefer [`ThreadFn::join`] when the exit
+    /// status matters.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use osal_rs::os::*;
+    /// use std::sync::Arc;
+    ///
+    /// let mut thread = Thread::new("worker", 1024, 5);
+    /// let spawned = thread.spawn_simple(|| Ok(Arc::new(()))).unwrap();
+    /// spawned.delete();
+    /// ```
     fn delete(&self) {
         let _ = unsafe { pthread_join(self.handle, null_mut()) };
         forget_notify_slot(self.handle);
         forget_thread(self.handle);
     }
 
+    /// Suspends the thread by sending it a dedicated real-time signal that
+    /// parks it until [`ThreadFn::resume`] sends the matching wake-up signal
+    /// (pthreads has no native suspend/resume of its own). A no-op if this
+    /// handle [`ThreadFn::is_null`].
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use osal_rs::os::*;
+    /// use std::sync::Arc;
+    /// use std::sync::atomic::{AtomicU32, Ordering};
+    ///
+    /// static COUNTER: AtomicU32 = AtomicU32::new(0);
+    ///
+    /// let mut thread = Thread::new("counter", 1024, 1);
+    /// let worker = thread.spawn_simple(|| {
+    ///     loop {
+    ///         COUNTER.fetch_add(1, Ordering::SeqCst);
+    ///         System::delay(1);
+    ///     }
+    /// }).unwrap();
+    ///
+    /// System::delay(30);
+    /// worker.suspend();
+    ///
+    /// let paused_at = COUNTER.load(Ordering::SeqCst);
+    /// System::delay(50);
+    /// // No progress while suspended.
+    /// assert_eq!(COUNTER.load(Ordering::SeqCst), paused_at);
+    ///
+    /// worker.resume();
+    /// System::delay(30);
+    /// // Progress resumes.
+    /// assert!(COUNTER.load(Ordering::SeqCst) > paused_at);
+    /// ```
     fn suspend(&self) {
         if self.is_null() {
             return;
@@ -724,6 +962,9 @@ impl ThreadFn for Thread {
         set_thread_state(self.handle, ThreadState::Suspended);
     }
 
+    /// Resumes a thread previously suspended with [`ThreadFn::suspend`]. See
+    /// [`ThreadFn::suspend`] for a complete example. A no-op if this handle
+    /// [`ThreadFn::is_null`].
     fn resume(&self) {
         if self.is_null() {
             return;
@@ -738,6 +979,20 @@ impl ThreadFn for Thread {
         set_thread_state(self.handle, ThreadState::Ready);
     }
 
+    /// Blocks until the thread finishes, writing its exit value (boxed by
+    /// [`ThreadFn::spawn`]/`spawn_simple`) to `*ret_val` if non-null. Fails
+    /// with [`Error::NullPtr`] if this handle [`ThreadFn::is_null`].
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use osal_rs::os::*;
+    /// use std::sync::Arc;
+    ///
+    /// let mut thread = Thread::new("worker", 1024, 5);
+    /// let spawned = thread.spawn_simple(|| Ok(Arc::new(()))).unwrap();
+    /// assert!(spawned.join(core::ptr::null_mut()).is_ok());
+    /// ```
     fn join(&self, ret_val: DoublePtr) -> Result<i32> {
         if self.is_null() {
             return Err(Error::NullPtr);
@@ -754,10 +1009,25 @@ impl ThreadFn for Thread {
         }
     }
 
+    /// Returns a [`ThreadMetadata`] snapshot for this thread. See
+    /// [`Thread::get_metadata`] (the inherent, static-style helper this
+    /// delegates to) for a complete example.
     fn get_metadata(&self) -> ThreadMetadata {
         self.metadata()
     }
 
+    /// Returns a [`Thread`] handle for the calling thread itself - works
+    /// whether called from the "main" thread or from inside a callback
+    /// running on a thread this crate spawned.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use osal_rs::os::*;
+    ///
+    /// let current = Thread::get_current();
+    /// assert!(!current.is_null());
+    /// ```
     fn get_current() -> Self
     where
         Self: Sized,
@@ -777,6 +1047,21 @@ impl ThreadFn for Thread {
         }
     }
 
+    /// Sets or updates this thread's single-slot notification value (see
+    /// [`ThreadNotification`] for the available update strategies) and wakes
+    /// it if it's blocked in [`ThreadFn::wait_notification`].
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use osal_rs::os::*;
+    ///
+    /// let current = Thread::get_current();
+    /// current.notify(ThreadNotification::SetValueWithOverwrite(5)).unwrap();
+    ///
+    /// let value = current.wait_notification(0, 0, 0).unwrap();
+    /// assert_eq!(value, 5);
+    /// ```
     fn notify(&self, notification: ThreadNotification) -> Result<()> {
         if self.is_null() {
             return Err(Error::NullPtr);
@@ -797,6 +1082,24 @@ impl ThreadFn for Thread {
         result
     }
 
+    /// ISR-safe variant of [`ThreadFn::notify`]; identical on POSIX (there
+    /// is no real interrupt context, and thus no scheduler decision to
+    /// report back through `higher_priority_task_woken`, which is always set
+    /// to `0`).
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use osal_rs::os::*;
+    ///
+    /// let current = Thread::get_current();
+    /// let mut woken = 0;
+    /// current.notify_from_isr(ThreadNotification::Increment, &mut woken).unwrap();
+    /// assert_eq!(woken, 0);
+    ///
+    /// let value = current.wait_notification(0, 0, 0).unwrap();
+    /// assert_eq!(value, 1);
+    /// ```
     fn notify_from_isr(&self, notification: ThreadNotification, higher_priority_task_woken: &mut BaseType) -> Result<()> {
         // No real interrupt context on POSIX, and thus no scheduler decision
         // to report back — matches `System`'s other `_from_isr` stand-ins.
@@ -805,6 +1108,25 @@ impl ThreadFn for Thread {
         self.notify(notification)
     }
 
+    /// Blocks until a notification is pending or `timeout_ticks` elapses
+    /// (pass [`TickType::MAX`] to wait forever), returning the notification
+    /// value. `bits_to_clear_on_entry`/`bits_to_clear_on_exit` clear the
+    /// matching bits from the value before waiting/before returning,
+    /// respectively. Fails with [`Error::Timeout`] on timeout.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use osal_rs::os::*;
+    ///
+    /// let current = Thread::get_current();
+    ///
+    /// // Nothing notified yet: times out instead of blocking forever.
+    /// assert!(current.wait_notification(0, 0, 10).is_err());
+    ///
+    /// current.notify(ThreadNotification::SetValueWithOverwrite(9)).unwrap();
+    /// assert_eq!(current.wait_notification(0, 0, 10).unwrap(), 9);
+    /// ```
     fn wait_notification(&self, bits_to_clear_on_entry: u32, bits_to_clear_on_exit: u32, timeout_ticks: TickType) -> Result<u32> {
         if self.is_null() {
             return Err(Error::NullPtr);

@@ -64,15 +64,28 @@ use crate::posix::ffi::{pthread_cond_t, pthread_mutex_t};
 /// objects. They should not be dereferenced directly; instead, use the safe
 /// wrappers provided by this crate (e.g., `Thread`, `Queue`, `Semaphore`, etc.).
 
-
-/// Opaque POSIX thread identifier (`pthread_t`).
+/// Backing handle for [`crate::os::Queue`], [`crate::os::Semaphore`] and
+/// [`crate::os::EventGroup`]: a `pthread_mutex_t` + `pthread_cond_t` pair.
 ///
-/// glibc defines `pthread_t` as `unsigned long int`, so `c_ulong` has the
-/// correct size/representation on every target this crate builds for.
-
+/// These three primitives share the same "wait on a condition, guarded by a
+/// mutex" shape, so they all reuse this one handle type (see
+/// [`QueueHandle`], [`SemaphoreHandle`], [`EventGroupHandle`]) instead of
+/// each defining their own. Not constructible from outside this crate other
+/// than via [`Default`]; the safe wrapper types are what application code
+/// should use.
+///
+/// # Examples
+///
+/// ```
+/// use osal_rs::os::types::ClockMonotonicHandle;
+///
+/// // A never-initialized handle reports as empty.
+/// let handle = ClockMonotonicHandle::default();
+/// assert!(handle.is_empty());
+/// ```
 #[derive(Default)]
 pub struct ClockMonotonicHandle (
-    pub(in crate::posix) pthread_mutex_t, 
+    pub(in crate::posix) pthread_mutex_t,
     pub(in crate::posix) pthread_cond_t,
 );
 
@@ -85,14 +98,44 @@ impl Debug for ClockMonotonicHandle {
 }
 
 impl ClockMonotonicHandle {
+    /// Returns `true` if this handle is still in its never-initialized (or
+    /// already-deleted) state, i.e. both the mutex and condition variable
+    /// are all-zero.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use osal_rs::os::types::ClockMonotonicHandle;
+    ///
+    /// assert!(ClockMonotonicHandle::default().is_empty());
+    /// ```
     pub fn is_empty(&self) -> bool {
-        self.0.is_empty() && self.1.is_empty() 
+        self.0.is_empty() && self.1.is_empty()
     }
 }
 
+/// Opaque POSIX thread identifier (`pthread_t`).
+///
+/// glibc defines `pthread_t` as `unsigned long int`, so `c_ulong` has the
+/// correct size/representation on every target this crate builds for. `0`
+/// is used throughout this crate as the "no thread" sentinel (see
+/// [`crate::os::ThreadFn::is_null`]).
 pub type ThreadHandle = c_ulong;
+
+/// Backing handle for [`crate::os::Queue`]/[`crate::os::QueueStreamed`].
+/// See [`ClockMonotonicHandle`] for why this is a mutex/condvar pair rather
+/// than a queue-specific type.
 pub type QueueHandle = ClockMonotonicHandle;
+
+/// Backing handle for [`crate::os::Semaphore`].
+/// See [`ClockMonotonicHandle`] for why this is a mutex/condvar pair rather
+/// than a semaphore-specific type (plain POSIX unnamed semaphores can't
+/// enforce a maximum count or use priority inheritance).
 pub type SemaphoreHandle = ClockMonotonicHandle;
+
+/// Backing handle for [`crate::os::EventGroup`].
+/// See [`ClockMonotonicHandle`] for why this is a mutex/condvar pair rather
+/// than an event-group-specific type.
 pub type EventGroupHandle = ClockMonotonicHandle;
 
 /// Opaque POSIX per-process timer identifier (`timer_t`, `<time.h>`).
@@ -100,11 +143,29 @@ pub type EventGroupHandle = ClockMonotonicHandle;
 /// glibc defines `timer_t` as `void *`, so `*mut c_void` has the correct
 /// size/representation on every target this crate builds for.
 pub type TimerHandle = *mut c_void;
+
+/// Backing handle for [`crate::os::Mutex`]/[`crate::os::RawMutex`]: a bare
+/// `pthread_mutex_t`, with no condition variable attached since a mutex has
+/// nothing to wait on beyond acquiring the lock itself.
 pub type MutexHandle = pthread_mutex_t;
 
 /// Type alias for event group bits.
 ///
 /// Represents a set of event flags where each bit can be set or cleared
 /// independently. The underlying type is `TickType`, matching the native
-/// word size of the target architecture.
+/// word size of the target architecture. The top byte is reserved (see
+/// [`crate::os::EventGroup::MAX_MASK`]), so only the lower bits are usable
+/// as flags.
+///
+/// # Examples
+///
+/// ```
+/// use osal_rs::os::types::EventBits;
+///
+/// const READY: EventBits = 1 << 0;
+/// const ERROR: EventBits = 1 << 1;
+///
+/// let bits: EventBits = READY | ERROR;
+/// assert_eq!(bits & READY, READY);
+/// ```
 pub type EventBits = TickType;

@@ -18,6 +18,24 @@
  *
  ***************************************************************************/
 
+//! Binary and counting semaphores for POSIX.
+//!
+//! See [`Semaphore`] for the concrete type and rationale for why it's built
+//! on a `pthread_mutex_t` + `pthread_cond_t` pair instead of plain POSIX
+//! unnamed semaphores (`sem_t`).
+//!
+//! # Examples
+//!
+//! ```
+//! use osal_rs::os::*;
+//! use osal_rs::utils::OsalRsBool;
+//! use core::time::Duration;
+//!
+//! let sem = Semaphore::new(1, 0).unwrap();
+//! sem.signal();
+//! assert_eq!(sem.wait(Duration::from_millis(100)), OsalRsBool::True);
+//! ```
+
 use core::cell::UnsafeCell;
 use core::ffi::c_long;
 use core::fmt::{Debug, Display};
@@ -68,6 +86,19 @@ unsafe impl Send for Semaphore {}
 unsafe impl Sync for Semaphore {}
 
 impl Semaphore {
+	/// Creates a new semaphore with the given maximum and initial count.
+	/// [`Semaphore::signal`] never raises the count above `max_count`; a
+	/// binary semaphore is just `max_count == 1`.
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use osal_rs::os::*;
+	///
+	/// // Binary semaphore, starts "empty".
+	/// let sem = Semaphore::new(1, 0).unwrap();
+	/// assert_eq!(sem.wait_from_isr(), osal_rs::utils::OsalRsBool::False);
+	/// ```
 	pub fn new(max_count: UBaseType, initial_count: UBaseType) -> Result<Self> {
 
 		let mut mutex: pthread_mutex_t = Default::default();
@@ -143,14 +174,45 @@ impl Semaphore {
 
 impl SemaphoreFn for Semaphore {
 
-	// "Null" means never-initialized-or-already-deleted: both the pthread
-	// handle and the count are still/again at their zero `Default` state.
-	// Checking the count too avoids treating a live semaphore that just
-	// happens to be momentarily empty (count == 0) as deleted.
+	/// Returns `true` if this semaphore is never-initialized-or-already-deleted.
+	///
+	/// Unlike [`crate::os::EventGroupFn::is_null`], the count is checked too,
+	/// so a live semaphore that just happens to be momentarily empty
+	/// (`count == 0`) is never mistaken for a deleted one.
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use osal_rs::os::*;
+	///
+	/// let mut sem = Semaphore::new(1, 0).unwrap();
+	/// assert!(!sem.is_null());
+	///
+	/// sem.delete();
+	/// assert!(sem.is_null());
+	/// ```
 	fn is_null(&self) -> bool {
 		unsafe { (*self.0.get()).is_empty() && *self.1.get() == 0 }
 	}
 
+	/// Blocks until a unit is available or `ticks_to_wait` elapses (accepts
+	/// any [`ToTick`] value, e.g. a raw tick count or a [`core::time::Duration`];
+	/// pass [`TickType::MAX`] ticks to wait forever), decrementing the count
+	/// on success.
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use osal_rs::os::*;
+	/// use osal_rs::utils::OsalRsBool;
+	/// use core::time::Duration;
+	///
+	/// let sem = Semaphore::new(1, 1).unwrap();
+	/// assert_eq!(sem.wait(Duration::from_millis(100)), OsalRsBool::True);
+	///
+	/// // Count is now 0: waiting again times out instead of blocking forever.
+	/// assert_eq!(sem.wait(Duration::from_millis(10)), OsalRsBool::False);
+	/// ```
 	fn wait(&self, ticks_to_wait: impl ToTick) -> OsalRsBool {
 		if self.is_null() {
 			return OsalRsBool::False
@@ -206,6 +268,21 @@ impl SemaphoreFn for Semaphore {
 		if acquired { OsalRsBool::True } else { OsalRsBool::False }
 	}
 
+	/// ISR-safe variant of [`Semaphore::wait`]. POSIX has no interrupt
+	/// context of its own, so this never blocks (`trylock` instead of
+	/// `lock`, and no timeout parameter); it returns [`OsalRsBool::False`]
+	/// both when the mutex is contended and when the count is simply zero.
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use osal_rs::os::*;
+	/// use osal_rs::utils::OsalRsBool;
+	///
+	/// let sem = Semaphore::new(1, 1).unwrap();
+	/// assert_eq!(sem.wait_from_isr(), OsalRsBool::True);
+	/// assert_eq!(sem.wait_from_isr(), OsalRsBool::False);
+	/// ```
 	fn wait_from_isr(&self) -> OsalRsBool {
 		if self.is_null() {
 			return OsalRsBool::False;
@@ -235,6 +312,22 @@ impl SemaphoreFn for Semaphore {
 		if acquired { OsalRsBool::True } else { OsalRsBool::False }
 	}
 
+	/// Increments the count (unless already at `max_count`) and wakes any
+	/// thread blocked in [`Semaphore::wait`]. Returns [`OsalRsBool::False`]
+	/// if the semaphore was already at `max_count`.
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use osal_rs::os::*;
+	/// use osal_rs::utils::OsalRsBool;
+	///
+	/// let sem = Semaphore::new(1, 0).unwrap();
+	/// assert_eq!(sem.signal(), OsalRsBool::True);
+	///
+	/// // Already at max_count: signalling again fails.
+	/// assert_eq!(sem.signal(), OsalRsBool::False);
+	/// ```
 	fn signal(&self) -> OsalRsBool {
 		if self.is_null() {
 			return OsalRsBool::False;
@@ -247,6 +340,18 @@ impl SemaphoreFn for Semaphore {
 		self.signal_locked()
 	}
 
+	/// ISR-safe variant of [`Semaphore::signal`]. Fails with
+	/// [`OsalRsBool::False`] instead of blocking if the mutex is contended.
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use osal_rs::os::*;
+	/// use osal_rs::utils::OsalRsBool;
+	///
+	/// let sem = Semaphore::new(1, 0).unwrap();
+	/// assert_eq!(sem.signal_from_isr(), OsalRsBool::True);
+	/// ```
 	fn signal_from_isr(&self) -> OsalRsBool {
 		if self.is_null() {
 			return OsalRsBool::False;
@@ -261,6 +366,19 @@ impl SemaphoreFn for Semaphore {
 		self.signal_locked()
 	}
 
+	/// Destroys the underlying pthread objects and resets this semaphore to
+	/// its "null" state. Safe to call more than once, and called
+	/// automatically on [`Drop`] if not called explicitly.
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use osal_rs::os::*;
+	///
+	/// let mut sem = Semaphore::new(1, 0).unwrap();
+	/// sem.delete();
+	/// assert!(sem.is_null());
+	/// ```
 	fn delete(&mut self) {
 		if self.is_null() {
 			return;

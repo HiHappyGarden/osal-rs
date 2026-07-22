@@ -116,6 +116,7 @@ pub type StackType = {};
     }
 
     /// Convert a size to the corresponding Rust type
+    #[allow(unused)]
     fn size_to_type(size: u16, signed: bool) -> &'static str {
         match (size, signed) {
             (1, false) => "u8",
@@ -132,6 +133,7 @@ pub type StackType = {};
     }
 
     /// Enable the `sched_fifo` feature cfg for the crate build when requested.
+    #[allow(unused)]
     fn enable_sched_fifo(&self) {
         if self.1 {
             println!("cargo:rustc-cfg=feature=\"real_time\"");

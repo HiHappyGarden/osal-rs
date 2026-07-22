@@ -22,12 +22,12 @@
 //!
 //! Delegates to [`osal_rs_build::TypeGenerator`] to generate the `TickType`/
 //! `UBaseType`/`BaseType`/`StackType` aliases the crate `include!`s from
-//! `OUT_DIR/types_generated.rs`, wire up `cargo:rerun-if-changed` for the
-//! active backend's C porting sources, and - for `posix` - compile and link
-//! the C porting shim. See `osal-rs-build`'s own docs for exactly what each
-//! backend does at build time (POSIX probes the host architecture and
-//! `SCHED_FIFO` support for real; the FreeRTOS path currently always emits
-//! the common 32-bit type mapping rather than parsing `FreeRTOSConfig.h`).
+//! `OUT_DIR/types_generated.rs`, and wire up `cargo:rerun-if-changed` for the
+//! active backend's C porting sources. See `osal-rs-build`'s own docs for
+//! exactly what each backend does at build time (POSIX probes the host
+//! architecture and `SCHED_FIFO` support for real; the FreeRTOS path
+//! currently always emits the common 32-bit type mapping rather than parsing
+//! `FreeRTOSConfig.h`).
 //!
 //! # FreeRTOSConfig.h Location (freertos backend)
 //!
@@ -49,8 +49,9 @@
 //!
 //! # Rebuild Triggers
 //!
-//! Rebuilds on changes to `build.rs` itself and to the active backend's C
-//! porting sources (`osal-rs-porting/freeretos/` or `osal-rs-porting/posix/`).
+//! Rebuilds on changes to `build.rs` itself and, for `freertos`, to its C
+//! porting sources (`osal-rs-porting/freeretos/`); `posix` has no C porting
+//! sources of its own to track.
 //!
 //! # Feature Requirements
 //!
@@ -60,7 +61,7 @@
 //! # Build Dependencies
 //!
 //! Requires the `osal-rs-build` crate (`TypeGenerator`) and, for `posix`,
-//! `gcc`/`ar` on `PATH`.
+//! `gcc` on `PATH` (used only to probe the host architecture).
 
 use osal_rs_build::TypeGenerator;
 use std::env;
@@ -78,7 +79,7 @@ use std::path::PathBuf;
 ///
 /// - If `CARGO_MANIFEST_DIR` is not set (cargo always sets this)
 /// - If neither or both of `freertos`/`posix` are enabled (`compile_error!`)
-/// - If generation fails (handled by `TypeGenerator`, e.g. missing `gcc`/`ar`)
+/// - If generation fails (handled by `TypeGenerator`, e.g. missing `gcc`)
 ///
 /// # Environment Variables
 ///

@@ -181,18 +181,16 @@ pub type StackType = {};
 #[cfg(feature = "posix")]
 impl TypeGenerator {
 
-    /// Tells Cargo to re-run the build script when the POSIX C porting
-    /// sources change.
+    /// No-op for the POSIX backend: it has no C porting sources of its own
+    /// to track (unlike `freertos`), so there is nothing to register a
+    /// `cargo:rerun-if-changed` trigger for.
     ///
     /// # Examples
     ///
     /// ```
     /// osal_rs_build::TypeGenerator::add_rerun_if_changed();
     /// ```
-    pub fn add_rerun_if_changed() {
-        // println!("cargo:rerun-if-changed=../osal-rs-porting/posix/src/osal_rs.c");
-        // println!("cargo:rerun-if-changed=../osal-rs-porting/posix/inc/osal_rs.h");
-    }
+    pub fn add_rerun_if_changed() {}
 
     /// Probes the host architecture (and `SCHED_FIFO` support) by compiling
     /// and running a small C program with `gcc`, then writes the
@@ -300,55 +298,14 @@ int main() {
 
     }
 
-    /// Compile the POSIX porting C source (osal_rs.c) and archive it into a
-    /// static library, then instruct cargo to link it into the crate.
-    pub fn compile_sources(&self) {
-        let src = "../osal-rs-porting/posix/src/osal_rs.c";
-        let inc_dir = "../osal-rs-porting/posix/inc";
-
-        let obj = self.0.join("osal_rs.o");
-        let compile_status = Command::new("gcc")
-            .arg("-c")
-            .arg(src)
-            .arg("-I")
-            .arg(inc_dir)
-            .arg("-o")
-            .arg(&obj)
-            .status()
-            .expect("Failed to invoke gcc to compile osal_rs.c");
-
-        if !compile_status.success() {
-            panic!("osal-rs-build: failed to compile {src}");
-        }
-
-        let lib = self.0.join("libosal_rs_posix.a");
-        let archive_status = Command::new("ar")
-            .arg("crs")
-            .arg(&lib)
-            .arg(&obj)
-            .status()
-            .expect("Failed to invoke ar to archive osal_rs.o");
-
-        if !archive_status.success() {
-            panic!("osal-rs-build: failed to archive osal_rs.o into libosal_rs_posix.a");
-        }
-
-        println!("cargo:rustc-link-search=native={}", self.0.display());
-        println!("cargo:rustc-link-lib=static=osal_rs_posix");
-    }
-
     /// Runs the full POSIX build step: [`TypeGenerator::generate_types`],
-    /// then [`TypeGenerator::compile_sources`] to build and link the C
-    /// porting layer.
+    /// then [`TypeGenerator::enable_sched_fifo`].
     ///
     /// # Examples
     ///
-    /// ```no_run
+    /// ```
     /// use std::path::PathBuf;
     ///
-    /// // `compile_sources` shells out to `gcc`/`ar` and expects the C porting
-    /// // sources at a path relative to the crate invoking the build script,
-    /// // so this is illustrative rather than runnable standalone.
     /// unsafe { std::env::set_var("OUT_DIR", std::env::temp_dir()); }
     /// let mut generator = osal_rs_build::TypeGenerator::new(PathBuf::from("Cargo.toml"));
     /// generator.generate_all();
@@ -356,7 +313,6 @@ int main() {
     pub fn generate_all(&mut self) {
         self.generate_types();
         self.enable_sched_fifo();
-        self.compile_sources();
     }
 }
 

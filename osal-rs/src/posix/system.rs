@@ -27,7 +27,7 @@ use alloc::vec::Vec;
 
 use crate::os::ThreadFn;
 use crate::posix::ffi::{
-    CLOCK_MONOTONIC, PTHREAD_ONCE_INIT, _SC_AVPHYS_PAGES, _SC_PAGESIZE, clock_gettime, nanosleep, pthread_once, pthread_once_t, sched_yield, sysconf, timespec,
+    CLOCK_MONOTONIC, PTHREAD_ONCE_INIT, _SC_AVPHYS_PAGES, _SC_PAGESIZE, clock_gettime, nanosleep, pthread_once, pthread_once_t, pthread_self, sched_yield, sysconf, timespec,
 };
 use crate::posix::thread::{Thread, all_registered_threads, registered_thread_count};
 use crate::posix::types::{BaseType, TickType, UBaseType};
@@ -148,8 +148,19 @@ impl SystemFn for System {
     }
 
     fn get_all_thread() -> SystemState {
+        let mut tasks = all_registered_threads();
+
+        // Mirror `count_threads()`'s +1: report the calling thread even when
+        // it wasn't spawned through this crate's API. Skip it if the caller
+        // is itself a registered thread (e.g. a spawned worker calling this
+        // from within its own thread function), to avoid double-counting.
+        let caller = unsafe { pthread_self() };
+        if !tasks.iter().any(|metadata| metadata.thread == caller) {
+            tasks.push(Thread::get_metadata_from_handle(caller));
+        }
+
         SystemState {
-            tasks: all_registered_threads(),
+            tasks,
             total_run_time: Self::get_tick_count().min(TickType::MAX) as u32,
         }
     }

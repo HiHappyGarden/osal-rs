@@ -37,7 +37,7 @@
 //!
 //! # Examples
 //!
-//! ```ignore
+
 //! use alloc::vec::Vec;
 //! use alloc::string::String;
 //! 

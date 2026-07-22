@@ -77,7 +77,7 @@
 //! Traits are re-exported with a `Fn` suffix to avoid naming conflicts with
 //! concrete implementation types:
 //!
-//! ```ignore
+
 //! // Trait definition (in this module)
 //! pub trait Thread { ... }
 //!
@@ -95,7 +95,7 @@
 //!
 //! Most users should use the `os` module instead of importing traits directly:
 //!
-//! ```ignore
+
 //! use osal_rs::os::*;  // Gets concrete types
 //!
 //! let mutex = Mutex::new(0);  // Uses concrete freertos::Mutex
@@ -103,7 +103,7 @@
 //!
 //! Advanced users can import traits for generic programming:
 //!
-//! ```ignore
+
 //! use osal_rs::traits::MutexFn;
 //!
 //! fn use_mutex<M: MutexFn<i32>>(mutex: &M) {

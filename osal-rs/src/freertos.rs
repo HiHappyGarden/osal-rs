@@ -75,7 +75,7 @@
 //!
 //! ## Example: Creating a Thread
 //!
-//! ```ignore
+
 //! use osal_rs::freertos::thread::Thread;
 //! use osal_rs::freertos::system::System;
 //! use osal_rs::traits::Thread as ThreadTrait;
@@ -94,7 +94,7 @@
 //!
 //! ## Example: Using a Queue
 //!
-//! ```ignore
+
 //! use osal_rs::freertos::queue::Queue;
 //! use osal_rs::traits::Queue as QueueTrait;
 //!

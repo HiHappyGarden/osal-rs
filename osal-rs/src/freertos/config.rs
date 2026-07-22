@@ -34,7 +34,7 @@
 //!
 //! # Examples
 //!
-//! ```ignore
+
 //! use osal_rs::{tick_rate_hz, cpu_clock_hz, max_priorities};
 //! 
 //! let tick_rate = tick_rate_hz!();

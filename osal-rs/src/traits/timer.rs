@@ -58,7 +58,7 @@
 //!
 //! # Examples
 //!
-//! ```ignore
+
 //! use osal_rs::os::Timer;
 //! use core::time::Duration;
 //!

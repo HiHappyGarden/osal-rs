@@ -45,7 +45,7 @@
 //!
 //! # Examples
 //!
-//! ```ignore
+
 //! use osal_rs::os::types::*;
 //!
 //! // Using tick types for timing

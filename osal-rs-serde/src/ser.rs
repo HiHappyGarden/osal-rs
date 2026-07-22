@@ -91,7 +91,7 @@ use crate::error::{Error, Result};
 ///
 /// The easiest way to implement this trait is using the derive macro (requires `derive` feature):
 ///
-/// ```ignore
+/// ```
 /// use osal_rs_serde::Serialize;
 ///
 /// #[derive(Serialize)]
@@ -106,7 +106,7 @@ use crate::error::{Error, Result};
 ///
 /// For custom serialization logic or types not supported by the derive macro:
 ///
-/// ```ignore
+/// ```
 /// use osal_rs_serde::{Serialize, Serializer};
 ///
 /// struct Point {
@@ -115,7 +115,7 @@ use crate::error::{Error, Result};
 /// }
 ///
 /// impl Serialize for Point {
-///     fn serialize<S: Serializer>(&self, serializer: &mut S) -> core::result::Result<(), S::Error> {
+///     fn serialize<S: Serializer>(&self, _name: &str, serializer: &mut S) -> core::result::Result<(), S::Error> {
 ///         serializer.serialize_i32("x", self.x)?;
 ///         serializer.serialize_i32("y", self.y)?;
 ///         Ok(())
@@ -247,8 +247,8 @@ pub trait Serializer: Sized {
 ///
 /// ## Basic Usage
 ///
-/// ```ignore
-/// use osal_rs_serde::{ByteSerializer, Serializer, Serialize};
+/// ```
+/// use osal_rs_serde::{ByteSerializer, Serializer};
 ///
 /// let mut buffer = [0u8; 16];
 /// let mut serializer = ByteSerializer::new(&mut buffer);
@@ -263,7 +263,7 @@ pub trait Serializer: Sized {
 ///
 /// ## With Structs
 ///
-/// ```ignore
+/// ```
 /// use osal_rs_serde::{ByteSerializer, Serialize};
 ///
 /// #[derive(Serialize)]
@@ -275,7 +275,7 @@ pub trait Serializer: Sized {
 /// let msg = Message { id: 100, value: -50 };
 /// let mut buffer = [0u8; 32];
 /// let mut serializer = ByteSerializer::new(&mut buffer);
-/// msg.serialize(&mut serializer).unwrap();
+/// msg.serialize("", &mut serializer).unwrap();
 /// ```
 ///
 /// # Memory Layout
@@ -287,15 +287,33 @@ pub trait Serializer: Sized {
 /// Memory: [a_lo, a_hi, b0, b1, b2, b3]
 /// ```
 pub struct ByteSerializer<'a> {
-    buffer: &'a mut [u8],
+    buffer: Buf<'a>,
     position: usize,
 }
 
+/// Backing storage for [`ByteSerializer`]: either a caller-provided fixed
+/// buffer (bounds-checked) or a growable `Vec` (extended on demand).
+enum Buf<'a> {
+    Fixed(&'a mut [u8]),
+    Dynamic(&'a mut alloc::vec::Vec<u8>),
+}
+
 impl<'a> ByteSerializer<'a> {
-    /// Create a new ByteSerializer with the given buffer.
+    /// Create a new ByteSerializer that writes into a fixed-size buffer.
+    ///
+    /// Writing past the end of `buffer` returns [`Error::BufferTooSmall`].
     pub fn new(buffer: &'a mut [u8]) -> Self {
         Self {
-            buffer,
+            buffer: Buf::Fixed(buffer),
+            position: 0,
+        }
+    }
+
+    /// Create a new ByteSerializer that writes into a growable `Vec`,
+    /// extending it on demand instead of failing when it runs out of room.
+    pub(crate) fn new_dyn(buffer: &'a mut alloc::vec::Vec<u8>) -> Self {
+        Self {
+            buffer: Buf::Dynamic(buffer),
             position: 0,
         }
     }
@@ -307,11 +325,22 @@ impl<'a> ByteSerializer<'a> {
 
     /// Write bytes to the buffer.
     fn write_bytes(&mut self, bytes: &[u8]) -> Result<()> {
-        if self.position + bytes.len() > self.buffer.len() {
-            return Err(Error::BufferTooSmall);
+        let end = self.position + bytes.len();
+        match &mut self.buffer {
+            Buf::Fixed(buffer) => {
+                if end > buffer.len() {
+                    return Err(Error::BufferTooSmall);
+                }
+                buffer[self.position..end].copy_from_slice(bytes);
+            }
+            Buf::Dynamic(buffer) => {
+                if end > buffer.len() {
+                    buffer.resize(end, 0);
+                }
+                buffer[self.position..end].copy_from_slice(bytes);
+            }
         }
-        self.buffer[self.position..self.position + bytes.len()].copy_from_slice(bytes);
-        self.position += bytes.len();
+        self.position = end;
         Ok(())
     }
 }

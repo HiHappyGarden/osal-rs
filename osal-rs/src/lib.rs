@@ -25,8 +25,15 @@
 //! ## Overview
 //!
 //! OSAL-RS provides a unified, safe Rust API for working with different real-time
-//! operating systems. Currently supports FreeRTOS with planned support for POSIX
-//! and other RTOSes.
+//! operating systems. It currently ships two backends, selected at compile time
+//! via feature flags:
+//! - **FreeRTOS** (feature `freertos`, default) - for bare-metal embedded targets
+//! - **POSIX** (feature `posix`) - runs on any pthreads-capable host (Linux, macOS)
+//!   so applications, tests and doc examples can execute natively without
+//!   embedded hardware or a cross toolchain
+//!
+//! Application code written against `osal_rs::os::*` is portable between the
+//! two backends by switching feature flags.
 //!
 //! ## Features
 //!
@@ -35,7 +42,8 @@
 //! - **Communication**: Queues for inter-thread message passing
 //! - **Timers**: Software timers for periodic and one-shot operations
 //! - **Time Management**: Duration-based timing with tick conversion
-//! - **No-std Support**: Works in bare-metal embedded environments
+//! - **No-std Support**: Works in bare-metal embedded environments (`freertos` backend)
+//! - **Host Testing**: Runs under `std` on POSIX hosts for native testing (`posix` backend)
 //! - **Type Safety**: Leverages Rust's type system for correctness
 //! - **Async/Await**: Backend-agnostic `async`/`await` without Tokio (feature `async`)
 //!
@@ -183,6 +191,11 @@
 //! | `posix` | ❌ | POSIX/host backend |
 //! | `async` | ❌ | Async/await without Tokio |
 //! | `serde` | ❌ | Serialization via `osal-rs-serde` |
+//! | `real_time` | ❌ | POSIX only: schedule spawned threads with `SCHED_FIFO` instead of inheriting the creating thread's policy/priority |
+//!
+//! Exactly one of `freertos`/`posix` must be enabled; `freertos` takes
+//! precedence if both are (see the `cfg` gates on the `freertos`/`posix`
+//! modules above).
 //!
 //! ## Requirements
 //!
@@ -196,13 +209,22 @@
 //!   - `configUSE_TIMERS` - Must be 1 for timer support
 //!   - `configSUPPORT_DYNAMIC_ALLOCATION` - Must be 1 for dynamic allocation
 //!
+//! When using with POSIX:
+//! - A POSIX-compliant host implementing pthreads, `timer_create(2)`/`sigwait(3)`
+//!   and `CLOCK_MONOTONIC` (glibc/Linux is part of this crate's test suite)
+//! - No special build steps: unlike `freertos`, this backend links only
+//!   against the host's libc/libpthread - no cross toolchain or RTOS kernel
+//!   sources required
+//! - Disables `no_std`: the `posix` feature builds the crate against `std`
+//!
 //! ## Platform Support
 //!
 //! Currently tested on:
-//! - ARM Cortex-M (Raspberry Pi Pico/RP2040, RP2350)
-//! - ARM Cortex-M4F (STM32F4 series)
-//! - ARM Cortex-M7 (STM32H7 series)
-//! - RISC-V (RP2350 RISC-V cores)
+//! - ARM Cortex-M (Raspberry Pi Pico/RP2040, RP2350) - `freertos` backend
+//! - ARM Cortex-M4F (STM32F4 series) - `freertos` backend
+//! - ARM Cortex-M7 (STM32H7 series) - `freertos` backend
+//! - RISC-V (RP2350 RISC-V cores) - `freertos` backend
+//! - glibc/Linux - `posix` backend
 //!
 //! ## Thread Safety
 //!
@@ -214,7 +236,10 @@
 //!
 //! ## ISR Context
 //!
-//! Operations in ISR context have restrictions:
+//! Operations in ISR context have restrictions (applies to the `freertos`
+//! backend; POSIX has no interrupt context - `_from_isr` variants are
+//! provided there for API compatibility but behave like their regular
+//! counterparts):
 //! - Cannot block or use timeouts (must use zero timeout or `_from_isr` variants)
 //! - Must be extremely fast to avoid blocking other interrupts
 //! - Use semaphores or queues to defer work to task context
@@ -232,7 +257,10 @@
 //!
 //! ## Performance Considerations
 //!
-//! - Allocations happen on the FreeRTOS heap, not the system heap
+//! - `freertos` backend: allocations happen on the FreeRTOS heap (via the
+//!   `#[global_allocator]` in [`os`]), not the system heap
+//! - `posix` backend: uses the system allocator and native OS threads; each
+//!   [`os::Timer`] spawns a dedicated background thread
 //! - Stack sizes must be carefully tuned for each thread
 //! - Priority inversion is mitigated through priority inheritance
 //! - Context switches are triggered by blocking operations
@@ -267,10 +295,13 @@ compile_error!("Enable either the `freertos` backend or the `posix` host backend
 #[cfg(all(not(feature = "posix"), feature = "freertos"))]
 mod freertos;
 
-/// POSIX implementation of OSAL traits (planned).
+/// POSIX implementation of OSAL traits.
 ///
-/// This module will contain the implementation for POSIX-compliant systems.
-/// Currently under development.
+/// This module contains the concrete implementation of all OSAL abstractions
+/// on top of the POSIX/pthreads API (threads, mutexes, semaphores, queues,
+/// event groups, timers), so applications - and their tests and doc examples -
+/// can run natively on any POSIX host (Linux, macOS) without embedded hardware
+/// or a cross toolchain. See [`posix`] for details.
 ///
 /// Enabled with the `posix` feature flag.
 #[cfg(all(feature = "posix", not(feature = "freertos")))]

@@ -43,7 +43,7 @@
 //!
 //! # Examples
 //!
-//! ```ignore
+
 //! use osal_rs::os::Mutex;
 //!
 //! let mutex = Mutex::new(0);

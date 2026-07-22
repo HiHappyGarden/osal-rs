@@ -43,7 +43,7 @@
 //!
 //! ### Basic Thread Example
 //!
-//! ```ignore
+
 //! use osal_rs::os::*;
 //! use core::time::Duration;
 //!
@@ -70,7 +70,7 @@
 //!
 //! ### Mutex Example
 //!
-//! ```ignore
+
 //! use osal_rs::os::*;
 //! use alloc::sync::Arc;
 //!
@@ -85,7 +85,7 @@
 //!
 //! ### Queue Example
 //!
-//! ```ignore
+
 //! use osal_rs::os::*;
 //! use core::time::Duration;
 //!
@@ -102,7 +102,7 @@
 //!
 //! ### Semaphore Example
 //!
-//! ```ignore
+
 //! use osal_rs::os::*;
 //! use core::time::Duration;
 //!
@@ -116,7 +116,7 @@
 //!
 //! ### Timer Example
 //!
-//! ```ignore
+
 //! use osal_rs::os::*;
 //! use core::time::Duration;
 //!
@@ -136,7 +136,7 @@
 //!
 //! ### Async/Await Example (feature `async`)
 //!
-//! ```ignore
+
 //! use osal_rs::os::{block_on, AsyncMutex, AsyncQueue, AsyncSemaphore};
 //!
 //! // Drive a future to completion on the calling RTOS task — no Tokio needed.

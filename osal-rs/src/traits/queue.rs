@@ -48,7 +48,7 @@
 //!
 //! # Examples
 //!
-//! ```ignore
+
 //! use osal_rs::os::Queue;
 //!
 //! // Create a queue for 10 messages of 16 bytes each

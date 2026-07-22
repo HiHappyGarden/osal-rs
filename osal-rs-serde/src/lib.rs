@@ -57,7 +57,7 @@
 //!
 //! #### Basic Struct Example
 //!
-//! ```ignore
+
 //! use osal_rs_serde::{Serialize, Deserialize, to_bytes, from_bytes};
 //!
 //! #[derive(Serialize, Deserialize)]
@@ -87,7 +87,7 @@
 //!
 //! #### Struct with Optional Fields
 //!
-//! ```ignore
+
 //! use osal_rs_serde::{Serialize, Deserialize, to_bytes, from_bytes};
 //!
 //! #[derive(Serialize, Deserialize)]
@@ -114,7 +114,7 @@
 //!
 //! #### Struct with Arrays and Tuples
 //!
-//! ```ignore
+
 //! use osal_rs_serde::{Serialize, Deserialize, to_bytes, from_bytes};
 //!
 //! #[derive(Serialize, Deserialize)]
@@ -141,7 +141,7 @@
 //!
 //! #### Nested Structs
 //!
-//! ```ignore
+
 //! use osal_rs_serde::{Serialize, Deserialize, to_bytes, from_bytes};
 //!
 //! #[derive(Serialize, Deserialize)]
@@ -180,7 +180,7 @@
 //!
 //! #### Complex Embedded System Example
 //!
-//! ```ignore
+
 //! use osal_rs_serde::{Serialize, Deserialize, to_bytes, from_bytes};
 //!
 //! #[derive(Serialize, Deserialize, Debug, PartialEq)]
@@ -229,7 +229,7 @@
 //!
 //! ### Manual Implementation (For Custom Behavior)
 //!
-//! ```ignore
+
 //! use osal_rs_serde::{Serialize, Deserialize, Serializer, Deserializer};
 //!
 //! struct Point {
@@ -259,7 +259,7 @@
 //!
 //! Perfect for inter-task communication using queues:
 //!
-//! ```ignore
+
 //! use osal_rs::os::{Queue, QueueFn};
 //! use osal_rs_serde::{Serialize, Deserialize, to_bytes, from_bytes};
 //!
@@ -296,7 +296,7 @@
 //! You can create custom serializers for different formats (JSON, MessagePack, CBOR, etc.)
 //! by implementing the `Serializer` and `Deserializer` traits:
 //!
-//! ```ignore
+
 //! use osal_rs_serde::{Serializer, Error};
 //!
 //! struct JsonSerializer<'a> {

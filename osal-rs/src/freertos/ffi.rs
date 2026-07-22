@@ -43,7 +43,7 @@
 //!
 //! # Examples
 //!
-//! ```ignore
+
 //! // Don't use FFI directly - use safe wrappers instead:
 //! use osal_rs::os::{Thread, ThreadFn};
 //! 

@@ -34,7 +34,7 @@
 //!
 //! The easiest way to implement deserialization is using the derive macro:
 //!
-//! ```ignore
+
 //! use osal_rs_serde::Deserialize;
 //!
 //! #[derive(Deserialize)]
@@ -49,7 +49,7 @@
 //!
 //! For custom deserialization logic, implement the trait manually:
 //!
-//! ```ignore
+
 //! use osal_rs_serde::{Deserialize, Deserializer};
 //!
 //! struct Point {

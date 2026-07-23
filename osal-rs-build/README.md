@@ -59,7 +59,7 @@ fn main() {
 `TypeGenerator::new` takes the crate's manifest directory (`CARGO_MANIFEST_DIR`). For the `freertos` feature it walks up two parent directories to find the workspace root, used to locate `FreeRTOSConfig.h`; for `posix` the argument is accepted but unused.
 
 `generate_all()`:
-- **`posix`**: probes the host architecture and `SCHED_FIFO` support by compiling and running a small C program via `gcc`, writes `types_generated.rs`, enables the `real_time` cfg if the probe found `SCHED_FIFO` support, then compiles `osal-rs-porting/posix/src/osal_rs.c` and links it as a static library
+- **`posix`**: probes the host architecture and `SCHED_FIFO` support by compiling and running a small C program via `gcc`, writes `types_generated.rs`, enables the `real_time` cfg if the probe found `SCHED_FIFO` support
 - **`freertos`**: writes `types_generated.rs` (see note on type detection below) and enables the `real_time` cfg if supported
 
 ### With a Custom FreeRTOSConfig.h Location

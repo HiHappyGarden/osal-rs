@@ -1,6 +1,6 @@
 [package]
 name = "osal-rs"
-version = "1.0.1"
+version = "1.0.2"
 edition = "2024"
 rust-version = "1.85.0"
 authors = ["Antonio Salsi"]
@@ -19,6 +19,41 @@ exclude = [
     "*.swp",
     "*.swo",
 ]
+
+[package.metadata.docs.rs]
+
+# Features to pass to Cargo (default: [])
+features = ["posix", "async", "serde"]
+
+# Whether to pass `--no-default-features` to Cargo (default: false)
+no-default-features = true
+
+# Target to test build on, used as the default landing page (default: "x86_64-unknown-linux-gnu")
+#
+# Any target supported by rustup can be used.
+default-target = "x86_64-unknown-linux-gnu"
+
+# Targets to build (default: see below)
+#
+# Any target supported by rustup can be used.
+#
+# Default targets:
+# - x86_64-unknown-linux-gnu
+# - aarch64-apple-darwin
+# - x86_64-pc-windows-msvc
+# - aarch64-unknown-linux-gnu
+# - i686-pc-windows-msvc
+#
+# Set this to `[]` to only build the default target.
+#
+# If `default-target` is unset, the first element of `targets` is treated as the default target.
+# Otherwise, these `targets` are built in addition to the default target.
+# If both `default-target` and `targets` are unset,
+#   all tier-one targets will be built and `x86_64-unknown-linux-gnu` will be used as the default target.
+targets = []
+
+# Additional `RUSTDOCFLAGS` to set (default: [])
+rustdoc-args = []
 
 [lib]
 crate-type = ["staticlib", "rlib"]

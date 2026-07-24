@@ -176,7 +176,6 @@
 //!   - System-level functions
 //!   - Type definitions
 //!   - `block_on`, `AsyncQueue`, `AsyncSemaphore`, `AsyncMutex` (feature `async`)
-//! - [`async_primitives`] - Async wrappers for OSAL primitives (feature `async`)
 //! - [`utils`] - Utility types and error definitions
 //! - [`log`] - Logging macros
 //! - `traits` - Private module defining the trait abstractions
@@ -325,7 +324,7 @@ mod async_executor;
 
 /// Async primitives (AsyncQueue, AsyncSemaphore, AsyncMutex).
 #[cfg(feature = "async")]
-pub mod async_primitives;
+mod async_primitives;
 
 /// Select FreeRTOS as the active OSAL backend.
 #[cfg(all(not(feature = "posix"), feature = "freertos"))]

@@ -83,7 +83,7 @@
 
 use core::ffi::{CStr, c_char, c_uchar, c_void};
 use core::str::{FromStr, from_utf8, from_utf8_mut};
-use core::fmt::{Debug, Display}; 
+use core::fmt::{Arguments, Debug, Display, Formatter, Write, write}; 
 use core::ops::{Deref, DerefMut};
 use core::time::Duration;
 
@@ -197,7 +197,7 @@ impl<'a> Display for Error<'a> {
     ///
     /// Provides human-readable error messages suitable for logging or
     /// presentation to users.
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
         use Error::*;
 
         match self {
@@ -556,13 +556,13 @@ impl PartialEq for dyn AsSyncStr + '_ {
 impl Eq for dyn AsSyncStr + '_ {}
 
 impl Debug for dyn AsSyncStr + '_ {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
         write!(f, "{}", self.as_str())
     }
 }
 
 impl Display for dyn AsSyncStr + '_ {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
         write!(f, "{}", self.as_str())
     }
 }
@@ -660,7 +660,7 @@ impl<const SIZE: usize> Display for Bytes<SIZE> {
     /// let bytes = Bytes::<16>::from_str("Hello");
     /// println!("{}", bytes); // Prints "Hello"
     /// ```
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
         let str = unsafe {
             CStr::from_ptr(self.0.as_ptr() as *const c_char)
             .to_str()
@@ -714,7 +714,7 @@ impl<const SIZE: usize> From<&str> for Bytes<SIZE> {
     }
 }
 
-impl<const SIZE: usize> core::fmt::Write for Bytes<SIZE> {
+impl<const SIZE: usize> Write for Bytes<SIZE> {
     /// Appends a string slice to the buffer, truncating if the content exceeds `SIZE`.
     #[inline]
     fn write_str(&mut self, s: &str) -> core::fmt::Result {
@@ -2051,9 +2051,9 @@ impl<const SIZE: usize> Bytes<SIZE> {
     /// assert_eq!(b2.as_str(), "3.14");
     /// ```
     #[inline]
-    pub fn format(&mut self, args: core::fmt::Arguments<'_>) {
+    pub fn format(&mut self, args: Arguments<'_>) {
         self.clear();
-        let _ = core::fmt::write(self, args);
+        let _ = write(self, args);
     }
         
 }

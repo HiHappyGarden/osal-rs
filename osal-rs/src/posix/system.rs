@@ -308,10 +308,17 @@ impl SystemFn for System {
     /// use osal_rs::os::*;
     /// use core::time::Duration;
     ///
-    /// assert_eq!(System::get_ms_from_tick(&Duration::from_millis(250)), 250);
+    /// assert_eq!(System::get_from_tick(&Duration::from_millis(250)), 250);
     /// ```
-    fn get_ms_from_tick(duration: &Duration) -> TickType {
+    fn get_from_tick(duration: &Duration) -> TickType {
         duration.as_millis().min(TickType::MAX as u128) as TickType
+    }
+
+    /// Deprecated alias for [`System::get_from_tick`]; kept for source
+    /// compatibility with code written before the rename.
+    #[inline]
+    fn get_ms_from_tick(duration: &Duration) -> TickType {
+        Self::get_from_tick(duration)
     }
 
     /// Number of threads known to the system: every thread spawned through

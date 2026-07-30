@@ -369,11 +369,18 @@ impl SystemFn for System {
     /// use core::time::Duration;
     ///
     /// let duration = Duration::from_millis(100);
-    /// let ticks = System::get_ms_from_tick(&duration);
+    /// let ticks = System::get_from_tick(&duration);
     /// ```
-    fn get_ms_from_tick(duration: &Duration) -> TickType {
+    fn get_from_tick(duration: &Duration) -> TickType {
         let millis = duration.as_millis() as TickType;
-        millis / (1_000 * tick_period_ms!() as TickType) 
+        millis / (1_000 * tick_period_ms!() as TickType)
+    }
+
+    /// Deprecated alias for [`System::get_from_tick`]; kept for source
+    /// compatibility with code written before the rename.
+    #[inline]
+    fn get_ms_from_tick(duration: &Duration) -> TickType {
+        Self::get_from_tick(duration)
     }
 
     /// Returns the number of threads currently in the system.

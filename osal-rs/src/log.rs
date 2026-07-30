@@ -642,7 +642,7 @@ pub fn sys_log(tag: &str, log_type: u8, to_print: &str) {
         };
 
 
-        let now = System::get_current_time_us();
+        let now = System::get_current_time();
 
 
         #[cfg(not(feature = "posix"))]

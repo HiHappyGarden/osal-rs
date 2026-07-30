@@ -110,7 +110,7 @@ impl Deref for SystemState {
 /// System::delay_with_to_tick(Duration::from_millis(500));
 /// 
 /// // Get current system time
-/// let now = System::get_current_time_us();
+/// let now = System::get_current_time();
 /// println!("Uptime: {:?}", now);
 /// 
 /// // Periodic execution using delay_until
@@ -332,12 +332,21 @@ impl SystemFn for System {
     /// ```ignore
     /// use osal_rs::os::{System, SystemFn};
     /// 
-    /// let uptime = System::get_current_time_us();
+    /// let uptime = System::get_current_time();
     /// println!("System uptime: {:?}", uptime);
     /// ```
-    fn get_current_time_us () -> Duration {
+    fn get_current_time () -> Duration {
         let ticks = Self::get_tick_count();
         Duration::from_millis( 1_000 * ticks as u64 / tick_period_ms!() as u64 )
+    }
+
+
+
+    /// Deprecated alias for [`System::get_current_time`]; kept for source
+    /// compatibility with code written before the rename.
+    #[inline]
+    fn get_current_time_ms() -> Duration {
+        Self::get_current_time()
     }
 
     /// Converts a `Duration` to tick count.
@@ -513,7 +522,7 @@ impl SystemFn for System {
     /// use osal_rs::os::{System, SystemFn};
     /// use core::time::Duration;
     /// 
-    /// let start = System::get_current_time_us();
+    /// let start = System::get_current_time();
     /// let timeout = Duration::from_secs(1);
     /// 
     /// // Later...
@@ -522,7 +531,7 @@ impl SystemFn for System {
     /// }
     /// ```
     fn check_timer(timestamp: &Duration, time: &Duration) -> OsalRsBool {
-        let temp_tick_time = Self::get_current_time_us();
+        let temp_tick_time = Self::get_current_time();
         
         let time_passing = if temp_tick_time >= *timestamp {
             temp_tick_time - *timestamp

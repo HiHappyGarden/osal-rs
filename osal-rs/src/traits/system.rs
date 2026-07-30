@@ -64,7 +64,7 @@ use crate::utils::OsalRsBool;
 /// # Method Categories
 ///
 /// - **Scheduler**: `start()`, `stop()`, `suspend_all()`, `resume_all()`
-/// - **Timing**: `get_tick_count()`, `get_current_time_us()`, `delay()`, `delay_until()`
+/// - **Timing**: `get_tick_count()`, `get_current_time()`, `delay()`, `delay_until()`
 /// - **Critical Sections**: `critical_section_enter()`, `critical_section_exit()`, ISR variants
 /// - **System Info**: `count_threads()`, `get_all_thread()`, `get_free_heap_size()`
 /// - **ISR Support**: `yield_from_isr()`, `end_switching_isr()`, ISR critical sections
@@ -225,13 +225,18 @@ pub trait System {
     /// ```ignore
     /// use osal_rs::os::System;
     /// 
-    /// let start = System::get_current_time_us();
+    /// let start = System::get_current_time();
     /// perform_operation();
-    /// let elapsed = System::get_current_time_us() - start;
+    /// let elapsed = System::get_current_time() - start;
     /// println!("Operation took {} µs", elapsed.as_micros());
     /// ```
-    fn get_current_time_us () -> Duration;
+    fn get_current_time () -> Duration;
     
+    /// Deprecated alias for [`System::get_current_time`]; kept for source
+    /// compatibility with code written before the rename.
+    #[deprecated(since = "1.0.4", note = "use `get_current_time` instead")]
+    fn get_current_time_ms() -> Duration;
+
     /// Converts duration to tick count.
     ///
     /// Converts a `Duration` into the equivalent number of RTOS ticks.
@@ -383,7 +388,7 @@ pub trait System {
     /// use core::time::Duration;
     /// use osal_rs::os::System;
     /// 
-    /// let start = System::get_current_time_us();
+    /// let start = System::get_current_time();
     /// let timeout = Duration::from_millis(100);
     /// 
     /// loop {

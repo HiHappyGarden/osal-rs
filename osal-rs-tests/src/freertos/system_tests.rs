@@ -38,7 +38,7 @@ pub fn test_system_get_tick_count() -> Result<()> {
 
 pub fn test_system_get_current_time() -> Result<()> {
     log_info!(TAG, "Starting test_system_get_current_time");
-    let time = System::get_current_time_us();
+    let time = System::get_current_time();
     log_debug!(TAG, "Current time: {} us", time.as_micros());
     assert!(time.as_micros() > 0);
     log_info!(TAG, "test_system_get_current_time PASSED");
@@ -103,7 +103,7 @@ pub fn test_system_suspend_resume_all() -> Result<()> {
 
 pub fn test_system_check_timer() -> Result<()> {
     log_info!(TAG, "Starting test_system_check_timer");
-    let timestamp = System::get_current_time_us();
+    let timestamp = System::get_current_time();
     let wait_time = Duration::from_millis(10);
     
     // Should be false immediately
@@ -173,9 +173,9 @@ pub fn test_system_multiple_delays() -> Result<()> {
 
 pub fn test_system_time_monotonic() -> Result<()> {
     log_info!(TAG, "Starting test_system_time_monotonic");
-    let time1 = System::get_current_time_us();
+    let time1 = System::get_current_time();
     System::delay(Duration::from_millis(10).to_ticks());
-    let time2 = System::get_current_time_us();
+    let time2 = System::get_current_time();
     
     log_debug!(TAG, "Time1: {} us, Time2: {} us", time1.as_micros(), time2.as_micros());
     assert!(time2 >= time1);

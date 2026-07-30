@@ -256,7 +256,7 @@ impl SystemFn for System {
     }
 
     /// Returns the number of ticks elapsed since the first time any of
-    /// [`System::get_tick_count`]/[`System::get_current_time_us`] was called
+    /// [`System::get_tick_count`]/[`System::get_current_time`] was called
     /// in this process (that first call defines tick `0`).
     ///
     /// # Examples
@@ -280,12 +280,23 @@ impl SystemFn for System {
     /// ```
     /// use osal_rs::os::*;
     ///
-    /// let before = System::get_current_time_us();
+    /// let before = System::get_current_time();
     /// System::delay(5);
-    /// assert!(System::get_current_time_us() >= before);
+    /// assert!(System::get_current_time() >= before);
     /// ```
-    fn get_current_time_us() -> Duration {
-        Self::elapsed()
+    fn get_current_time() -> Duration {
+        let mut ts = timespec::default();
+
+        unsafe { clock_gettime(CLOCK_MONOTONIC, &mut ts) };
+
+        Duration::from_micros((ts.tv_sec * 1000 * 1000 + ts.tv_nsec / 1000) as u64)
+    }
+
+    /// Deprecated alias for [`System::get_current_time`]; kept for source
+    /// compatibility with code written before the rename.
+    #[inline]
+    fn get_current_time_ms() -> Duration {
+        Self::get_current_time()
     }
 
     /// Converts a [`Duration`] to POSIX ticks (milliseconds); see
@@ -419,7 +430,7 @@ impl SystemFn for System {
     }
 
     /// Returns [`OsalRsBool::True`] once at least `time` has elapsed since
-    /// `timestamp` (both measured against [`System::get_current_time_us`]'s
+    /// `timestamp` (both measured against [`System::get_current_time`]'s
     /// clock).
     ///
     /// # Examples
@@ -429,14 +440,14 @@ impl SystemFn for System {
     /// use osal_rs::utils::OsalRsBool;
     /// use core::time::Duration;
     ///
-    /// let start = System::get_current_time_us();
+    /// let start = System::get_current_time();
     /// assert_eq!(System::check_timer(&start, &Duration::from_millis(500)), OsalRsBool::False);
     ///
     /// System::delay(20);
     /// assert_eq!(System::check_timer(&start, &Duration::from_millis(10)), OsalRsBool::True);
     /// ```
     fn check_timer(timestamp: &Duration, time: &Duration) -> OsalRsBool {
-        let elapsed = Self::get_current_time_us().checked_sub(*timestamp).unwrap_or_default();
+        let elapsed = Self::get_current_time().checked_sub(*timestamp).unwrap_or_default();
 
         if elapsed >= *time {
             OsalRsBool::True

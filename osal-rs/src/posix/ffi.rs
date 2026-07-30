@@ -556,11 +556,6 @@ unsafe extern "C" {
     /// left to sleep to `rem` (`nanosleep(2)`).
     pub(super) fn nanosleep(req: *const timespec, rem: *mut timespec) -> c_int;
 
-    /// Like [`nanosleep`], but sleeps against a specific `clock_id` (e.g.
-    /// [`CLOCK_MONOTONIC`]) and, when `flags` is `0`, treats `req` as
-    /// relative (`TIMER_ABSTIME` would make it absolute) (`clock_nanosleep(2)`).
-    pub(super) fn clock_nanosleep(clock_id: c_int, flags: c_int, req: *const timespec, rem: *mut timespec) -> c_int;
-
     /// Relinquish the processor to another thread ready to run, without
     /// blocking the caller (`sched_yield(2)`).
     pub(super) fn sched_yield() -> c_int;

@@ -372,8 +372,7 @@ impl SystemFn for System {
     /// let ticks = System::get_from_tick(&duration);
     /// ```
     fn get_from_tick(duration: &Duration) -> TickType {
-        let millis = duration.as_millis() as TickType;
-        millis / (1_000 * tick_period_ms!() as TickType)
+        duration.to_ticks()
     }
 
     /// Deprecated alias for [`System::get_from_tick`]; kept for source

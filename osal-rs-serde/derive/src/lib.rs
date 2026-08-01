@@ -61,75 +61,66 @@ pub fn derive_serialize(input: TokenStream) -> TokenStream {
     let name = &input.ident;
 
 
-    let serialize_impl = match &input.data {
-        Data::Struct(data_struct) => match &data_struct.fields {
-            Fields::Named(fields) => {
-                let field_count = fields.named.len();
-                let field_serializations = fields.named.iter().map(|f| {
-                    let field_name = &f.ident;
-                    let field_name_str = field_name.as_ref().unwrap().to_string();
-                    quote! {
-                        serializer.serialize_field(#field_name_str, &self.#field_name)?;
-                    }
-                });
+    let Data::Struct(data_struct) = &input.data else {
+        let message = match &input.data {
+            Data::Enum(_) => "Serialize derive macro does not support enums yet",
+            Data::Union(_) => "Serialize derive macro does not support unions",
+            Data::Struct(_) => unreachable!(),
+        };
+        return syn::Error::new_spanned(name, message).to_compile_error().into();
+    };
 
+    let serialize_impl = match &data_struct.fields {
+        Fields::Named(fields) => {
+            let field_count = fields.named.len();
+            let field_serializations = fields.named.iter().map(|f| {
+                let field_name = &f.ident;
+                let field_name_str = field_name.as_ref().unwrap().to_string();
                 quote! {
-                    impl osal_rs_serde::Serialize for #name {
-                        fn serialize<S: osal_rs_serde::Serializer>(&self, name: &str, serializer: &mut S) -> Result<(), S::Error> {
-                            serializer.serialize_struct_start(name, #field_count)?;
-                            #(#field_serializations)*
-                            serializer.serialize_struct_end()?;
-                            Ok(())
-                        }
-                    }
+                    serializer.serialize_field(#field_name_str, &self.#field_name)?;
                 }
-            }
-            Fields::Unnamed(fields) => {
-                let field_count = fields.unnamed.len();
-                let field_serializations = (0..fields.unnamed.len()).map(|i| {
-                    let index = syn::Index::from(i);
-                    let name_lit = Literal::string(&i.to_string());
-                    quote! {
-                        serializer.serialize_field(#name_lit, &self.#index)?;
-                    }
-                });
+            });
 
-                quote! {
-                    impl osal_rs_serde::Serialize for #name {
-                        fn serialize<S: osal_rs_serde::Serializer>(&self, name: &str, serializer: &mut S) -> Result<(), S::Error> {
-                            serializer.serialize_struct_start(name, #field_count)?;
-                            #(#field_serializations)*
-                            serializer.serialize_struct_end()?;
-                            Ok(())
-                        }
+            quote! {
+                impl osal_rs_serde::Serialize for #name {
+                    fn serialize<S: osal_rs_serde::Serializer>(&self, name: &str, serializer: &mut S) -> Result<(), S::Error> {
+                        serializer.serialize_struct_start(name, #field_count)?;
+                        #(#field_serializations)*
+                        serializer.serialize_struct_end()?;
+                        Ok(())
                     }
                 }
             }
-            Fields::Unit => {
-                quote! {
-                    impl osal_rs_serde::Serialize for #name {
-                        fn serialize<S: osal_rs_serde::Serializer>(&self, _name: &str, _serializer: &mut S) -> Result<(), S::Error> {
-                            Ok(())
-                        }
-                    }
-                }
-            }
-        },
-        Data::Enum(_) => {
-            return syn::Error::new_spanned(
-                name,
-                "Serialize derive macro does not support enums yet"
-            )
-            .to_compile_error()
-            .into();
         }
-        Data::Union(_) => {
-            return syn::Error::new_spanned(
-                name,
-                "Serialize derive macro does not support unions"
-            )
-            .to_compile_error()
-            .into();
+        Fields::Unnamed(fields) => {
+            let field_count = fields.unnamed.len();
+            let field_serializations = (0..fields.unnamed.len()).map(|i| {
+                let index = syn::Index::from(i);
+                let name_lit = Literal::string(&i.to_string());
+                quote! {
+                    serializer.serialize_field(#name_lit, &self.#index)?;
+                }
+            });
+
+            quote! {
+                impl osal_rs_serde::Serialize for #name {
+                    fn serialize<S: osal_rs_serde::Serializer>(&self, name: &str, serializer: &mut S) -> Result<(), S::Error> {
+                        serializer.serialize_struct_start(name, #field_count)?;
+                        #(#field_serializations)*
+                        serializer.serialize_struct_end()?;
+                        Ok(())
+                    }
+                }
+            }
+        }
+        Fields::Unit => {
+            quote! {
+                impl osal_rs_serde::Serialize for #name {
+                    fn serialize<S: osal_rs_serde::Serializer>(&self, _name: &str, _serializer: &mut S) -> Result<(), S::Error> {
+                        Ok(())
+                    }
+                }
+            }
         }
     };
 
@@ -154,69 +145,60 @@ pub fn derive_deserialize(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
     let name = &input.ident;
 
-    let deserialize_impl = match &input.data {
-        Data::Struct(data_struct) => match &data_struct.fields {
-            Fields::Named(fields) => {
-                let field_deserializations = fields.named.iter().map(|f| {
-                    let field_name = &f.ident;
-                    let field_name_str = field_name.as_ref().unwrap().to_string();
-                    let field_type = &f.ty;
-                    quote! {
-                        #field_name: deserializer.deserialize_field::<#field_type>(#field_name_str)?
-                    }
-                });
+    let Data::Struct(data_struct) = &input.data else {
+        let message = match &input.data {
+            Data::Enum(_) => "Deserialize derive macro does not support enums yet",
+            Data::Union(_) => "Deserialize derive macro does not support unions",
+            Data::Struct(_) => unreachable!(),
+        };
+        return syn::Error::new_spanned(name, message).to_compile_error().into();
+    };
 
+    let deserialize_impl = match &data_struct.fields {
+        Fields::Named(fields) => {
+            let field_deserializations = fields.named.iter().map(|f| {
+                let field_name = &f.ident;
+                let field_name_str = field_name.as_ref().unwrap().to_string();
+                let field_type = &f.ty;
                 quote! {
-                    impl osal_rs_serde::Deserialize for #name {
-                        fn deserialize<D: osal_rs_serde::Deserializer>(deserializer: &mut D, name: &str) -> Result<Self, D::Error> {
-                            deserializer.deserialize_struct_start(name)?;
-                            let result = Self {
-                                #(#field_deserializations,)*
-                            };
-                            deserializer.deserialize_struct_end()?;
-                            Ok(result)
-                        }
-                    }
+                    #field_name: deserializer.deserialize_field::<#field_type>(#field_name_str)?
                 }
-            }
-            Fields::Unnamed(fields) => {
-                let field_types = fields.unnamed.iter().map(|f| &f.ty);
+            });
 
-                quote! {
-                    impl osal_rs_serde::Deserialize for #name {
-                        fn deserialize<D: osal_rs_serde::Deserializer>(deserializer: &mut D, name: &str) -> Result<Self, D::Error> {
-                            Ok(Self(
-                                #(<#field_types as osal_rs_serde::Deserialize>::deserialize(deserializer, name)?,)*
-                            ))
-                        }
+            quote! {
+                impl osal_rs_serde::Deserialize for #name {
+                    fn deserialize<D: osal_rs_serde::Deserializer>(deserializer: &mut D, name: &str) -> Result<Self, D::Error> {
+                        deserializer.deserialize_struct_start(name)?;
+                        let result = Self {
+                            #(#field_deserializations,)*
+                        };
+                        deserializer.deserialize_struct_end()?;
+                        Ok(result)
                     }
                 }
             }
-            Fields::Unit => {
-                quote! {
-                    impl osal_rs_serde::Deserialize for #name {
-                        fn deserialize<D: osal_rs_serde::Deserializer>(_deserializer: &mut D, _name: &str) -> Result<Self, D::Error> {
-                            Ok(Self)
-                        }
-                    }
-                }
-            }
-        },
-        Data::Enum(_) => {
-            return syn::Error::new_spanned(
-                name,
-                "Deserialize derive macro does not support enums yet"
-            )
-            .to_compile_error()
-            .into();
         }
-        Data::Union(_) => {
-            return syn::Error::new_spanned(
-                name,
-                "Deserialize derive macro does not support unions"
-            )
-            .to_compile_error()
-            .into();
+        Fields::Unnamed(fields) => {
+            let field_types = fields.unnamed.iter().map(|f| &f.ty);
+
+            quote! {
+                impl osal_rs_serde::Deserialize for #name {
+                    fn deserialize<D: osal_rs_serde::Deserializer>(deserializer: &mut D, name: &str) -> Result<Self, D::Error> {
+                        Ok(Self(
+                            #(<#field_types as osal_rs_serde::Deserialize>::deserialize(deserializer, name)?,)*
+                        ))
+                    }
+                }
+            }
+        }
+        Fields::Unit => {
+            quote! {
+                impl osal_rs_serde::Deserialize for #name {
+                    fn deserialize<D: osal_rs_serde::Deserializer>(_deserializer: &mut D, _name: &str) -> Result<Self, D::Error> {
+                        Ok(Self)
+                    }
+                }
+            }
         }
     };
 

@@ -421,17 +421,15 @@ pub const fn register_bit_size() -> CpuRegisterSize {
 /// ```
 #[macro_export]
 macro_rules! thread_extract_param {
-    ($param:expr, $t:ty) => {
-        match $param.as_ref() {
-            Some(p) => {
-                match p.downcast_ref::<$t>() {
-                    Some(value) => value,
-                    None => return Err($crate::utils::Error::InvalidType),
-                }
-            }
-            None => return Err($crate::utils::Error::NullPtr),
-        }
-    };
+    ($param:expr, $t:ty) => {{
+        let Some(p) = $param.as_ref() else {
+            return Err($crate::utils::Error::NullPtr);
+        };
+        let Some(value) = p.downcast_ref::<$t>() else {
+            return Err($crate::utils::Error::InvalidType);
+        };
+        value
+    }};
 }
 
 /// Accesses a static Option variable, returning the contained value or panicking if None.
@@ -1151,16 +1149,15 @@ impl<const SIZE: usize> Bytes<SIZE> {
     /// assert_eq!(&output[..11], "Hello World");
     /// ```
     pub fn fill_str(&mut self, dest: &mut str) -> Result<()>{
-        match from_utf8_mut(&mut self.0) {
-            Ok(str) => {
-                let len = core::cmp::min(str.len(), dest.len());
-                unsafe {
-                    dest.as_bytes_mut()[..len].copy_from_slice(&str.as_bytes()[..len]);
-                }
-                Ok(())
-            }
-            Err(_) => Err(Error::StringConversionError),
+        let Ok(str) = from_utf8_mut(&mut self.0) else {
+            return Err(Error::StringConversionError);
+        };
+
+        let len = core::cmp::min(str.len(), dest.len());
+        unsafe {
+            dest.as_bytes_mut()[..len].copy_from_slice(&str.as_bytes()[..len]);
         }
+        Ok(())
     }
 
     /// Creates a new `Bytes` instance from a C string pointer.

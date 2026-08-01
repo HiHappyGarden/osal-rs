@@ -414,13 +414,14 @@ impl<T: ?Sized> MutexFn<T> for Mutex<T> {
     /// // Mutex automatically unlocked when guard goes out of scope
     /// ```
     fn lock(&self) -> Result<Self::Guard<'_>> {
-        match self.inner.lock() {
-            OsalRsBool::True => Ok(MutexGuard {
-                mutex: self,
-                _phantom: PhantomData,
-            }),
-            OsalRsBool::False => Err(Error::MutexLockFailed),
-        }
+        let OsalRsBool::True = self.inner.lock() else {
+            return Err(Error::MutexLockFailed);
+        };
+
+        Ok(MutexGuard {
+            mutex: self,
+            _phantom: PhantomData,
+        })
     }
 
     /// Acquires the mutex from an ISR context.
@@ -450,13 +451,14 @@ impl<T: ?Sized> MutexFn<T> for Mutex<T> {
     /// }
     /// ```
     fn lock_from_isr(&self) -> Result<Self::GuardFromIsr<'_>> {
-        match self.inner.lock_from_isr() {
-            OsalRsBool::True => Ok(MutexGuardFromIsr {
-                mutex: self,
-                _phantom: PhantomData,
-            }),
-            OsalRsBool::False => Err(Error::MutexLockFailed),
-        }
+        let OsalRsBool::True = self.inner.lock_from_isr() else {
+            return Err(Error::MutexLockFailed);
+        };
+
+        Ok(MutexGuardFromIsr {
+            mutex: self,
+            _phantom: PhantomData,
+        })
     }
 
     /// Consumes the mutex and returns the inner data.
@@ -518,13 +520,14 @@ impl<T: ?Sized> Mutex<T> {
     /// }
     /// ```
     pub fn lock_from_isr_explicit(&self) -> Result<MutexGuardFromIsr<'_, T>> {
-        match self.inner.lock_from_isr() {
-            OsalRsBool::True => Ok(MutexGuardFromIsr {
-                mutex: self,
-                _phantom: PhantomData,
-            }),
-            OsalRsBool::False => Err(Error::MutexLockFailed),
-        }
+        let OsalRsBool::True = self.inner.lock_from_isr() else {
+            return Err(Error::MutexLockFailed);
+        };
+
+        Ok(MutexGuardFromIsr {
+            mutex: self,
+            _phantom: PhantomData,
+        })
     }
 }
 

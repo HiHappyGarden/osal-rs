@@ -197,6 +197,7 @@ impl SystemFn for System {
             if !RUN.load(Ordering::Acquire) {
                 break;
             }
+            System::delay_with_to_tick(Duration::from_millis(500));
         }
     }
 

@@ -119,8 +119,8 @@ fn std_backend_exports_core_api_surface() {
     let _ = event_group.get_from_isr();
     let _ = event_group.clear(0b0001);
     let _ = event_group.clear_from_isr(0b0001);
-    let _ = event_group.wait(0b0001, 0);
-    let _ = event_group.wait_with_to_tick(0b0001, Duration::ZERO);
+    let _ = event_group.wait(0b0001, true, 0);
+    let _ = event_group.wait_with_to_tick(0b0001, true, Duration::ZERO);
     let _ = format!("{event_group:?}");
     let _ = format!("{event_group}");
     event_group.delete();

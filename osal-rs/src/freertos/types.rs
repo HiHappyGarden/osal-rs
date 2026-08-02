@@ -139,7 +139,7 @@ pub type MutexHandle = *const c_void;
 /// event_group.set(EVENT_A | EVENT_B);
 ///
 /// // Wait for any bit
-/// let result = event_group.wait(EVENT_A | EVENT_C, 1000);
+/// let result = event_group.wait(EVENT_A | EVENT_C, false, 1000);
 ///
 /// // Check specific bits
 /// if result & EVENT_A != 0 {

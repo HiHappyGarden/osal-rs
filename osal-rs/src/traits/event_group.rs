@@ -61,9 +61,9 @@ use crate::os::types::{EventBits, TickType};
 /// use osal_rs::os::types::EventBits;
 /// 
 /// let events = EventGroup::new().unwrap();
-/// 
+///
 /// // Task 1: Wait for specific bits
-/// let bits = events.wait(0b0011, 1000);
+/// let bits = events.wait(0b0011, true, 1000);
 /// if bits & 0b0011 == 0b0011 {
 ///     println!("Both bits 0 and 1 are set");
 /// }
@@ -194,12 +194,16 @@ pub trait EventGroup {
 
     /// Waits for specific event bits to be set.
     ///
-    /// Blocks the calling task until ALL specified bits in the mask are set,
-    /// or until the timeout expires.
+    /// Blocks the calling task until either ALL or ANY (depending on
+    /// `wait_for_all_bits`) of the bits in `mask` are set, or until the
+    /// timeout expires.
     ///
     /// # Parameters
     ///
-    /// * `mask` - Bit mask of bits to wait for (waits for ALL bits in mask)
+    /// * `mask` - Bit mask of bits to wait for
+    /// * `wait_for_all_bits` - `true` to wait for every bit in `mask` to be
+    ///   set (AND); `false` to wait for any single bit in `mask` to be set
+    ///   (OR)
     /// * `timeout_ticks` - Maximum time to wait in ticks (0 = no wait, MAX = wait forever)
     ///
     /// # Returns
@@ -211,9 +215,9 @@ pub trait EventGroup {
     /// # Examples
     ///
     /// ```ignore
-    /// // Wait for bits 0 and 2 with 1000 tick timeout
-    /// let result = events.wait(0b0101, 1000);
-    /// 
+    /// // Wait for both bits 0 and 2 with 1000 tick timeout
+    /// let result = events.wait(0b0101, true, 1000);
+    ///
     /// if result & 0b0101 == 0b0101 {
     ///     // Success: both bits 0 and 2 are set
     ///     println!("Condition met!");
@@ -221,11 +225,11 @@ pub trait EventGroup {
     ///     // Timeout: not all bits were set in time
     ///     println!("Timeout - current bits: {:#b}", result);
     /// }
-    /// 
-    /// // Wait forever for a single bit
-    /// let result = events.wait(0b0001, TickType::MAX);
+    ///
+    /// // Wait forever for either bit 0 or bit 1
+    /// let result = events.wait(0b0011, false, TickType::MAX);
     /// ```
-    fn wait(&self, mask: EventBits, timeout_ticks: TickType) -> EventBits;
+    fn wait(&self, mask: EventBits, wait_for_all_bits: bool, timeout_ticks: TickType) -> EventBits;
 
     /// Deletes the event group and frees its resources.
     ///

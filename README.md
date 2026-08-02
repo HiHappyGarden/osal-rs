@@ -27,6 +27,25 @@ OSAL-RS provides a unified API for developing multi-platform embedded applicatio
 - 🧪 **Async/Await**: Experimental, backend-agnostic, works on both FreeRTOS and POSIX
 - 🚧 **Other RTOSes**: Under consideration
 
+## Breaking Changes
+
+### `EventGroupFn::wait` gained a `wait_for_all_bits` parameter (from version 1.1.0)
+
+`EventGroup::wait` and `EventGroup::wait_with_to_tick` now take an explicit `wait_for_all_bits: bool`, matching FreeRTOS's `xEventGroupWaitBits`:
+
+```rust
+// Before
+let bits = event_group.wait(mask, timeout_ticks);
+
+// After
+let bits = event_group.wait(mask, true, timeout_ticks);   // AND: block until every bit in `mask` is set
+let bits = event_group.wait(mask, false, timeout_ticks);  // OR: block until any bit in `mask` is set
+
+let bits = event_group.wait_with_to_tick(mask, true, timeout);
+```
+
+Previously the two backends silently disagreed: POSIX only ever implemented AND-wait, while FreeRTOS hardcoded OR-wait (`xWaitForAllBits = pdFALSE`) regardless of what the trait docs said. Code that waited on multiple independent bits (e.g. "unblock when *either* of these two mutually exclusive events fires") could hang forever on POSIX while working by accident on FreeRTOS. Both backends now implement the same, explicit semantics.
+
 ## Supported Backends
 
 OSAL-RS selects its implementation at compile time via Cargo features. There is **no default backend** - exactly one of `freertos` / `posix` must be enabled explicitly, or the crate fails to build. Enabling neither trips a `compile_error!`; enabling both is equally unsupported, since the two backends are mutually exclusive by design.
@@ -149,6 +168,29 @@ queue.post(&data, 100).unwrap();
 // Receive data
 let mut buffer = [0u8; 4];
 queue.fetch(&mut buffer, 100).unwrap();
+```
+
+```rust
+use osal_rs::os::*;
+use osal_rs::os::types::{EventBits, TickType};
+use std::sync::Arc;
+
+const READY: EventBits = 1 << 0;
+const ERROR: EventBits = 1 << 1;
+
+let events = Arc::new(EventGroup::new().unwrap());
+let events_clone = events.clone();
+
+let mut thread = Thread::new("waiter", 2048, 5);
+thread.spawn_simple(move || {
+    // OR-wait (`false`): unblocks as soon as either bit is set - e.g. by a
+    // callback running on another thread - not only when both are set.
+    let bits = events_clone.wait(READY | ERROR, false, TickType::MAX);
+    assert!(bits & (READY | ERROR) != 0);
+    Ok(Arc::new(()))
+}).unwrap();
+
+events.set(READY); // wakes the waiting thread
 ```
 
 The same code compiles and runs unchanged against either backend - just switch the `freertos`/`posix` feature flags.

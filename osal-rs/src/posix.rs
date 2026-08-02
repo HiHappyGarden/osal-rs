@@ -137,7 +137,7 @@
 //! let events = EventGroup::new().unwrap();
 //! events.set(EVENT_A | EVENT_B);
 //!
-//! let bits = events.wait(EVENT_A | EVENT_B, 100);
+//! let bits = events.wait(EVENT_A | EVENT_B, true, 100);
 //! assert_eq!(bits & (EVENT_A | EVENT_B), EVENT_A | EVENT_B);
 //! ```
 //!

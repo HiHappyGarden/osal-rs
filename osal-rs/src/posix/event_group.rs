@@ -38,7 +38,7 @@
 //! let events = EventGroup::new().unwrap();
 //! events.set(EVENT_A | EVENT_B);
 //!
-//! let bits = events.wait(EVENT_A | EVENT_B, 100);
+//! let bits = events.wait(EVENT_A | EVENT_B, true, 100);
 //! assert_eq!(bits & (EVENT_A | EVENT_B), EVENT_A | EVENT_B);
 //! ```
 
@@ -121,12 +121,12 @@ impl EventGroup {
 	/// let events = EventGroup::new().unwrap();
 	/// events.set(1);
 	///
-	/// let bits = events.wait_with_to_tick(1, Duration::from_millis(50));
+	/// let bits = events.wait_with_to_tick(1, true, Duration::from_millis(50));
 	/// assert_eq!(bits & 1, 1);
 	/// ```
 	#[inline]
-	pub fn wait_with_to_tick(&self, mask: EventBits, timeout_ticks: impl ToTick) -> EventBits {
-		self.wait(mask, timeout_ticks.to_ticks())
+	pub fn wait_with_to_tick(&self, mask: EventBits, wait_for_all_bits: bool, timeout_ticks: impl ToTick) -> EventBits {
+		self.wait(mask, wait_for_all_bits, timeout_ticks.to_ticks())
 	}
 
 	/// Creates a new, empty event group (all bits clear).
@@ -406,11 +406,12 @@ impl EventGroupFn for EventGroup {
 		Ok(())
 	}
 
-	/// Blocks until every bit in `mask` is set, or `timeout_ticks` elapses
-	/// (pass [`TickType::MAX`] to wait forever), whichever comes first.
-	/// Always returns the bits actually observed, whether or not they
-	/// satisfy `mask` - check the return value to tell a timeout apart from
-	/// success.
+	/// Blocks until `mask` is satisfied - every bit in it set when
+	/// `wait_for_all_bits` is `true` (AND), or any single bit in it set when
+	/// `false` (OR) - or `timeout_ticks` elapses (pass [`TickType::MAX`] to
+	/// wait forever), whichever comes first. Always returns the bits
+	/// actually observed, whether or not they satisfy `mask` - check the
+	/// return value to tell a timeout apart from success.
 	///
 	/// # Examples
 	///
@@ -420,18 +421,21 @@ impl EventGroupFn for EventGroup {
 	/// let events = EventGroup::new().unwrap();
 	/// events.set(0b01);
 	///
-	/// // Only bit 0 is set, so waiting on bit 1 too times out...
-	/// let bits = events.wait(0b11, 10);
+	/// // Only bit 0 is set, so AND-waiting on bit 1 too times out...
+	/// let bits = events.wait(0b11, true, 10);
 	/// assert_ne!(bits & 0b11, 0b11);
 	///
-	/// // ...but waiting on just the bit that's already set succeeds immediately.
-	/// let bits = events.wait(0b01, 10);
+	/// // ...but OR-waiting on the same mask succeeds immediately, since
+	/// // bit 0 alone is enough.
+	/// let bits = events.wait(0b11, false, 10);
 	/// assert_eq!(bits & 0b01, 0b01);
 	/// ```
-	fn wait(&self, mask: EventBits, timeout_ticks: TickType) -> EventBits {
+	fn wait(&self, mask: EventBits, wait_for_all_bits: bool, timeout_ticks: TickType) -> EventBits {
 		if self.is_null() {
 			return 0;
 		}
+
+		let satisfied = |bits: EventBits| if wait_for_all_bits { bits & mask == mask } else { bits & mask != 0 };
 
 		unsafe {
 			pthread_mutex_lock(self.mutex_ptr());
@@ -443,10 +447,10 @@ impl EventGroupFn for EventGroup {
 		// waiter's mask yet.
 		let result = if timeout_ticks == TickType::MAX {
 			// TickType::MAX is the "wait forever" sentinel: no deadline,
-			// block until every bit in `mask` is set.
+			// block until `mask` is satisfied.
 			loop {
 				let bits = unsafe { *self.bits_ptr() };
-				if bits & mask == mask {
+				if satisfied(bits) {
 					break bits;
 				}
 				unsafe {
@@ -461,7 +465,7 @@ impl EventGroupFn for EventGroup {
 
 			loop {
 				let bits = unsafe { *self.bits_ptr() };
-				if bits & mask == mask {
+				if satisfied(bits) {
 					break bits;
 				}
 				if unsafe { pthread_cond_timedwait(self.cond_ptr(), self.mutex_ptr(), &deadline) } == ETIMEDOUT {

@@ -20,8 +20,9 @@
 
 extern crate alloc;
 
+use alloc::sync::Arc;
 use osal_rs::os::*;
-use osal_rs::os::types::EventBits;
+use osal_rs::os::types::{EventBits, TickType};
 use osal_rs::utils::Result;
 use core::time::Duration;
 use osal_rs::{log_debug, log_info};
@@ -112,7 +113,7 @@ pub fn test_event_group_wait() -> Result<()> {
     event_group.set(BIT_0 | BIT_1);
     
     log_debug!(TAG, "Waiting for BIT_0 and BIT_1");
-    let result = event_group.wait(BIT_0 | BIT_1, Duration::from_millis(100).to_ticks());
+    let result = event_group.wait(BIT_0 | BIT_1, true, Duration::from_millis(100).to_ticks());
     log_debug!(TAG, "Wait result: 0x{:X}", result);
     assert_eq!(result & BIT_0, BIT_0);
     assert_eq!(result & BIT_1, BIT_1);
@@ -123,8 +124,8 @@ pub fn test_event_group_wait() -> Result<()> {
 pub fn test_event_group_wait_timeout() -> Result<()> {
     log_info!(TAG, "Starting test_event_group_wait_timeout");
     let event_group = EventGroup::new()?;
-    
-    let result = event_group.wait(BIT_0, Duration::from_millis(10).to_ticks());
+
+    let result = event_group.wait(BIT_0, true, Duration::from_millis(10).to_ticks());
     log_debug!(TAG, "Wait timeout result: 0x{:X}", result);
     assert_eq!(result, 0);
     log_info!(TAG, "test_event_group_wait_timeout PASSED");
@@ -134,14 +135,72 @@ pub fn test_event_group_wait_timeout() -> Result<()> {
 pub fn test_event_group_wait_partial() -> Result<()> {
     log_info!(TAG, "Starting test_event_group_wait_partial");
     let event_group = EventGroup::new()?;
-    
+
     event_group.set(BIT_0);
-    
+
     log_debug!(TAG, "Waiting for BIT_0 | BIT_1 (only BIT_0 set)");
-    let result = event_group.wait(BIT_0 | BIT_1, Duration::from_millis(10).to_ticks());
+    let result = event_group.wait(BIT_0 | BIT_1, true, Duration::from_millis(10).to_ticks());
     log_debug!(TAG, "Partial wait result: 0x{:X}", result);
     assert_eq!(result & BIT_0, BIT_0);
     log_info!(TAG, "test_event_group_wait_partial PASSED");
+    Ok(())
+}
+
+pub fn test_event_group_wait_any() -> Result<()> {
+    log_info!(TAG, "Starting test_event_group_wait_any");
+    let event_group = EventGroup::new()?;
+
+    event_group.set(BIT_0);
+
+    log_debug!(TAG, "OR-waiting for BIT_0 | BIT_1 (only BIT_0 set)");
+    let result = event_group.wait(BIT_0 | BIT_1, false, Duration::from_millis(100).to_ticks());
+    log_debug!(TAG, "Wait-any result: 0x{:X}", result);
+    assert_eq!(result & BIT_0, BIT_0);
+    assert_eq!(result & BIT_1, 0);
+    log_info!(TAG, "test_event_group_wait_any PASSED");
+    Ok(())
+}
+
+/// Reproduces the real scenario: one thread parked in `wait()`, a second
+/// thread (e.g. a dbus callback) calling `set()` on the same event group.
+/// A regression here (AND-wait blocking forever on a single-bit `set()`)
+/// is exactly the bug this parameter was introduced to fix.
+pub fn test_event_group_wait_unblocks_on_other_thread_set() -> Result<()> {
+    log_info!(TAG, "Starting test_event_group_wait_unblocks_on_other_thread_set");
+
+    let event_group = Arc::new(EventGroup::new()?);
+    let event_group_clone = Arc::clone(&event_group);
+    let woke = Mutex::new_arc(false);
+    let woke_clone = Arc::clone(&woke);
+
+    let mut thread = Thread::new("wait_thd", 1024, 5);
+    let spawned = thread.spawn_simple(move || {
+        // OR-wait on two bits, mirroring a real event-group idiom where
+        // each bit is a mutually exclusive state notification: only ONE of
+        // them is ever set by a given `set()` call. An AND-wait here would
+        // never unblock, since BIT_0 and BIT_1 are never set together.
+        let bits = event_group_clone.wait(BIT_0 | BIT_1, false, TickType::MAX);
+        assert_eq!(bits & BIT_1, BIT_1);
+        assert_eq!(bits & BIT_0, 0);
+        *woke_clone.lock().unwrap() = true;
+        Ok(Arc::new(()))
+    })?;
+
+    // Give the spawned thread time to actually reach `wait()` and block,
+    // then confirm it hasn't (spuriously) woken up yet.
+    System::delay(Duration::from_millis(50).to_ticks());
+    assert!(!*woke.lock().unwrap(), "thread woke up before set() was called");
+
+    log_debug!(TAG, "Setting only BIT_1 from the test thread");
+    event_group.set(BIT_1);
+
+    // `join` blocks until the spawned thread's closure returns; if `wait()`
+    // never unblocked, this call hangs instead of failing an assertion.
+    let join_result = spawned.join(core::ptr::null_mut());
+    assert!(join_result.is_ok());
+    assert!(*woke.lock().unwrap(), "waiting thread never unblocked after set()");
+
+    log_info!(TAG, "test_event_group_wait_unblocks_on_other_thread_set PASSED");
     Ok(())
 }
 
@@ -194,7 +253,7 @@ pub fn test_event_group_wait_with_to_tick() -> Result<()> {
     let event_group = EventGroup::new()?;
     event_group.set(BIT_0);
 
-    let result = event_group.wait_with_to_tick(BIT_0, Duration::from_millis(100));
+    let result = event_group.wait_with_to_tick(BIT_0, true, Duration::from_millis(100));
     log_debug!(TAG, "wait_with_to_tick result: 0x{:X}", result);
     assert_eq!(result & BIT_0, BIT_0);
     log_info!(TAG, "test_event_group_wait_with_to_tick PASSED");
@@ -246,6 +305,8 @@ pub fn run_all_tests() -> Result<()> {
     test_event_group_wait()?;
     test_event_group_wait_timeout()?;
     test_event_group_wait_partial()?;
+    test_event_group_wait_any()?;
+    test_event_group_wait_unblocks_on_other_thread_set()?;
     test_event_group_wait_with_to_tick()?;
     test_event_group_sequential_operations()?;
     test_event_group_all_bits()?;

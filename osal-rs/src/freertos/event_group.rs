@@ -29,7 +29,7 @@ use core::fmt::{Debug, Display, Formatter};
 use core::ops::Deref;
 use core::ptr::null_mut;
 
-use super::ffi::{EventGroupHandle, pdFAIL, pdFALSE, vEventGroupDelete, xEventGroupClearBits, xEventGroupClearBitsFromISR, xEventGroupCreate, xEventGroupGetBitsFromISR, xEventGroupSetBits, xEventGroupSetBitsFromISR};
+use super::ffi::{EventGroupHandle, pdFAIL, pdFALSE, pdTRUE, vEventGroupDelete, xEventGroupClearBits, xEventGroupClearBitsFromISR, xEventGroupCreate, xEventGroupGetBitsFromISR, xEventGroupSetBits, xEventGroupSetBitsFromISR};
 use super::system::System;
 use super::types::{BaseType, EventBits, TickType};
 use crate::traits::{ToTick, EventGroupFn, SystemFn};
@@ -153,7 +153,7 @@ use crate::utils::{Result, Error};
 /// // Handler thread
 /// let handler = Thread::new("handler", 2048, 5, move || {
 ///     loop {
-///         let bits = events.wait(IRQ_EVENT, 1000);
+///         let bits = events.wait(IRQ_EVENT, false, 1000);
 ///         if bits & IRQ_EVENT != 0 {
 ///             println!("Handling interrupt event");
 ///             events.clear(IRQ_EVENT);
@@ -183,11 +183,11 @@ impl EventGroup {
     /// use osal_rs::os::{EventGroup, EventGroupFn};
     /// use core::time::Duration;
     /// let events = EventGroup::new().unwrap();
-    /// let bits = events.wait_with_to_tick(0b0001, Duration::from_secs(1));
+    /// let bits = events.wait_with_to_tick(0b0001, true, Duration::from_secs(1));
     /// ```
     #[inline]
-    pub fn wait_with_to_tick(&self, mask: EventBits, timeout_ticks: impl ToTick) -> EventBits {
-        self.wait(mask, timeout_ticks.to_ticks())
+    pub fn wait_with_to_tick(&self, mask: EventBits, wait_for_all_bits: bool, timeout_ticks: impl ToTick) -> EventBits {
+        self.wait(mask, wait_for_all_bits, timeout_ticks.to_ticks())
     }
 }
 
@@ -399,40 +399,44 @@ impl EventGroupFn for EventGroup {
     }
 
     /// Waits for specified event bits to be set.
-    /// 
-    /// Blocks the calling thread until any of the specified bits are set,
-    /// or until the timeout expires. The bits are not cleared automatically.
-    /// 
+    ///
+    /// Blocks the calling thread until `mask` is satisfied - every specified
+    /// bit set when `wait_for_all_bits` is `true` (AND), or any single one
+    /// of them set when `false` (OR) - or until the timeout expires. The
+    /// bits are not cleared automatically.
+    ///
     /// # Arguments
-    /// 
+    ///
     /// * `mask` - The event bits to wait for (bitwise OR for multiple bits)
+    /// * `wait_for_all_bits` - `true` to wait for every bit in `mask` (AND);
+    ///   `false` to wait for any single bit in `mask` (OR)
     /// * `timeout_ticks` - Maximum time to wait in system ticks (0 = no wait, MAX = wait forever)
-    /// 
+    ///
     /// # Returns
-    /// 
+    ///
     /// The event bits value when the function returns. Check if the desired
     /// bits are set to determine if the wait succeeded or timed out.
-    /// 
+    ///
     /// # Examples
-    /// 
+    ///
     /// ```ignore
     /// use osal_rs::os::{EventGroup, EventGroupFn};
-    /// 
+    ///
     /// let events = EventGroup::new().unwrap();
-    /// 
+    ///
     /// // Wait for bit 0 or bit 1, timeout after 1000 ticks
-    /// let result = events.wait(0b0011, 1000);
+    /// let result = events.wait(0b0011, false, 1000);
     /// if result & 0b0011 != 0 {
     ///     println!("At least one bit was set");
     /// }
     /// ```
-    fn wait(&self, mask: EventBits, timeout_ticks: TickType) -> EventBits {
+    fn wait(&self, mask: EventBits, wait_for_all_bits: bool, timeout_ticks: TickType) -> EventBits {
         unsafe {
             crate::freertos::ffi::xEventGroupWaitBits(
                 self.0,
                 mask,
-                pdFALSE, 
-                pdFALSE, 
+                pdFALSE,
+                if wait_for_all_bits { pdTRUE } else { pdFALSE },
                 timeout_ticks,
             )
         }

@@ -382,10 +382,9 @@ pub fn test_thread_notify_from_isr_and_wait_with_to_tick() -> Result<()> {
     Ok(())
 }
 
-/// `ThreadFn::join` deletes the thread as part of joining it (see
-/// `freertos/thread.rs`), so unlike the other lifecycle tests this one must
-/// NOT call `delete()` afterward — that would be a double-delete on an
-/// already-invalid handle.
+/// `ThreadFn::join` blocks until the spawned closure returns and does not
+/// delete anything (the task deletes itself on the way out), so there is
+/// nothing left to reclaim here — a `delete()` afterwards would be a no-op.
 pub fn test_thread_join() -> Result<()> {
     log_info!(TAG, "Starting test_thread_join");
     let mut thread = Thread::new("join_test", 1024, 5);

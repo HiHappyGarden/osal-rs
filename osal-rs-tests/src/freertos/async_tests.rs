@@ -22,23 +22,18 @@
 //! `WakerSlot`, `AsyncMutex`, `AsyncQueue`, `AsyncSemaphore`.
 //!
 //! Mirrors `osal-rs/tests/std_async_tests.rs`; keep the two in sync. The async
-//! layer itself is backend-independent, so almost everything ports across. Two
-//! differences to keep in mind when editing:
-//!
-//! * FreeRTOS's `ThreadFn::join` is `vTaskDelete`, not a barrier - it would
-//!   *kill* a helper task mid-work. Helpers here publish an `AtomicBool` when
-//!   they are done and are reclaimed with `delete()` afterwards, matching the
-//!   convention in `thread_tests.rs`.
-//! * `test_async_queue_async_error_paths` is **not** mirrored: it asserts the
-//!   `Error::InvalidQueueSize` that `posix::Queue` returns for an undersized
-//!   buffer, and `freertos::Queue` has no equivalent check (`xQueueReceive`
-//!   copies the queue's item size regardless of the slice length).
+//! layer is backend-independent and both backends now agree on `join`
+//! (a barrier that waits for the callback to return) and on rejecting
+//! undersized queue buffers, so every test here is a straight copy of its
+//! POSIX counterpart - only the tick conversion and the smaller task stacks
+//! differ.
 
 extern crate alloc;
 
 use core::future::Future;
 use core::pin::Pin;
-use core::sync::atomic::{AtomicBool, AtomicU32, Ordering};
+use core::ptr::null_mut;
+use core::sync::atomic::{AtomicU32, Ordering};
 use core::task::{Context, Poll, Waker};
 use core::time::Duration;
 
@@ -57,26 +52,8 @@ const HEAD_START_MS: u64 = 40;
 /// How long a helper task withholds the resource once it owns it.
 const HOLD_MS: u64 = 120;
 
-/// Upper bound on how long [`await_helper`] waits before giving up.
-const HELPER_TIMEOUT_MS: u64 = 2_000;
-
 fn millis(ms: u64) -> types::TickType {
     Duration::from_millis(ms).to_ticks()
-}
-
-/// Blocks until `done` is set, then reclaims `helper`.
-///
-/// Deliberately *not* `helper.join()`: on FreeRTOS that is `vTaskDelete`, so
-/// joining a still-running helper would delete it rather than wait for it.
-fn await_helper(helper: &Thread, done: &AtomicBool) -> Result<()> {
-    let mut waited = 0u64;
-    while !done.load(Ordering::Acquire) {
-        System::delay(millis(5));
-        waited += 5;
-        assert!(waited < HELPER_TIMEOUT_MS, "helper task never finished");
-    }
-    helper.delete();
-    Ok(())
 }
 
 // ---------------------------------------------------------------------------
@@ -174,11 +151,9 @@ pub fn test_block_on_woken_from_another_thread() -> Result<()> {
 
     let slot = Arc::new(WakerSlot::new());
     let ready = Arc::new(AtomicU32::new(0));
-    let done = Arc::new(AtomicBool::new(false));
 
     let waker_slot = slot.clone();
     let waker_ready = ready.clone();
-    let waker_done = done.clone();
 
     let mut waker_thread = Thread::new("async-waker", 2048, 5);
     let spawned = waker_thread.spawn_simple(move || {
@@ -186,7 +161,6 @@ pub fn test_block_on_woken_from_another_thread() -> Result<()> {
         waker_ready.store(0xABCD, Ordering::Release);
         // Consumes the stored clone - the `wake` vtable entry.
         waker_slot.wake();
-        waker_done.store(true, Ordering::Release);
         Ok(Arc::new(()))
     })?;
 
@@ -197,7 +171,7 @@ pub fn test_block_on_woken_from_another_thread() -> Result<()> {
     log_debug!(TAG, "woken with value 0x{:X}", value);
     assert_eq!(value, 0xABCD);
 
-    await_helper(&spawned, &done)?;
+    spawned.join(null_mut())?;
 
     log_info!(TAG, "test_block_on_woken_from_another_thread PASSED");
     Ok(())
@@ -291,10 +265,8 @@ pub fn test_async_mutex_contended_lock_parks_and_resumes() -> Result<()> {
     log_info!(TAG, "Starting test_async_mutex_contended_lock_parks_and_resumes");
 
     let mutex = Arc::new(AsyncMutex::new(0u32));
-    let done = Arc::new(AtomicBool::new(false));
 
     let holder_mutex = mutex.clone();
-    let holder_done = done.clone();
 
     let mut holder = Thread::new("async-mutex-holder", 2048, 5);
     let spawned = holder.spawn_simple(move || {
@@ -307,7 +279,6 @@ pub fn test_async_mutex_contended_lock_parks_and_resumes() -> Result<()> {
             System::delay(millis(HOLD_MS));
             *guard = 2;
         });
-        holder_done.store(true, Ordering::Release);
         Ok(Arc::new(()))
     })?;
 
@@ -319,7 +290,7 @@ pub fn test_async_mutex_contended_lock_parks_and_resumes() -> Result<()> {
     log_debug!(TAG, "value observed after contention: {}", observed);
     assert_eq!(observed, 2, "must have waited for the holder to finish");
 
-    await_helper(&spawned, &done)?;
+    spawned.join(null_mut())?;
 
     log_info!(TAG, "test_async_mutex_contended_lock_parks_and_resumes PASSED");
     Ok(())
@@ -363,18 +334,15 @@ pub fn test_async_semaphore_wait_parks_until_signalled() -> Result<()> {
 
     let sem = Arc::new(AsyncSemaphore::new(1, 0)?);
     let signalled = Arc::new(AtomicU32::new(0));
-    let done = Arc::new(AtomicBool::new(false));
 
     let signaller_sem = sem.clone();
     let signaller_mark = signalled.clone();
-    let signaller_done = done.clone();
 
     let mut signaller = Thread::new("async-sem-signal", 2048, 5);
     let spawned = signaller.spawn_simple(move || {
         System::delay(millis(HEAD_START_MS));
         signaller_mark.store(1, Ordering::Release);
         signaller_sem.signal();
-        signaller_done.store(true, Ordering::Release);
         Ok(Arc::new(()))
     })?;
 
@@ -388,7 +356,7 @@ pub fn test_async_semaphore_wait_parks_until_signalled() -> Result<()> {
         "must have waited for the signaller"
     );
 
-    await_helper(&spawned, &done)?;
+    spawned.join(null_mut())?;
 
     log_info!(TAG, "test_async_semaphore_wait_parks_until_signalled PASSED");
     Ok(())
@@ -440,17 +408,14 @@ pub fn test_async_queue_fetch_async_parks_until_posted() -> Result<()> {
     log_info!(TAG, "Starting test_async_queue_fetch_async_parks_until_posted");
 
     let queue = Arc::new(AsyncQueue::new(2, 4)?);
-    let done = Arc::new(AtomicBool::new(false));
 
     let producer_queue = queue.clone();
-    let producer_done = done.clone();
 
     let mut producer = Thread::new("async-q-producer", 2048, 5);
     let spawned = producer.spawn_simple(move || {
         System::delay(millis(HEAD_START_MS));
         // Synchronous `post` wakes the parked `FetchFuture`.
         producer_queue.post(&[0xAAu8, 0xBB, 0xCC, 0xDD], 100)?;
-        producer_done.store(true, Ordering::Release);
         Ok(Arc::new(()))
     })?;
 
@@ -459,7 +424,7 @@ pub fn test_async_queue_fetch_async_parks_until_posted() -> Result<()> {
     log_debug!(TAG, "parked fetch_async got {:?}", buffer);
     assert_eq!(buffer, [0xAA, 0xBB, 0xCC, 0xDD]);
 
-    await_helper(&spawned, &done)?;
+    spawned.join(null_mut())?;
 
     log_info!(TAG, "test_async_queue_fetch_async_parks_until_posted PASSED");
     Ok(())
@@ -474,11 +439,9 @@ pub fn test_async_queue_post_async_parks_until_drained() -> Result<()> {
     queue.post(&[1u8, 1, 1, 1], 100)?;
 
     let drained = Arc::new(AtomicU32::new(0));
-    let done = Arc::new(AtomicBool::new(false));
 
     let consumer_queue = queue.clone();
     let consumer_mark = drained.clone();
-    let consumer_done = done.clone();
 
     let mut consumer = Thread::new("async-q-consumer", 2048, 5);
     let spawned = consumer.spawn_simple(move || {
@@ -487,7 +450,6 @@ pub fn test_async_queue_post_async_parks_until_drained() -> Result<()> {
         // Synchronous `fetch` wakes the parked `PostFuture`.
         consumer_queue.fetch(&mut buffer, 100)?;
         consumer_mark.store(1, Ordering::Release);
-        consumer_done.store(true, Ordering::Release);
         Ok(Arc::new(()))
     })?;
 
@@ -498,7 +460,7 @@ pub fn test_async_queue_post_async_parks_until_drained() -> Result<()> {
         "must have waited for the consumer to free a slot"
     );
 
-    await_helper(&spawned, &done)?;
+    spawned.join(null_mut())?;
 
     let mut buffer = [0u8; 4];
     queue.fetch(&mut buffer, 100)?;
@@ -506,6 +468,37 @@ pub fn test_async_queue_post_async_parks_until_drained() -> Result<()> {
     assert_eq!(buffer, [2, 2, 2, 2]);
 
     log_info!(TAG, "test_async_queue_post_async_parks_until_drained PASSED");
+    Ok(())
+}
+
+pub fn test_async_queue_async_error_paths() -> Result<()> {
+    log_info!(TAG, "Starting test_async_queue_async_error_paths");
+
+    let queue = AsyncQueue::new(2, 4)?;
+
+    // Buffer smaller than the queue's message size: the future must resolve
+    // to the error instead of parking forever.
+    let mut too_small = [0u8; 2];
+    let fetch_err = block_on(queue.fetch_async(&mut too_small));
+    log_debug!(TAG, "fetch_async error: {:?}", fetch_err);
+    assert!(matches!(fetch_err, Err(Error::InvalidQueueSize)));
+
+    // Same on the post side.
+    let post_err = block_on(queue.post_async(&[1u8, 2]));
+    log_debug!(TAG, "post_async error: {:?}", post_err);
+    assert!(matches!(post_err, Err(Error::InvalidQueueSize)));
+
+    // And through the synchronous wrappers, which forward the same errors.
+    assert!(matches!(
+        queue.post(&[1u8, 2], 0),
+        Err(Error::InvalidQueueSize)
+    ));
+    assert!(matches!(
+        queue.fetch(&mut too_small, 0),
+        Err(Error::InvalidQueueSize)
+    ));
+
+    log_info!(TAG, "test_async_queue_async_error_paths PASSED");
     Ok(())
 }
 
@@ -545,6 +538,7 @@ pub fn run_all_tests() -> Result<()> {
     test_async_queue_post_and_fetch_async()?;
     test_async_queue_fetch_async_parks_until_posted()?;
     test_async_queue_post_async_parks_until_drained()?;
+    test_async_queue_async_error_paths()?;
     test_async_queue_saturating_timeout_conversion()?;
     log_info!(TAG, "========== All Async Tests PASSED ==========");
     Ok(())

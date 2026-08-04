@@ -251,9 +251,9 @@ pub fn compile_core_surface() {
     spawned.resume();
     let _ = spawned.join(null_mut()).unwrap();
 
-    // `join()` above already deletes the FreeRTOS task (see
-    // `freertos/thread.rs`), so exercise `delete()` on its own thread instead
-    // of double-deleting the same handle.
+    // `join()` above waits for the task rather than deleting it, but the task
+    // self-deletes once its callback returns, so exercise `delete()` on a
+    // thread of its own to cover the still-running path.
     let mut delete_worker = Thread::new("worker_delete", 128, 1);
     let spawned_for_delete = delete_worker
         .spawn(None, |_thread, param| Ok(param.unwrap_or_else(|| Arc::new(0u32) as ThreadParam)))

@@ -44,7 +44,8 @@
 
 extern crate alloc;
 
-use core::sync::atomic::{AtomicBool, AtomicU32, Ordering};
+use core::ptr::null_mut;
+use core::sync::atomic::{AtomicU32, Ordering};
 use core::time::Duration;
 
 use alloc::sync::Arc;
@@ -58,26 +59,8 @@ const TAG: &str = "ErrorPathTests";
 /// Head start given to a helper task before the main task blocks.
 const HEAD_START_MS: u64 = 40;
 
-/// Upper bound on how long [`await_helper`] waits before giving up.
-const HELPER_TIMEOUT_MS: u64 = 2_000;
-
 fn millis(ms: u64) -> types::TickType {
     Duration::from_millis(ms).to_ticks()
-}
-
-/// Blocks until `done` is set, then reclaims `helper`.
-///
-/// Deliberately *not* `helper.join()`: on FreeRTOS that is `vTaskDelete`, so
-/// joining a still-running helper would delete it rather than wait for it.
-fn await_helper(helper: &Thread, done: &AtomicBool) -> Result<()> {
-    let mut waited = 0u64;
-    while !done.load(Ordering::Acquire) {
-        System::delay(millis(5));
-        waited += 5;
-        assert!(waited < HELPER_TIMEOUT_MS, "helper task never finished");
-    }
-    helper.delete();
-    Ok(())
 }
 
 /// Drops any notification left pending on the calling task.
@@ -320,21 +303,18 @@ pub fn test_semaphore_blocking_wait_forever() -> Result<()> {
     assert_eq!(MAX_DELAY.to_ticks(), types::TickType::MAX);
 
     let sem = Arc::new(Semaphore::new(1, 0)?);
-    let done = Arc::new(AtomicBool::new(false));
 
     let signaller_sem = sem.clone();
-    let signaller_done = done.clone();
 
     let mut signaller = Thread::new("sem-signaller", 2048, 5);
     let spawned = signaller.spawn_simple(move || {
         System::delay(millis(HEAD_START_MS));
         signaller_sem.signal();
-        signaller_done.store(true, Ordering::Release);
         Ok(Arc::new(()))
     })?;
 
     assert_eq!(sem.wait(MAX_DELAY), OsalRsBool::True);
-    await_helper(&spawned, &done)?;
+    spawned.join(null_mut())?;
 
     log_info!(TAG, "test_semaphore_blocking_wait_forever PASSED");
     Ok(())
@@ -348,16 +328,13 @@ pub fn test_event_group_blocking_wait_forever() -> Result<()> {
     log_info!(TAG, "Starting test_event_group_blocking_wait_forever");
 
     let events = Arc::new(EventGroup::new()?);
-    let done = Arc::new(AtomicBool::new(false));
 
     let setter_events = events.clone();
-    let setter_done = done.clone();
 
     let mut setter = Thread::new("eg-setter", 2048, 5);
     let spawned = setter.spawn_simple(move || {
         System::delay(millis(HEAD_START_MS));
         setter_events.set(0b110);
-        setter_done.store(true, Ordering::Release);
         Ok(Arc::new(()))
     })?;
 
@@ -365,7 +342,7 @@ pub fn test_event_group_blocking_wait_forever() -> Result<()> {
     log_debug!(TAG, "unbounded wait returned 0b{:b}", bits);
     assert_eq!(bits & 0b010, 0b010);
 
-    await_helper(&spawned, &done)?;
+    spawned.join(null_mut())?;
 
     log_info!(TAG, "test_event_group_blocking_wait_forever PASSED");
     Ok(())
@@ -411,41 +388,35 @@ pub fn test_queue_blocking_forever_both_directions() -> Result<()> {
     let queue = Arc::new(Queue::new(1, 4)?);
 
     // --- fetch blocks until a producer posts ---
-    let producer_done = Arc::new(AtomicBool::new(false));
     let producer_queue = queue.clone();
-    let producer_mark = producer_done.clone();
 
     let mut producer = Thread::new("q-producer", 2048, 5);
     let spawned_producer = producer.spawn_simple(move || {
         System::delay(millis(HEAD_START_MS));
         producer_queue.post(&[1u8, 2, 3, 4], 0)?;
-        producer_mark.store(true, Ordering::Release);
         Ok(Arc::new(()))
     })?;
 
     let mut buffer = [0u8; 4];
     queue.fetch(&mut buffer, types::TickType::MAX)?;
     assert_eq!(buffer, [1, 2, 3, 4]);
-    await_helper(&spawned_producer, &producer_done)?;
+    spawned_producer.join(null_mut())?;
 
     // --- post blocks until a consumer drains the single slot ---
     queue.post(&[9u8, 9, 9, 9], 0)?;
 
-    let consumer_done = Arc::new(AtomicBool::new(false));
     let consumer_queue = queue.clone();
-    let consumer_mark = consumer_done.clone();
 
     let mut consumer = Thread::new("q-consumer", 2048, 5);
     let spawned_consumer = consumer.spawn_simple(move || {
         System::delay(millis(HEAD_START_MS));
         let mut scratch = [0u8; 4];
         consumer_queue.fetch(&mut scratch, millis(100))?;
-        consumer_mark.store(true, Ordering::Release);
         Ok(Arc::new(()))
     })?;
 
     queue.post(&[5u8, 6, 7, 8], types::TickType::MAX)?;
-    await_helper(&spawned_consumer, &consumer_done)?;
+    spawned_consumer.join(null_mut())?;
 
     queue.fetch(&mut buffer, millis(100))?;
     assert_eq!(buffer, [5, 6, 7, 8]);
@@ -517,7 +488,7 @@ pub fn test_thread_null_handle_guards() -> Result<()> {
     ));
 
     assert!(matches!(
-        unspawned.join(core::ptr::null_mut()),
+        unspawned.join(null_mut()),
         Err(Error::NullPtr)
     ));
 
@@ -543,9 +514,9 @@ pub fn test_thread_null_handle_guards() -> Result<()> {
         }
     }
 
-    assert!(Thread::new_with_handle(core::ptr::null_mut(), "null", 1024, 1).is_err());
+    assert!(Thread::new_with_handle(null_mut(), "null", 1024, 1).is_err());
     assert!(
-        Thread::new_with_handle_and_to_priority(core::ptr::null_mut(), "null", 1024, Lowest)
+        Thread::new_with_handle_and_to_priority(null_mut(), "null", 1024, Lowest)
             .is_err()
     );
 
@@ -625,16 +596,13 @@ pub fn test_thread_wait_notification_forever() -> Result<()> {
     drain_pending_notification();
 
     let waiter = Arc::new(Thread::get_current());
-    let done = Arc::new(AtomicBool::new(false));
 
     let notifier_target = waiter.clone();
-    let notifier_done = done.clone();
 
     let mut notifier = Thread::new("notify-source", 2048, 5);
     let spawned = notifier.spawn_simple(move || {
         System::delay(millis(HEAD_START_MS));
         notifier_target.notify(ThreadNotification::SetValueWithOverwrite(0x5A5A))?;
-        notifier_done.store(true, Ordering::Release);
         Ok(Arc::new(()))
     })?;
 
@@ -642,7 +610,7 @@ pub fn test_thread_wait_notification_forever() -> Result<()> {
     log_debug!(TAG, "unbounded wait_notification got 0x{:X}", value);
     assert_eq!(value, 0x5A5A);
 
-    await_helper(&spawned, &done)?;
+    spawned.join(null_mut())?;
 
     log_info!(TAG, "test_thread_wait_notification_forever PASSED");
     Ok(())

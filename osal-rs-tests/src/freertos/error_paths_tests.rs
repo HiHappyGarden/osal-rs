@@ -18,36 +18,29 @@
  *
  ***************************************************************************/
 
-//! Failure-path tests: unbounded (`MAX_DELAY`) waits, the notification
-//! conflict/clear semantics, full/empty `_from_isr` results, a timer callback
-//! that fails, and `QueueStreamed`'s (de)serialization errors.
+//! Failure-path tests: the "already deleted" guards, double-`delete()`
+//! no-ops, rejected dimensions and buffer sizes, unbounded (`MAX_DELAY`)
+//! waits, notification conflict/clear semantics, a timer callback that fails,
+//! and `QueueStreamed`'s (de)serialization errors.
 //!
-//! Mirrors the **portable subset** of `osal-rs/tests/std_error_paths_tests.rs`.
-//! The POSIX file is larger on purpose - a good part of it drives defensive
-//! code that only `src/posix/` has, and mirroring it here would produce a
-//! suite that trips `configASSERT` on target. Specifically **not** mirrored:
+//! Mirrors `osal-rs/tests/std_error_paths_tests.rs`; keep the two in sync.
+//! The backends deliberately agree on all of the above - the FreeRTOS side
+//! grew the same `is_null()` guards, idempotent `delete()`, dimension checks
+//! and slice bounds-checks the POSIX side already had, so these assertions
+//! are identical on both.
 //!
-//! * *"after `delete()`"* tests (`RawMutex`, `Semaphore`, `EventGroup`,
-//!   `Queue`). The POSIX backend checks `is_null()` at the top of every
-//!   operation and reports `False`/`Error::NullPtr`; the FreeRTOS backend
-//!   hands the raw handle straight to the kernel, so the same calls on a
-//!   deleted object pass `NULL` to FreeRTOS. Double `delete()` is unsafe here
-//!   for the same reason (`vSemaphoreDelete(NULL)`).
-//! * `test_queue_invalid_construction`. `posix::Queue::new` rejects a zero
-//!   size/message size with `Error::InvalidQueueSize`; `xQueueGenericCreate`
-//!   asserts on it instead.
-//! * `test_queue_undersized_buffers`. `posix::Queue` validates the slice
-//!   against the queue's message size; `xQueueReceive`/`xQueueSendToBack` copy
-//!   a fixed item size regardless.
-//! * The `Timer` "after delete"/clone tests. `posix::Timer` keeps an
-//!   `Option<Arc<TimerShared>>` that survives `delete()`; `freertos::Timer` is
-//!   a bare handle.
-//! * The `*_deadline_crosses_second_boundary` tests, which exist purely to
-//!   drive the `timespec` normalisation in the POSIX backend's absolute
-//!   deadline arithmetic. FreeRTOS takes relative tick counts.
+//! Three POSIX tests still have no counterpart here, for reasons that are
+//! about the platform rather than the wrapper:
+//!
+//! * The `*_deadline_crosses_second_boundary` tests exist purely to drive the
+//!   `timespec` normalisation in the POSIX backend's *absolute* deadline
+//!   arithmetic. FreeRTOS takes relative tick counts and has no such code.
+//! * `test_timer_clone_after_original_deleted`. `posix::Timer` shares one
+//!   `Arc<TimerShared>` between clones, so a clone observes the original's
+//!   `delete()`; `freertos::Timer` clones copy the raw handle, so they cannot.
 //! * The contended `lock_from_isr` tests. FreeRTOS's recursive mutexes must
-//!   not be taken from ISR context at all, so the "contended `trylock`"
-//!   scenario has no meaningful FreeRTOS counterpart.
+//!   not be taken from ISR context at all, so "contended `trylock`" has no
+//!   meaningful FreeRTOS counterpart.
 
 extern crate alloc;
 
@@ -95,6 +88,196 @@ fn await_helper(helper: &Thread, done: &AtomicBool) -> Result<()> {
 /// behind, so the notification tests below start from a known-clean slot.
 fn drain_pending_notification() {
     let _ = Thread::get_current().wait_notification(0, u32::MAX, 0);
+}
+
+// ---------------------------------------------------------------------------
+// "already deleted" guards
+// ---------------------------------------------------------------------------
+
+pub fn test_raw_mutex_after_delete() -> Result<()> {
+    log_info!(TAG, "Starting test_raw_mutex_after_delete");
+
+    let mut mutex = RawMutex::new()?;
+    assert!(!mutex.is_null());
+
+    mutex.delete();
+    assert!(mutex.is_null());
+
+    // Every operation must refuse rather than hand a NULL handle to FreeRTOS.
+    assert_eq!(mutex.lock(), OsalRsBool::False);
+    assert_eq!(mutex.lock_from_isr(), OsalRsBool::False);
+    assert_eq!(mutex.unlock(), OsalRsBool::False);
+    assert_eq!(mutex.unlock_from_isr(), OsalRsBool::False);
+
+    // Deleting twice is a no-op, including via `Drop` when this goes out of
+    // scope.
+    mutex.delete();
+    assert!(mutex.is_null());
+
+    log_info!(TAG, "test_raw_mutex_after_delete PASSED");
+    Ok(())
+}
+
+pub fn test_semaphore_after_delete() -> Result<()> {
+    log_info!(TAG, "Starting test_semaphore_after_delete");
+
+    let mut sem = Semaphore::new(2, 1)?;
+    assert!(!sem.is_null());
+
+    sem.delete();
+    assert!(sem.is_null());
+
+    assert_eq!(sem.wait(Duration::from_millis(1)), OsalRsBool::False);
+    assert_eq!(sem.wait_from_isr(), OsalRsBool::False);
+    assert_eq!(sem.signal(), OsalRsBool::False);
+    assert_eq!(sem.signal_from_isr(), OsalRsBool::False);
+
+    sem.delete();
+    assert!(sem.is_null());
+
+    log_info!(TAG, "test_semaphore_after_delete PASSED");
+    Ok(())
+}
+
+pub fn test_event_group_after_delete() -> Result<()> {
+    log_info!(TAG, "Starting test_event_group_after_delete");
+
+    let mut events = EventGroup::new()?;
+    events.set(0b101);
+    assert!(!events.is_null());
+
+    events.delete();
+    assert!(events.is_null());
+
+    // Reads report "no bits", writes report the null handle.
+    assert_eq!(events.get(), 0);
+    assert_eq!(events.get_from_isr(), 0);
+    assert_eq!(events.set(0b1), 0);
+    assert_eq!(events.clear(0b1), 0);
+    assert_eq!(events.wait(0b1, false, 1), 0);
+    assert_eq!(events.wait_with_to_tick(0b1, false, Duration::from_millis(1)), 0);
+    assert!(matches!(events.set_from_isr(0b1), Err(Error::NullPtr)));
+    assert!(matches!(events.clear_from_isr(0b1), Err(Error::NullPtr)));
+
+    events.delete();
+    assert!(events.is_null());
+
+    log_info!(TAG, "test_event_group_after_delete PASSED");
+    Ok(())
+}
+
+pub fn test_queue_after_delete() -> Result<()> {
+    log_info!(TAG, "Starting test_queue_after_delete");
+
+    let mut queue = Queue::new(2, 4)?;
+    queue.post(&[1u8, 2, 3, 4], 0)?;
+    assert!(!queue.is_null());
+
+    queue.delete();
+    assert!(queue.is_null());
+
+    let mut buffer = [0u8; 4];
+    assert!(matches!(queue.fetch(&mut buffer, 0), Err(Error::NullPtr)));
+    assert!(matches!(queue.fetch_from_isr(&mut buffer), Err(Error::NullPtr)));
+    assert!(matches!(queue.post(&[1u8, 2, 3, 4], 0), Err(Error::NullPtr)));
+    assert!(matches!(
+        queue.post_from_isr(&[1u8, 2, 3, 4]),
+        Err(Error::NullPtr)
+    ));
+    assert!(matches!(
+        queue.fetch_with_to_tick(&mut buffer, Duration::from_millis(1)),
+        Err(Error::NullPtr)
+    ));
+    assert!(matches!(
+        queue.post_with_to_tick(&[1u8, 2, 3, 4], Duration::from_millis(1)),
+        Err(Error::NullPtr)
+    ));
+
+    queue.delete();
+    assert!(queue.is_null());
+
+    log_info!(TAG, "test_queue_after_delete PASSED");
+    Ok(())
+}
+
+pub fn test_timer_after_delete() -> Result<()> {
+    log_info!(TAG, "Starting test_timer_after_delete");
+
+    let mut timer = Timer::new("dead-timer", millis(20), true, None, |_, param| {
+        Ok(param.unwrap_or(Arc::new(())))
+    })?;
+    assert!(!timer.is_null());
+
+    assert_eq!(timer.delete(0), OsalRsBool::True);
+    assert!(timer.is_null());
+
+    // With the handle cleared, every operation short-circuits to False rather
+    // than asking the timer daemon to act on a deleted timer.
+    assert_eq!(timer.start(0), OsalRsBool::False);
+    assert_eq!(timer.stop(0), OsalRsBool::False);
+    assert_eq!(timer.reset(0), OsalRsBool::False);
+    assert_eq!(timer.change_period(millis(50), 0), OsalRsBool::False);
+    assert_eq!(timer.delete(0), OsalRsBool::False);
+
+    // The `_with_to_tick` wrappers forward to the same guards.
+    assert_eq!(timer.start_with_to_tick(Duration::from_millis(1)), OsalRsBool::False);
+    assert_eq!(timer.stop_with_to_tick(Duration::from_millis(1)), OsalRsBool::False);
+    assert_eq!(timer.reset_with_to_tick(Duration::from_millis(1)), OsalRsBool::False);
+    assert_eq!(
+        timer.change_period_with_to_tick(Duration::from_millis(50), Duration::from_millis(1)),
+        OsalRsBool::False
+    );
+    assert_eq!(timer.delete_with_to_tick(Duration::from_millis(1)), OsalRsBool::False);
+
+    log_info!(TAG, "test_timer_after_delete PASSED");
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// rejected dimensions and buffer sizes
+// ---------------------------------------------------------------------------
+
+pub fn test_queue_invalid_construction() -> Result<()> {
+    log_info!(TAG, "Starting test_queue_invalid_construction");
+
+    // Neither dimension may be zero.
+    assert!(matches!(Queue::new(0, 4), Err(Error::InvalidQueueSize)));
+    assert!(matches!(Queue::new(4, 0), Err(Error::InvalidQueueSize)));
+    assert!(matches!(Queue::new(0, 0), Err(Error::InvalidQueueSize)));
+    assert!(Queue::new(1, 1).is_ok());
+
+    log_info!(TAG, "test_queue_invalid_construction PASSED");
+    Ok(())
+}
+
+pub fn test_queue_undersized_buffers() -> Result<()> {
+    log_info!(TAG, "Starting test_queue_undersized_buffers");
+
+    let queue = Queue::new(2, 4)?;
+    let mut too_small = [0u8; 2];
+
+    // Every entry point validates against the queue's item size before
+    // handing the pointer to FreeRTOS, which would otherwise copy four bytes
+    // into (or out of) a two-byte slice.
+    assert!(matches!(
+        queue.fetch(&mut too_small, 0),
+        Err(Error::InvalidQueueSize)
+    ));
+    assert!(matches!(
+        queue.fetch_from_isr(&mut too_small),
+        Err(Error::InvalidQueueSize)
+    ));
+    assert!(matches!(
+        queue.post(&[1u8, 2], 0),
+        Err(Error::InvalidQueueSize)
+    ));
+    assert!(matches!(
+        queue.post_from_isr(&[1u8, 2]),
+        Err(Error::InvalidQueueSize)
+    ));
+
+    log_info!(TAG, "test_queue_undersized_buffers PASSED");
+    Ok(())
 }
 
 // ---------------------------------------------------------------------------
@@ -206,13 +389,11 @@ pub fn test_queue_full_and_empty_from_isr() -> Result<()> {
 
     queue.post_from_isr(&[7u8, 7, 7, 7])?;
 
-    // Full: the non-blocking post fails. Note the divergence from the POSIX
-    // backend, which distinguishes this case as `Error::QueueFull` - here
-    // `xQueueSendToBackFromISR` just returns `errQUEUE_FULL`, which the
-    // backend maps to `Error::Timeout` like any other refusal.
+    // Full: the non-blocking post reports the queue is full. This variant
+    // never blocks, so `errQUEUE_FULL` is the only way it can fail.
     assert!(matches!(
         queue.post_from_isr(&[8u8, 8, 8, 8]),
-        Err(Error::Timeout)
+        Err(Error::QueueFull)
     ));
 
     queue.fetch_from_isr(&mut buffer)?;
@@ -335,19 +516,24 @@ pub fn test_thread_null_handle_guards() -> Result<()> {
         Err(Error::NullPtr)
     ));
 
+    assert!(matches!(
+        unspawned.join(core::ptr::null_mut()),
+        Err(Error::NullPtr)
+    ));
+
     // Suspend/resume/delete are silent no-ops rather than passing NULL to the
-    // kernel. `join` is `vTaskDelete` here, so it is also a no-op returning
-    // `Ok(0)` - unlike the POSIX backend, which reports `Error::NullPtr`.
+    // kernel.
     unspawned.suspend();
     unspawned.resume();
     unspawned.delete();
-    assert_eq!(unspawned.join(core::ptr::null_mut())?, 0);
 
-    // Metadata for a handle-less thread is the all-zero default (the POSIX
-    // backend instead echoes back the constructor's name/priority).
+    // Metadata still reflects the constructor arguments, but the state is
+    // `Invalid` because there is no live task.
     let metadata = unspawned.get_metadata();
-    log_debug!(TAG, "unspawned metadata state: {:?}", metadata.state);
+    log_debug!(TAG, "unspawned metadata: {:?}", metadata.state);
     assert_eq!(metadata.state, ThreadState::Invalid);
+    assert_eq!(metadata.name.as_str(), "never-spawned");
+    assert_eq!(metadata.priority, 3);
 
     // `new_with_handle*` reject the null handle for the same reason.
     struct Lowest;
@@ -594,6 +780,13 @@ pub fn test_queue_streamed_serialization_failure() -> Result<()> {
 
 pub fn run_all_tests() -> Result<()> {
     log_info!(TAG, "========== Running Error Path Tests ==========");
+    test_raw_mutex_after_delete()?;
+    test_semaphore_after_delete()?;
+    test_event_group_after_delete()?;
+    test_queue_after_delete()?;
+    test_timer_after_delete()?;
+    test_queue_invalid_construction()?;
+    test_queue_undersized_buffers()?;
     test_mutex_accessors_without_locking()?;
     test_semaphore_blocking_wait_forever()?;
     test_event_group_blocking_wait_forever()?;

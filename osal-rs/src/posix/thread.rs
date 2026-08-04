@@ -999,11 +999,22 @@ impl ThreadFn for Thread {
             return Err(Error::NullPtr);
         }
 
-        let ret = unsafe { pthread_join(self.handle, ret_val) };
+        // When the caller does not want the exit value, collect it into a
+        // scratch pointer anyway so the `Box` the thread wrapper leaked can be
+        // reclaimed instead of lost - `freertos::Thread::join` does the same.
+        let mut discarded: *mut c_void = null_mut();
+        let out = if ret_val.is_null() { &raw mut discarded } else { ret_val };
+
+        let ret = unsafe { pthread_join(self.handle, out) };
 
         if ret != 0 {
             Err(Error::ReturnWithCode(ret))
         } else {
+            if ret_val.is_null() && !discarded.is_null() {
+                // SAFETY: the wrapper returns `Box::into_raw(Box::new(Result<ThreadParam>))`.
+                drop(unsafe { Box::from_raw(discarded as *mut Result<ThreadParam>) });
+            }
+
             forget_notify_slot(self.handle);
             forget_thread(self.handle);
             Ok(0)

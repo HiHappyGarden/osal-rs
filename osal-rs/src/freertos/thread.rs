@@ -27,6 +27,7 @@ use core::ffi::c_void;
 use core::fmt::{Debug, Display, Formatter};
 use core::ops::Deref;
 use core::ptr::null_mut;
+use core::sync::atomic::{AtomicBool, AtomicPtr, Ordering};
 
 use alloc::boxed::Box;
 use alloc::sync::Arc;
@@ -37,8 +38,75 @@ use super::types::{StackType, UBaseType, BaseType, TickType};
 use crate::traits::ThreadState::*;
 use crate::os::ThreadSimpleFnPtr;
 use crate::traits::{ThreadFn, ThreadParam, ThreadFnPtr, ThreadNotification, ThreadMetadata, ToTick, ToPriority};
-use crate::traits::MAX_TASK_NAME_LEN;
-use crate::utils::{Bytes, DoublePtr, Error, Result};
+use crate::traits::{MAX_TASK_NAME_LEN, SemaphoreFn};
+use crate::freertos::semaphore::Semaphore;
+use crate::utils::{Bytes, DoublePtr, Error, MAX_DELAY, Result};
+
+/// Exit latch shared between a task spawned through this crate and whoever
+/// joins it.
+///
+/// FreeRTOS has no `pthread_join`: a task function simply returns and deletes
+/// itself, with no way for another task to wait on that or to collect a
+/// result. This supplies both, so [`ThreadFn::join`] means the same thing on
+/// either backend - block until the callback has returned, then hand back its
+/// value.
+///
+/// One binary semaphore per spawned thread is the cost. It is allocated in
+/// `spawn`/`spawn_simple` and released once the last `Arc` to it drops, i.e.
+/// when both the task wrapper and every `Thread` handle are gone.
+struct JoinState {
+    /// Signalled exactly once by the task wrapper, after `retval` and
+    /// `finished` have been published.
+    done: Semaphore,
+    /// Set just before `done` is signalled. Read by `delete()` to tell a task
+    /// that is still running from one that has already deleted itself, and by
+    /// `join()` to skip the wait when the task finished first.
+    finished: AtomicBool,
+    /// Set by the first `join()`, so a second one reports failure instead of
+    /// blocking forever on an already-consumed `done`.
+    joined: AtomicBool,
+    /// The callback's `Result<ThreadParam>`, boxed and leaked exactly the way
+    /// `posix`'s task wrapper leaks it, so `join`'s `DoublePtr` carries the
+    /// same thing on both backends.
+    retval: AtomicPtr<c_void>,
+}
+
+impl JoinState {
+    fn new() -> Result<Arc<Self>> {
+        Ok(Arc::new(Self {
+            done: Semaphore::new(1, 0)?,
+            finished: AtomicBool::new(false),
+            joined: AtomicBool::new(false),
+            retval: AtomicPtr::new(null_mut()),
+        }))
+    }
+
+    /// Publishes the callback's result and releases anyone blocked in
+    /// `join()`. Called from the task wrapper just before it self-deletes.
+    fn publish(&self, ret: Result<ThreadParam>) {
+        self.retval
+            .store(Box::into_raw(Box::new(ret)) as *mut c_void, Ordering::Release);
+        self.finished.store(true, Ordering::Release);
+        self.done.signal();
+    }
+
+    /// Drops a still-unclaimed exit value, so a thread nobody joins does not
+    /// leak its boxed result.
+    fn discard_retval(&self) {
+        let raw = self.retval.swap(null_mut(), Ordering::Acquire);
+        if !raw.is_null() {
+            // SAFETY: `raw` came from `Box::into_raw` in `publish`, and the
+            // swap guarantees only one caller observes it non-null.
+            drop(unsafe { Box::from_raw(raw as *mut Result<ThreadParam>) });
+        }
+    }
+}
+
+impl Drop for JoinState {
+    fn drop(&mut self) {
+        self.discard_retval();
+    }
+}
 
 /// Converts a FreeRTOS TaskStatus into ThreadMetadata.
 ///
@@ -125,7 +193,11 @@ pub struct Thread {
     stack_depth: StackType,
     priority: UBaseType,
     callback: Option<Arc<ThreadFnPtr>>,
-    param: Option<ThreadParam>
+    param: Option<ThreadParam>,
+    /// `Some` only for threads this crate spawned; `None` for a handle-less
+    /// `new()` and for foreign tasks wrapped with `new_with_handle`, neither
+    /// of which has anything to wait on.
+    join_state: Option<Arc<JoinState>>,
 }
 
 unsafe impl Send for Thread {}
@@ -152,7 +224,8 @@ impl Thread {
             stack_depth, 
             priority, 
             callback: None,
-            param: None 
+            param: None,
+            join_state: None,
         }
     }
 
@@ -171,7 +244,8 @@ impl Thread {
             stack_depth, 
             priority, 
             callback: None,
-            param: None 
+            param: None,
+            join_state: None,
         })
     }
 
@@ -200,7 +274,8 @@ impl Thread {
             stack_depth, 
             priority: priority.to_priority(), 
             callback: None,
-            param: None 
+            param: None,
+            join_state: None,
         }
     }
 
@@ -236,7 +311,8 @@ impl Thread {
             stack_depth, 
             priority: priority.to_priority(), 
             callback: None,
-            param: None 
+            param: None,
+            join_state: None,
         })
     }
 
@@ -363,17 +439,27 @@ unsafe extern "C" fn callback_c_wrapper(param_ptr: *mut c_void) {
 
     thread_instance.as_mut().handle = unsafe { xTaskGetCurrentTaskHandle() };
 
-    let thread = *thread_instance.clone();
+    let join_state = thread_instance.join_state.clone();
 
     let param_arc: Option<ThreadParam> = thread_instance
         .param
         .clone();
 
-    if let Some(callback) = &thread_instance.callback.clone() {
-        let _ = callback(thread_instance, param_arc);
+    let ret = if let Some(callback) = &thread_instance.callback.clone() {
+        callback(thread_instance, param_arc)
+    } else {
+        Err(Error::NullPtr)
+    };
+
+    // Release anyone blocked in `join()` *before* self-deleting: after
+    // `vTaskDelete` this task never runs again.
+    if let Some(join_state) = join_state {
+        join_state.publish(ret);
     }
 
-    thread.delete();
+    // Self-delete rather than `Thread::delete()`: that call now skips
+    // already-finished tasks, and the task function must not return.
+    unsafe { vTaskDelete( xTaskGetCurrentTaskHandle() ); }
 }
 
 /// Internal C-compatible wrapper for simple thread callbacks.
@@ -384,26 +470,45 @@ unsafe extern "C" fn callback_c_wrapper(param_ptr: *mut c_void) {
 /// # Safety
 ///
 /// This function is marked unsafe because it:
-/// - Expects a valid pointer to a boxed function pointer
+/// - Expects a valid pointer to a boxed `(Arc<ThreadSimpleFnPtr>, Arc<JoinState>)`
 /// - Performs raw pointer conversions
 /// - Is called from C code (FreeRTOS)
 /// - Directly calls vTaskDelete after execution
 ///
-/// The callback's `Result<ThreadParam>` is discarded, matching `callback_c_wrapper`:
-/// FreeRTOS task functions are `void`, so there is no exit-value channel for `join()`
-/// to retrieve it through.
+/// The callback's `Result<ThreadParam>` is published through the shared
+/// [`JoinState`], the same way `callback_c_wrapper` does, so `Thread::join()`
+/// works identically for threads spawned with `spawn_simple()`.
 unsafe extern "C" fn simple_callback_wrapper(param_ptr: *mut c_void) {
     if param_ptr.is_null() {
         return;
     }
 
-    let func: Box<Arc<ThreadSimpleFnPtr>> = unsafe { Box::from_raw(param_ptr as *mut _) };
-    let _ = func();
+    let payload: Box<(Arc<ThreadSimpleFnPtr>, Arc<JoinState>)> =
+        unsafe { Box::from_raw(param_ptr as *mut _) };
+    let (func, join_state) = *payload;
+
+    let ret = func();
+
+    // Release anyone blocked in `join()` *before* self-deleting: after
+    // `vTaskDelete` this task never runs again.
+    join_state.publish(ret);
 
     unsafe { vTaskDelete( xTaskGetCurrentTaskHandle()); }
 }
 
 
+
+impl Thread {
+    /// `true` once a thread spawned through this crate has run its callback to
+    /// completion and self-deleted, which makes `self.handle` refer to a freed
+    /// TCB. Always `false` for handles this crate did not spawn - there is no
+    /// way to observe their lifetime.
+    fn is_finished(&self) -> bool {
+        self.join_state
+            .as_ref()
+            .is_some_and(|state| state.finished.load(Ordering::Acquire))
+    }
+}
 
 impl ThreadFn for Thread {
 
@@ -438,6 +543,11 @@ impl ThreadFn for Thread {
         self.callback = Some(func);
         self.param = param.clone();
 
+        // Allocated before `xTaskCreate` so the task's own copy is already in
+        // place by the time it can run.
+        let join_state = JoinState::new()?;
+        self.join_state = Some(join_state.clone());
+
         let boxed_thread = Box::new(self.clone());
 
         let ret = unsafe {
@@ -452,6 +562,7 @@ impl ThreadFn for Thread {
         };
 
         if ret != pdPASS {
+            self.join_state = None;
             return Err(Error::OutOfMemory)
         }
 
@@ -459,6 +570,7 @@ impl ThreadFn for Thread {
             handle,
             callback: self.callback.clone(),
             param,
+            join_state: Some(join_state),
             ..self.clone()
         })
     }
@@ -483,7 +595,11 @@ impl ThreadFn for Thread {
         F: Fn() -> Result<ThreadParam> + Send + Sync + 'static,
     {
         let func: Arc<ThreadSimpleFnPtr> = Arc::new(callback);
-        let boxed_func = Box::new(func);
+
+        // Allocated before `xTaskCreate` so the task's own copy is already in
+        // place by the time it can run.
+        let join_state = JoinState::new()?;
+        let boxed_func = Box::new((func, join_state.clone()));
         
         let mut handle: ThreadHandle = null_mut();
 
@@ -504,6 +620,7 @@ impl ThreadFn for Thread {
 
         Ok(Self {
             handle,
+            join_state: Some(join_state),
             ..self.clone()
         })
     }
@@ -523,9 +640,18 @@ impl ThreadFn for Thread {
     /// thread.delete();
     /// ```
     fn delete(&self) {
-        if !self.is_null() {
-            unsafe { vTaskDelete( self.handle ); }
+        if self.is_null() {
+            return;
         }
+
+        // A task spawned through this crate deletes itself once its callback
+        // returns, so its handle refers to a freed TCB from that moment on.
+        // Deleting it a second time would act on freed memory.
+        if self.is_finished() {
+            return;
+        }
+
+        unsafe { vTaskDelete( self.handle ); }
     }
 
     /// Suspends the thread execution.
@@ -544,7 +670,9 @@ impl ThreadFn for Thread {
     /// thread.resume();
     /// ```
     fn suspend(&self) {
-        if !self.is_null() {
+        // Same rationale as `delete`: suspending a task that already deleted
+        // itself would act on a freed TCB.
+        if !self.is_null() && !self.is_finished() {
             unsafe { vTaskSuspend( self.handle ); }
         }
     }
@@ -557,22 +685,68 @@ impl ThreadFn for Thread {
     /// thread.resume();
     /// ```
     fn resume(&self) {
-        if !self.is_null() {
+        // See `suspend`.
+        if !self.is_null() && !self.is_finished() {
             unsafe { vTaskResume( self.handle ); }
         }
     }
 
-    /// Waits for the thread to complete (currently deletes the thread).
+    /// Blocks until the thread's callback returns, then hands back its exit
+    /// value through `ret_val` if that pointer is non-null.
+    ///
+    /// FreeRTOS has no `pthread_join`, so this waits on the per-thread exit
+    /// latch [`JoinState`] that `spawn`/`spawn_simple` allocate. The task
+    /// deletes itself once its callback returns, so - unlike the older
+    /// behaviour of this method - joining does *not* delete anything, and
+    /// calling [`ThreadFn::delete`] afterwards is a no-op rather than a
+    /// double delete.
     ///
     /// # Returns
     ///
-    /// Always returns `Ok(0)`
-    fn join(&self, _retval: DoublePtr) -> Result<i32> {
+    /// * `Ok(0)` - the thread finished and its exit value has been collected
+    /// * `Err(Error::NullPtr)` - this handle refers to no thread
+    /// * `Err(Error::TaskNotFound)` - the thread was not spawned through this
+    ///   crate (nothing to wait on), or it has already been joined
+    // The out-parameter is written through directly here, where the POSIX
+    // backend hands the same pointer to `pthread_join` for libc to write. The
+    // safety contract is identical either way and comes from `ThreadFn::join`
+    // itself: `ret_val` must be null or point to a writable `*mut c_void`.
+    #[allow(clippy::not_unsafe_ptr_arg_deref)]
+    fn join(&self, ret_val: DoublePtr) -> Result<i32> {
         if self.is_null() {
             return Err(Error::NullPtr);
         }
 
-        unsafe { vTaskDelete( self.handle ); }
+        // Only threads spawned through this crate carry an exit latch. A
+        // foreign task wrapped with `new_with_handle` has nothing to wait on,
+        // so say so rather than silently deleting it - which is what this
+        // used to do, and what made `join` mean the opposite of `pthread_join`.
+        let Some(join_state) = &self.join_state else {
+            return Err(Error::TaskNotFound);
+        };
+
+        // A second join would block forever on an already-consumed `done`;
+        // report it instead, as `pthread_join` does with `ESRCH`.
+        if join_state.joined.swap(true, Ordering::AcqRel) {
+            return Err(Error::TaskNotFound);
+        }
+
+        // Already finished: `publish` left `done` signalled, so this returns
+        // at once. Still running: block until it does.
+        join_state.done.wait(MAX_DELAY);
+
+        let raw = join_state.retval.swap(null_mut(), Ordering::Acquire);
+
+        if !ret_val.is_null() {
+            // Hands ownership of the boxed `Result<ThreadParam>` to the
+            // caller, exactly as the POSIX backend does through
+            // `pthread_join`'s out-parameter.
+            unsafe { *ret_val = raw; }
+        } else if !raw.is_null() {
+            // Nobody asked for the exit value: free it rather than leak.
+            // SAFETY: `raw` came from `Box::into_raw` in `JoinState::publish`.
+            drop(unsafe { Box::from_raw(raw as *mut Result<ThreadParam>) });
+        }
 
         Ok(0)
     }
@@ -616,6 +790,7 @@ impl ThreadFn for Thread {
             priority: metadata.priority,
             callback: None,
             param: None,
+            join_state: None,
         }
     }
 

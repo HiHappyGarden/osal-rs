@@ -203,6 +203,10 @@ impl SemaphoreFn for Semaphore {
     /// }
     /// ```
     fn wait(&self, ticks_to_wait: impl ToTick) -> OsalRsBool {
+        if self.is_null() {
+            return OsalRsBool::False;
+        }
+
         if xSemaphoreTake!(self.0, ticks_to_wait.to_ticks()) != pdFAIL {
             OsalRsBool::True
         } else {
@@ -226,6 +230,10 @@ impl SemaphoreFn for Semaphore {
     /// }
     /// ```
     fn wait_from_isr(&self) -> OsalRsBool {
+        if self.is_null() {
+            return OsalRsBool::False;
+        }
+
         let mut higher_priority_task_woken: BaseType = pdFALSE;
         if xSemaphoreTakeFromISR!(self.0, &mut higher_priority_task_woken) != pdFAIL {
 
@@ -254,6 +262,10 @@ impl SemaphoreFn for Semaphore {
     /// sem.signal();  // Make semaphore available
     /// ```
     fn signal(&self) -> OsalRsBool {
+        if self.is_null() {
+            return OsalRsBool::False;
+        }
+
         if xSemaphoreGive!(self.0) != pdFAIL {
             OsalRsBool::True
         } else {
@@ -277,6 +289,10 @@ impl SemaphoreFn for Semaphore {
     /// sem.signal_from_isr();
     /// ```
     fn signal_from_isr(&self) -> OsalRsBool {
+        if self.is_null() {
+            return OsalRsBool::False;
+        }
+
         let mut higher_priority_task_woken: BaseType = pdFALSE;
         if xSemaphoreGiveFromISR!(self.0, &mut higher_priority_task_woken) != pdFAIL {
             
@@ -306,6 +322,13 @@ impl SemaphoreFn for Semaphore {
     /// sem.delete();
     /// ```
     fn delete(&mut self) {
+        // Reset to the "null" state so a second `delete()` call (e.g. from
+        // `Drop` after an explicit `delete()`) is a no-op rather than passing
+        // NULL to `vSemaphoreDelete`.
+        if self.is_null() {
+            return;
+        }
+
         vSemaphoreDelete!(self.0);
         self.0 = null_mut();
     }

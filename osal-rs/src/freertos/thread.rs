@@ -287,8 +287,19 @@ impl Thread {
     /// println!("Stack high water mark: {}", metadata.stack_high_water_mark);
     /// ```
     pub fn get_metadata(thread: &Thread) -> ThreadMetadata {
+        // Name/stack/priority reflect what was passed to `new()` regardless of
+        // whether the thread has been spawned yet; only `state`/`thread`
+        // depend on there being a live task behind it. Mirrors
+        // `posix::Thread::get_metadata`.
         if thread.is_null() {
-            return ThreadMetadata::default();
+            return ThreadMetadata {
+                name: thread.name,
+                stack_depth: thread.stack_depth,
+                priority: thread.priority,
+                current_priority: thread.priority,
+                base_priority: thread.priority,
+                ..ThreadMetadata::default()
+            };
         }
         Self::get_metadata_from_handle(thread.handle)
     }
@@ -557,9 +568,12 @@ impl ThreadFn for Thread {
     ///
     /// Always returns `Ok(0)`
     fn join(&self, _retval: DoublePtr) -> Result<i32> {
-        if !self.is_null() {
-            unsafe { vTaskDelete( self.handle ); }
+        if self.is_null() {
+            return Err(Error::NullPtr);
         }
+
+        unsafe { vTaskDelete( self.handle ); }
+
         Ok(0)
     }
 

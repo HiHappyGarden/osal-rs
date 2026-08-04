@@ -248,6 +248,10 @@ impl EventGroupFn for EventGroup {
     /// events.set(0b0110);  // Set bits 1 and 2
     /// ```
     fn set(&self, bits: EventBits) -> EventBits {
+        if self.is_null() {
+            return 0;
+        }
+
         unsafe { xEventGroupSetBits(self.0, bits) }
     }
 
@@ -277,6 +281,9 @@ impl EventGroupFn for EventGroup {
     /// }
     /// ```
     fn set_from_isr(&self, bits: EventBits) -> Result<()> {
+        if self.is_null() {
+            return Err(Error::NullPtr);
+        }
 
         let mut higher_priority_task_woken: BaseType = pdFALSE;
 
@@ -311,6 +318,10 @@ impl EventGroupFn for EventGroup {
     /// assert_eq!(current & 0b0101, 0b0101);
     /// ```
     fn get(&self) -> EventBits {
+        if self.is_null() {
+            return 0;
+        }
+
         xEventGroupGetBits!(self.0) 
     }
 
@@ -334,6 +345,10 @@ impl EventGroupFn for EventGroup {
     /// }
     /// ```
     fn get_from_isr(&self) -> EventBits {
+        if self.is_null() {
+            return 0;
+        }
+
         unsafe { xEventGroupGetBitsFromISR(self.0) }
     }
 
@@ -362,6 +377,10 @@ impl EventGroupFn for EventGroup {
     /// assert_eq!(current & 0b1111, 0b1100);
     /// ```
     fn clear(&self, bits: EventBits) -> EventBits {
+        if self.is_null() {
+            return 0;
+        }
+
         unsafe { xEventGroupClearBits(self.0, bits) }
     }
 
@@ -390,6 +409,10 @@ impl EventGroupFn for EventGroup {
     /// }
     /// ```
     fn clear_from_isr(&self, bits: EventBits) -> Result<()> {
+        if self.is_null() {
+            return Err(Error::NullPtr);
+        }
+
         let ret = unsafe { xEventGroupClearBitsFromISR(self.0, bits) };
         if ret != pdFAIL {
             Ok(())
@@ -431,6 +454,10 @@ impl EventGroupFn for EventGroup {
     /// }
     /// ```
     fn wait(&self, mask: EventBits, wait_for_all_bits: bool, timeout_ticks: TickType) -> EventBits {
+        if self.is_null() {
+            return 0;
+        }
+
         unsafe {
             crate::freertos::ffi::xEventGroupWaitBits(
                 self.0,
@@ -462,6 +489,13 @@ impl EventGroupFn for EventGroup {
     /// events.delete();
     /// ```
     fn delete(&mut self) {
+        // Reset to the "null" state so a second `delete()` call (e.g. from
+        // `Drop` after an explicit `delete()`) is a no-op rather than passing
+        // NULL to `vEventGroupDelete`.
+        if self.is_null() {
+            return;
+        }
+
         unsafe {
             vEventGroupDelete(self.0);
             self.0 = null_mut();

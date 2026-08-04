@@ -499,6 +499,10 @@ impl TimerFn for Timer {
     /// timer.start(10);  // Wait up to 10 ticks
     /// ```
     fn start(&self, ticks_to_wait: TickType) -> OsalRsBool {
+        if self.is_null() {
+            return OsalRsBool::False;
+        }
+
         if unsafe {
             osal_rs_timer_start(self.handle, ticks_to_wait)
         } != pdPASS {
@@ -530,6 +534,10 @@ impl TimerFn for Timer {
     /// timer.stop(10);  // Wait up to 10 ticks to stop
     /// ```
     fn stop(&self, ticks_to_wait: TickType)  -> OsalRsBool {
+        if self.is_null() {
+            return OsalRsBool::False;
+        }
+
         if unsafe {
             osal_rs_timer_stop(self.handle, ticks_to_wait)
         } != pdPASS {
@@ -562,6 +570,10 @@ impl TimerFn for Timer {
     /// timer.reset(10);
     /// ```
     fn reset(&self, ticks_to_wait: TickType) -> OsalRsBool {
+        if self.is_null() {
+            return OsalRsBool::False;
+        }
+
         if unsafe {
             osal_rs_timer_reset(self.handle, ticks_to_wait)
         } != pdPASS {
@@ -595,6 +607,10 @@ impl TimerFn for Timer {
     /// timer.change_period(500, 10);
     /// ```
     fn change_period(&self, new_period_in_ticks: TickType, new_period_ticks: TickType) -> OsalRsBool {
+        if self.is_null() {
+            return OsalRsBool::False;
+        }
+
         if unsafe {
             osal_rs_timer_change_period(self.handle, new_period_in_ticks, new_period_ticks)
         } != pdPASS {
@@ -631,6 +647,12 @@ impl TimerFn for Timer {
     /// timer.delete(10);
     /// ```
     fn delete(&mut self, ticks_to_wait: TickType) -> OsalRsBool {
+        // Already deleted: report it instead of asking the timer daemon to
+        // delete NULL, matching `posix::Timer::delete`.
+        if self.is_null() {
+            return OsalRsBool::False;
+        }
+
         if unsafe {
             osal_rs_timer_delete(self.handle, ticks_to_wait)
         } != pdPASS {

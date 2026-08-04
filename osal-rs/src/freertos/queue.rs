@@ -139,7 +139,14 @@ use crate::utils::{Result, Error};
 /// let data = [0xAA, 0xBB, 0xCC, 0xDD];
 /// queue.post(&data, 1000).unwrap();
 /// ```
-pub struct Queue (QueueHandle);
+pub struct Queue (
+	QueueHandle,
+	/// Item size the queue was created with. FreeRTOS copies exactly this
+	/// many bytes in/out of the caller's slice with no length information of
+	/// its own, so it is kept here to bounds-check `fetch`/`post` before
+	/// handing the pointer over - matching `posix::Queue`.
+	usize,
+);
 
 unsafe impl Send for Queue {}
 unsafe impl Sync for Queue {}
@@ -166,12 +173,19 @@ impl Queue {
     /// let queue = Queue::new(5, 16).unwrap();
     /// ```
     pub fn new (size: UBaseType, message_size: UBaseType) -> Result<Self> {
+        // `xQueueGenericCreate` asserts on a zero length/item size rather than
+        // failing, so reject both here and report it the same way
+        // `posix::Queue::new` does.
+        if size == 0 || message_size == 0 {
+            return Err(Error::InvalidQueueSize);
+        }
+
         const QUEUE_TYPE_BASE: u8 = 0; // queueQUEUE_TYPE_BASE
         let handle = unsafe { xQueueGenericCreate(size, message_size, QUEUE_TYPE_BASE) };
         if handle.is_null() {
             Err(Error::OutOfMemory)
         } else {
-            Ok(Self (handle))
+            Ok(Self (handle, message_size as usize))
         }
     }
 
@@ -274,6 +288,14 @@ impl QueueFn for Queue {
     /// }
     /// ```
     fn fetch(&self, buffer: &mut [u8], time: TickType) -> Result<()> {
+        if self.is_null() {
+            return Err(Error::NullPtr);
+        }
+
+        if buffer.len() < self.1 {
+            return Err(Error::InvalidQueueSize);
+        }
+
         let ret = unsafe {
             xQueueReceive(
                 self.0,
@@ -320,6 +342,13 @@ impl QueueFn for Queue {
     /// }
     /// ```
     fn fetch_from_isr(&self, buffer: &mut [u8]) -> Result<()> {
+        if self.is_null() {
+            return Err(Error::NullPtr);
+        }
+
+        if buffer.len() < self.1 {
+            return Err(Error::InvalidQueueSize);
+        }
 
         let mut task_woken_by_receive: BaseType = pdFALSE;
 
@@ -367,6 +396,14 @@ impl QueueFn for Queue {
     /// queue.post(&data, 1000)?;
     /// ```
     fn post(&self, item: &[u8], time: TickType) -> Result<()> {
+        if self.is_null() {
+            return Err(Error::NullPtr);
+        }
+
+        if item.len() < self.1 {
+            return Err(Error::InvalidQueueSize);
+        }
+
         let ret = xQueueSendToBack!(
                             self.0,
                             item.as_ptr() as *const c_void,
@@ -410,6 +447,13 @@ impl QueueFn for Queue {
     /// }
     /// ```
     fn post_from_isr(&self, item: &[u8]) -> Result<()> {
+        if self.is_null() {
+            return Err(Error::NullPtr);
+        }
+
+        if item.len() < self.1 {
+            return Err(Error::InvalidQueueSize);
+        }
 
         let mut task_woken_by_receive: BaseType = pdFALSE;
 
@@ -420,7 +464,10 @@ impl QueueFn for Queue {
                         );
         
         if ret == 0 {
-            Err(Error::Timeout)
+            // This variant never blocks, so the only reason it can fail is a
+            // full queue (`errQUEUE_FULL`) - report that instead of the
+            // generic timeout, matching `posix::Queue::post_from_isr`.
+            Err(Error::QueueFull)
         } else {
             System::yield_from_isr(task_woken_by_receive);
 
@@ -447,6 +494,13 @@ impl QueueFn for Queue {
     /// queue.delete();
     /// ```
     fn delete(&mut self) {
+        // Reset to the "null" state so a second `delete()` call (e.g. from
+        // `Drop` after an explicit `delete()`) is a no-op rather than passing
+        // NULL to `vQueueDelete`.
+        if self.is_null() {
+            return;
+        }
+
         unsafe {
             vQueueDelete(self.0);
             self.0 = core::ptr::null_mut();

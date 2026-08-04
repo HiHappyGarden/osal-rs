@@ -101,6 +101,10 @@ impl RawMutexFn for RawMutex {
     /// }
     /// ```
     fn lock(&self) -> OsalRsBool {
+        if self.is_null() {
+            return OsalRsBool::False;
+        }
+
         let res = xSemaphoreTakeRecursive!(self.0, MAX_DELAY.to_ticks());
         if res == pdTRUE {
             OsalRsBool::True
@@ -138,6 +142,10 @@ impl RawMutexFn for RawMutex {
     /// }
     /// ```
     fn lock_from_isr(&self) -> OsalRsBool {
+        if self.is_null() {
+            return OsalRsBool::False;
+        }
+
         let mut higher_priority_task_woken = pdFALSE;
         let res = xSemaphoreTakeFromISR!(self.0, &mut higher_priority_task_woken);
         if res == pdTRUE {
@@ -172,6 +180,10 @@ impl RawMutexFn for RawMutex {
     /// mutex.unlock();
     /// ```
     fn unlock(&self) -> OsalRsBool {
+        if self.is_null() {
+            return OsalRsBool::False;
+        }
+
         let res = xSemaphoreGiveRecursive!(self.0);
         if res == pdTRUE {
             OsalRsBool::True
@@ -210,6 +222,10 @@ impl RawMutexFn for RawMutex {
     /// }
     /// ```
     fn unlock_from_isr(&self) -> OsalRsBool {
+        if self.is_null() {
+            return OsalRsBool::False;
+        }
+
         let mut higher_priority_task_woken = pdFALSE;
         let res = xSemaphoreGiveFromISR!(self.0, &mut higher_priority_task_woken);
         if res == pdTRUE {
@@ -242,6 +258,13 @@ impl RawMutexFn for RawMutex {
     /// mutex.delete();
     /// ```
     fn delete(&mut self) {
+        // Reset to the "null" state so a second `delete()` call (e.g. from
+        // `Drop` after an explicit `delete()`) is a no-op rather than passing
+        // NULL to `vSemaphoreDelete`.
+        if self.is_null() {
+            return;
+        }
+
         vSemaphoreDelete!(self.0);
         self.0 = core::ptr::null();
     }

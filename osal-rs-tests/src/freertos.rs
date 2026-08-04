@@ -29,6 +29,9 @@ pub mod duration_tests;
 pub mod system_tests;
 #[cfg(feature = "async")]
 pub mod async_tests;
+pub mod error_paths_tests;
+pub mod traits_tests;
+pub mod log_tests;
 pub mod utils_tests;
 
 use osal_rs::utils::Result;
@@ -52,6 +55,9 @@ pub fn run_all_tests() -> Result<()> {
     timer_tests::run_all_tests()?;
     #[cfg(feature = "async")]
     async_tests::run_all_tests()?;
+    error_paths_tests::run_all_tests()?;
+    traits_tests::run_all_tests()?;
+    log_tests::run_all_tests()?;
     utils_tests::run_all_tests()?;
 
     log_info!(TAG, "\n========================================");

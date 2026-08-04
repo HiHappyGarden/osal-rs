@@ -15,8 +15,12 @@ crate-type = ["staticlib", "rlib"]
 default = ["freertos"]
 freertos = ["osal-rs/freertos"]
 posix = ["osal-rs/posix"]
-serde = ["osal-rs/serde"]
+serde = ["osal-rs/serde", "dep:osal-rs-serde"]
 async = ["osal-rs/async"]
 
 [dependencies]
 osal-rs = { version = "1.0", path = "../osal-rs" }
+# Needed to build payload types that deliberately fail to (de)serialize, so
+# `QueueStreamed`'s error paths can be reached. Mirrors the dev-dependency the
+# `osal-rs` crate carries for its own `tests/`.
+osal-rs-serde = { version = "1.0", path = "../osal-rs-serde", features = ["derive"], optional = true }

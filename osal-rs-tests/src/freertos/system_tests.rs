@@ -212,6 +212,12 @@ pub fn test_system_delay_until_with_to_tick() -> Result<()> {
 // scheduler would hang or corrupt the test run. The ISR-only functions are
 // only meaningful when called from actual interrupt context. All five are
 // already signature-checked as function pointers in `api_surface.rs`.
+//
+// This is the one place where the POSIX suite goes further than this one:
+// there they *are* executed, in `osal-rs/tests/std_system_lifecycle_tests.rs`,
+// because `posix::System::start` is only a spin loop over an atomic flag and
+// `yield_from_isr` is only `sched_yield(2)`. That file has no counterpart here
+// on purpose - do not port it.
 
 pub fn run_all_tests() -> Result<()> {
     log_info!(TAG, "========== Running System Tests ==========");

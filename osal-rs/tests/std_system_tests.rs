@@ -235,3 +235,8 @@ fn test_system_delay_until_with_to_tick() -> Result<()> {
 // corrupt the test run; the ISR-only functions are only meaningful from
 // actual interrupt context. All five are already signature-checked as
 // function pointers in `std_api_surface.rs`.
+//
+// They *are* exercised against the POSIX backend, where they are safe, in
+// `std_system_lifecycle_tests.rs` - a separate test binary, because
+// `start`/`stop` share a one-shot process-wide flag and `suspend_all` would
+// reach into the helper threads of whatever else is running concurrently.

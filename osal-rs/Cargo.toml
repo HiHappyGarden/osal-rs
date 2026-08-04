@@ -76,6 +76,12 @@ osal-rs-serde = { version = "1.0", path = "../osal-rs-serde", features = ["deriv
 [build-dependencies]
 osal-rs-build = { version = "1.0", path = "../osal-rs-build", default-features = false }
 
+[dev-dependencies]
+# Only used by `tests/`, to reach the `Serialize`/`Deserialize` impls this
+# crate exposes on `Bytes<SIZE>` under the `serde` feature. Dev-only, so it
+# does not affect what downstream users link.
+osal-rs-serde = { version = "1.0", path = "../osal-rs-serde", features = ["derive"] }
+
 
 [profile.dev]
 panic = "abort"

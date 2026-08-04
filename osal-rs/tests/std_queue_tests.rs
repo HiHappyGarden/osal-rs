@@ -19,10 +19,12 @@
  ***************************************************************************/
 
 //! Ported 1:1 from osal-rs-tests' FreeRTOS suite (`queue_tests.rs`) to run
-//! against the POSIX backend. `posix::Queue` is currently a stub — `post`
-//! always succeeds but nothing is actually stored, and `fetch` always
-//! returns `Err(Error::Timeout)` — so round-trip assertions fail until a
-//! real implementation lands in `src/posix/queue.rs`.
+//! against the POSIX backend.
+//!
+//! These cover the happy paths; the null-handle guards, undersized buffers,
+//! full/empty `_from_isr` results, unbounded (`TickType::MAX`) waits and the
+//! `QueueStreamed` (de)serialization failures live in
+//! `std_error_paths_tests.rs`.
 
 #![cfg(feature = "posix")]
 

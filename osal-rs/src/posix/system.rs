@@ -167,7 +167,12 @@ impl System {
     }
 
     fn elapsed() -> Duration {
-        Self::monotonic_now().checked_sub(Self::start_time()).unwrap_or_default()
+        // `start_time()` must be resolved *before* sampling the clock: on the
+        // very first call it lazily captures the epoch (and burns a tick, see
+        // `init`), so sampling first would subtract a later epoch from an
+        // earlier reading and saturate to zero.
+        let start = Self::start_time();
+        Self::monotonic_now().checked_sub(start).unwrap_or_default()
     }
 }
 

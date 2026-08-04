@@ -19,27 +19,44 @@
  ***************************************************************************/
 
 //! Tests for the backend-agnostic async layer (feature `async`) against the
-//! POSIX backend: `block_on`, `AsyncMutex`, `AsyncQueue`, `AsyncSemaphore`.
+//! POSIX backend: `block_on`, `WakerSlot`, `AsyncMutex`, `AsyncQueue`,
+//! `AsyncSemaphore`.
 //!
-//! `AsyncMutex`/`AsyncSemaphore` are backed by `posix::Semaphore`, whose
-//! stub `wait()` always returns `True` immediately — so both resolve on the
-//! first poll here even though they don't provide real mutual exclusion
-//! (same caveat as `std_mutex_tests.rs`/`std_semaphore_tests.rs`).
+//! The interesting paths here are the *pending* ones - a future that cannot
+//! complete on its first poll must park its waker and be resumed later. Since
+//! `block_on` drives a single future on the calling thread, every such test
+//! spawns a real OSAL `Thread` that supplies the missing resource after a
+//! head start, so the main thread is guaranteed to observe `Poll::Pending`
+//! first and then be woken through the semaphore-backed `Waker`.
 //!
-//! `AsyncQueue::fetch_async` is intentionally NOT tested: it is backed by
-//! `posix::Queue::fetch`, which always returns `Err(Timeout)` because
-//! nothing is ever actually stored. `FetchFuture::poll` would therefore
-//! return `Poll::Pending` forever, and `block_on`'s retry loop would spin
-//! indefinitely (its own wait is on a semaphore that also always succeeds
-//! immediately) — see `src/posix/queue.rs` and `src/async_executor/executor.rs`.
+//! Timings are deliberately coarse (tens of milliseconds) so the ordering
+//! holds on a loaded machine.
 
 #![cfg(all(feature = "posix", feature = "async"))]
 
-use osal_rs::os::{block_on, AsyncMutex, AsyncQueue, AsyncSemaphore};
-use osal_rs::utils::{OsalRsBool, Result};
+use core::future::Future;
+use core::pin::Pin;
+use core::ptr::null_mut;
+use core::task::{Context, Poll, Waker};
+use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::Arc;
+
+use osal_rs::os::*;
+use osal_rs::utils::{Error, OsalRsBool, Result};
 use osal_rs::{log_debug, log_info};
 
 const TAG: &str = "AsyncTests";
+
+/// Head start given to a helper thread before the main thread starts polling,
+/// so the main thread reliably hits the `Poll::Pending` branch.
+const HEAD_START_MS: types::TickType = 40;
+
+/// How long a helper thread withholds the resource once it owns it.
+const HOLD_MS: types::TickType = 120;
+
+// ---------------------------------------------------------------------------
+// block_on / executor
+// ---------------------------------------------------------------------------
 
 #[test]
 fn test_block_on_ready_future() -> Result<()> {
@@ -50,6 +67,166 @@ fn test_block_on_ready_future() -> Result<()> {
     log_info!(TAG, "test_block_on_ready_future PASSED");
     Ok(())
 }
+
+#[test]
+fn test_block_on_nested_awaits() -> Result<()> {
+    log_info!(TAG, "Starting test_block_on_nested_awaits");
+
+    async fn double(v: u32) -> u32 {
+        v * 2
+    }
+
+    let result = block_on(async { double(double(3).await).await });
+    log_debug!(TAG, "nested block_on result: {}", result);
+    assert_eq!(result, 12);
+
+    log_info!(TAG, "test_block_on_nested_awaits PASSED");
+    Ok(())
+}
+
+/// Future that returns `Pending` on its first poll after waking itself
+/// through `Waker::wake_by_ref`, then `Ready` on the second.
+struct WakeByRefFuture {
+    polls: u32,
+}
+
+impl Future for WakeByRefFuture {
+    type Output = u32;
+
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<u32> {
+        self.polls += 1;
+        if self.polls >= 2 {
+            Poll::Ready(self.polls)
+        } else {
+            // Wakes without consuming the waker - the `wake_by_ref` vtable
+            // entry, which no library-internal path exercises.
+            cx.waker().wake_by_ref();
+            Poll::Pending
+        }
+    }
+}
+
+#[test]
+fn test_block_on_repolls_after_wake_by_ref() -> Result<()> {
+    log_info!(TAG, "Starting test_block_on_repolls_after_wake_by_ref");
+
+    // Drives `block_on`'s `Poll::Pending` -> wait -> re-poll loop entirely on
+    // one thread: the future signals the executor semaphore before parking,
+    // so the wait returns immediately.
+    let polls = block_on(WakeByRefFuture { polls: 0 });
+    log_debug!(TAG, "future polled {} times", polls);
+    assert_eq!(polls, 2);
+
+    log_info!(TAG, "test_block_on_repolls_after_wake_by_ref PASSED");
+    Ok(())
+}
+
+/// Future that clones its waker into a slot on the first poll and completes
+/// once something else wakes that clone.
+struct WakeClonedFuture<'a> {
+    slot: &'a WakerSlot,
+    ready: &'a AtomicU32,
+}
+
+impl<'a> Future for WakeClonedFuture<'a> {
+    type Output = u32;
+
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<u32> {
+        let value = self.ready.load(Ordering::Acquire);
+        if value != 0 {
+            return Poll::Ready(value);
+        }
+        // `store` clones the waker - the `clone` vtable entry.
+        self.slot.store(cx.waker());
+        let value = self.ready.load(Ordering::Acquire);
+        if value != 0 {
+            Poll::Ready(value)
+        } else {
+            Poll::Pending
+        }
+    }
+}
+
+#[test]
+fn test_block_on_woken_from_another_thread() -> Result<()> {
+    log_info!(TAG, "Starting test_block_on_woken_from_another_thread");
+
+    let slot = Arc::new(WakerSlot::new());
+    let ready = Arc::new(AtomicU32::new(0));
+
+    let waker_slot = slot.clone();
+    let waker_ready = ready.clone();
+
+    let mut waker_thread = Thread::new("async-waker", 8192, 5);
+    let spawned = waker_thread.spawn_simple(move || {
+        System::delay(HEAD_START_MS);
+        waker_ready.store(0xABCD, Ordering::Release);
+        // Consumes the stored clone - the `wake` vtable entry.
+        waker_slot.wake();
+        Ok(Arc::new(()))
+    })?;
+
+    let value = block_on(WakeClonedFuture {
+        slot: &slot,
+        ready: &ready,
+    });
+    log_debug!(TAG, "woken with value {:#x}", value);
+    assert_eq!(value, 0xABCD);
+
+    spawned.join(null_mut())?;
+
+    log_info!(TAG, "test_block_on_woken_from_another_thread PASSED");
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// WakerSlot
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_waker_slot_store_and_wake() -> Result<()> {
+    log_info!(TAG, "Starting test_waker_slot_store_and_wake");
+
+    let slot = WakerSlot::new();
+
+    // Waking an empty slot is a no-op, not a null deref.
+    slot.wake();
+
+    slot.store(&Waker::noop().clone());
+    slot.wake();
+
+    // A second store replaces (and drops) the first waker.
+    slot.store(&Waker::noop().clone());
+    slot.store(&Waker::noop().clone());
+    slot.wake();
+
+    // Waking twice: the second call finds the slot empty again.
+    slot.wake();
+
+    log_info!(TAG, "test_waker_slot_store_and_wake PASSED");
+    Ok(())
+}
+
+#[test]
+fn test_waker_slot_default_and_drop() -> Result<()> {
+    log_info!(TAG, "Starting test_waker_slot_default_and_drop");
+
+    let slot = WakerSlot::default();
+    slot.wake();
+
+    // Dropping a slot that still holds an unconsumed waker must release it
+    // rather than leak the boxed waker.
+    let pending = WakerSlot::default();
+    pending.store(&Waker::noop().clone());
+    drop(pending);
+
+    log_info!(TAG, "test_waker_slot_default_and_drop PASSED");
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// AsyncMutex
+// ---------------------------------------------------------------------------
 
 #[test]
 fn test_async_mutex_lock() -> Result<()> {
@@ -70,6 +247,69 @@ fn test_async_mutex_lock() -> Result<()> {
 }
 
 #[test]
+fn test_async_mutex_guard_deref_mut() -> Result<()> {
+    log_info!(TAG, "Starting test_async_mutex_guard_deref_mut");
+
+    let mutex = AsyncMutex::new(String::from("start"));
+
+    block_on(async {
+        let mut guard = mutex.lock().await;
+        // `DerefMut` then `Deref` on the same guard.
+        guard.push_str("-end");
+        assert_eq!(guard.as_str(), "start-end");
+    });
+
+    let final_value = block_on(async { mutex.lock().await.clone() });
+    log_debug!(TAG, "AsyncMutex string: {}", final_value);
+    assert_eq!(final_value, "start-end");
+
+    log_info!(TAG, "test_async_mutex_guard_deref_mut PASSED");
+    Ok(())
+}
+
+#[test]
+fn test_async_mutex_contended_lock_parks_and_resumes() -> Result<()> {
+    log_info!(TAG, "Starting test_async_mutex_contended_lock_parks_and_resumes");
+
+    let mutex = Arc::new(AsyncMutex::new(0u32));
+    let holder_mutex = mutex.clone();
+
+    let mut holder = Thread::new("async-mutex-holder", 8192, 5);
+    let spawned = holder.spawn_simple(move || {
+        let mutex = holder_mutex.clone();
+        block_on(async move {
+            let mut guard = mutex.lock().await;
+            *guard = 1;
+            // Hold the lock long enough that the main thread is guaranteed
+            // to see `Poll::Pending` and park its waker.
+            System::delay(HOLD_MS);
+            *guard = 2;
+        });
+        Ok(Arc::new(()))
+    })?;
+
+    System::delay(HEAD_START_MS);
+
+    // Blocks in `block_on`'s wait until `AsyncMutexGuard::drop` signals the
+    // semaphore and wakes the parked waker.
+    let observed = block_on(async {
+        let guard = mutex.lock().await;
+        *guard
+    });
+    log_debug!(TAG, "value observed after contention: {}", observed);
+    assert_eq!(observed, 2, "must have waited for the holder to finish");
+
+    spawned.join(null_mut())?;
+
+    log_info!(TAG, "test_async_mutex_contended_lock_parks_and_resumes PASSED");
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// AsyncSemaphore
+// ---------------------------------------------------------------------------
+
+#[test]
 fn test_async_semaphore_wait_and_signal() -> Result<()> {
     log_info!(TAG, "Starting test_async_semaphore_wait_and_signal");
     let sem = AsyncSemaphore::new(1, 0)?;
@@ -87,14 +327,210 @@ fn test_async_semaphore_wait_and_signal() -> Result<()> {
 }
 
 #[test]
-fn test_async_queue_post() -> Result<()> {
-    log_info!(TAG, "Starting test_async_queue_post");
+fn test_async_semaphore_signal_at_max_count() -> Result<()> {
+    log_info!(TAG, "Starting test_async_semaphore_signal_at_max_count");
+
+    let sem = AsyncSemaphore::new(1, 1)?;
+    // Already at `max_count`: the underlying signal fails, and the waker is
+    // still woken (harmlessly) on the way out.
+    assert_eq!(sem.signal(), OsalRsBool::False);
+    assert_eq!(block_on(sem.wait_async()), OsalRsBool::True);
+
+    log_info!(TAG, "test_async_semaphore_signal_at_max_count PASSED");
+    Ok(())
+}
+
+#[test]
+fn test_async_semaphore_wait_parks_until_signalled() -> Result<()> {
+    log_info!(TAG, "Starting test_async_semaphore_wait_parks_until_signalled");
+
+    let sem = Arc::new(AsyncSemaphore::new(1, 0)?);
+    let signaller_sem = sem.clone();
+    let signalled_at = Arc::new(AtomicU32::new(0));
+    let signaller_mark = signalled_at.clone();
+
+    let mut signaller = Thread::new("async-sem-signal", 8192, 5);
+    let spawned = signaller.spawn_simple(move || {
+        System::delay(HEAD_START_MS);
+        signaller_mark.store(1, Ordering::Release);
+        signaller_sem.signal();
+        Ok(Arc::new(()))
+    })?;
+
+    // Empty semaphore: first poll parks, the signal above resumes it.
+    let result = block_on(sem.wait_async());
+    log_debug!(TAG, "parked wait_async result: {:?}", result);
+    assert_eq!(result, OsalRsBool::True);
+    assert_eq!(
+        signalled_at.load(Ordering::Acquire),
+        1,
+        "must have waited for the signaller"
+    );
+
+    spawned.join(null_mut())?;
+
+    log_info!(TAG, "test_async_semaphore_wait_parks_until_signalled PASSED");
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// AsyncQueue
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_async_queue_post_and_fetch_sync() -> Result<()> {
+    log_info!(TAG, "Starting test_async_queue_post_and_fetch_sync");
+
     let queue = AsyncQueue::new(4, 4)?;
     let payload = [1u8, 2, 3, 4];
 
-    block_on(queue.post_async(&payload)).unwrap();
-    queue.post(&payload, 0)?;
+    queue.post(&payload, 100)?;
 
-    log_info!(TAG, "test_async_queue_post PASSED");
+    let mut buffer = [0u8; 4];
+    queue.fetch(&mut buffer, 100)?;
+    log_debug!(TAG, "fetched {:?}", buffer);
+    assert_eq!(buffer, payload);
+
+    // Empty again: a bounded fetch times out rather than blocking forever.
+    assert!(matches!(queue.fetch(&mut buffer, 10), Err(Error::Timeout)));
+
+    log_info!(TAG, "test_async_queue_post_and_fetch_sync PASSED");
+    Ok(())
+}
+
+#[test]
+fn test_async_queue_post_and_fetch_async() -> Result<()> {
+    log_info!(TAG, "Starting test_async_queue_post_and_fetch_async");
+
+    let queue = AsyncQueue::new(4, 4)?;
+    let payload = [9u8, 8, 7, 6];
+
+    block_on(queue.post_async(&payload))?;
+
+    let mut buffer = [0u8; 4];
+    // The item is already queued, so this resolves on the first poll.
+    block_on(queue.fetch_async(&mut buffer))?;
+    log_debug!(TAG, "fetch_async got {:?}", buffer);
+    assert_eq!(buffer, payload);
+
+    log_info!(TAG, "test_async_queue_post_and_fetch_async PASSED");
+    Ok(())
+}
+
+#[test]
+fn test_async_queue_fetch_async_parks_until_posted() -> Result<()> {
+    log_info!(TAG, "Starting test_async_queue_fetch_async_parks_until_posted");
+
+    let queue = Arc::new(AsyncQueue::new(2, 4)?);
+    let producer_queue = queue.clone();
+
+    let mut producer = Thread::new("async-q-producer", 8192, 5);
+    let spawned = producer.spawn_simple(move || {
+        System::delay(HEAD_START_MS);
+        // Synchronous `post` wakes the parked `FetchFuture`.
+        producer_queue.post(&[0xAAu8, 0xBB, 0xCC, 0xDD], 100)?;
+        Ok(Arc::new(()))
+    })?;
+
+    let mut buffer = [0u8; 4];
+    block_on(queue.fetch_async(&mut buffer))?;
+    log_debug!(TAG, "parked fetch_async got {:?}", buffer);
+    assert_eq!(buffer, [0xAA, 0xBB, 0xCC, 0xDD]);
+
+    spawned.join(null_mut())?;
+
+    log_info!(TAG, "test_async_queue_fetch_async_parks_until_posted PASSED");
+    Ok(())
+}
+
+#[test]
+fn test_async_queue_post_async_parks_until_drained() -> Result<()> {
+    log_info!(TAG, "Starting test_async_queue_post_async_parks_until_drained");
+
+    // Single slot, filled up front: the next post cannot complete until a
+    // consumer drains it.
+    let queue = Arc::new(AsyncQueue::new(1, 4)?);
+    queue.post(&[1u8, 1, 1, 1], 100)?;
+
+    let consumer_queue = queue.clone();
+    let drained = Arc::new(AtomicU32::new(0));
+    let consumer_mark = drained.clone();
+
+    let mut consumer = Thread::new("async-q-consumer", 8192, 5);
+    let spawned = consumer.spawn_simple(move || {
+        System::delay(HEAD_START_MS);
+        let mut buffer = [0u8; 4];
+        // Synchronous `fetch` wakes the parked `PostFuture`.
+        consumer_queue.fetch(&mut buffer, 100)?;
+        consumer_mark.store(1, Ordering::Release);
+        Ok(Arc::new(()))
+    })?;
+
+    block_on(queue.post_async(&[2u8, 2, 2, 2]))?;
+    assert_eq!(
+        drained.load(Ordering::Acquire),
+        1,
+        "must have waited for the consumer to free a slot"
+    );
+
+    spawned.join(null_mut())?;
+
+    let mut buffer = [0u8; 4];
+    queue.fetch(&mut buffer, 100)?;
+    log_debug!(TAG, "queue drained to {:?}", buffer);
+    assert_eq!(buffer, [2, 2, 2, 2]);
+
+    log_info!(TAG, "test_async_queue_post_async_parks_until_drained PASSED");
+    Ok(())
+}
+
+#[test]
+fn test_async_queue_async_error_paths() -> Result<()> {
+    log_info!(TAG, "Starting test_async_queue_async_error_paths");
+
+    let queue = AsyncQueue::new(2, 4)?;
+
+    // Buffer smaller than the queue's message size: the future must resolve
+    // to the error instead of parking forever.
+    let mut too_small = [0u8; 2];
+    let fetch_err = block_on(queue.fetch_async(&mut too_small));
+    log_debug!(TAG, "fetch_async error: {:?}", fetch_err);
+    assert!(matches!(fetch_err, Err(Error::InvalidQueueSize)));
+
+    // Same on the post side.
+    let post_err = block_on(queue.post_async(&[1u8, 2]));
+    log_debug!(TAG, "post_async error: {:?}", post_err);
+    assert!(matches!(post_err, Err(Error::InvalidQueueSize)));
+
+    // And through the synchronous wrappers, which forward the same errors.
+    assert!(matches!(
+        queue.post(&[1u8, 2], 0),
+        Err(Error::InvalidQueueSize)
+    ));
+    assert!(matches!(
+        queue.fetch(&mut too_small, 0),
+        Err(Error::InvalidQueueSize)
+    ));
+
+    log_info!(TAG, "test_async_queue_async_error_paths PASSED");
+    Ok(())
+}
+
+#[test]
+fn test_async_queue_saturating_timeout_conversion() -> Result<()> {
+    log_info!(TAG, "Starting test_async_queue_saturating_timeout_conversion");
+
+    let queue = AsyncQueue::new(1, 4)?;
+
+    // A millisecond timeout far beyond `TickType::MAX` must saturate rather
+    // than wrap; the post itself succeeds immediately since the queue is empty.
+    queue.post(&[4u8, 3, 2, 1], u64::MAX)?;
+
+    let mut buffer = [0u8; 4];
+    queue.fetch(&mut buffer, u64::MAX)?;
+    log_debug!(TAG, "saturated-timeout fetch got {:?}", buffer);
+    assert_eq!(buffer, [4, 3, 2, 1]);
+
+    log_info!(TAG, "test_async_queue_saturating_timeout_conversion PASSED");
     Ok(())
 }

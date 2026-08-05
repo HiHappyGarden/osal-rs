@@ -58,6 +58,7 @@ Timer ownership and thread joining now behave the same on both backends. See
 - `osal-rs-serde` as a dev-dependency of `osal-rs`, so the crate's own tests can
   exercise the `Serialize`/`Deserialize` impls on `Bytes<SIZE>` without changing
   what downstream users link.
+- CHANGELOG.md 
 
 ## [1.1.0] - 2026-08-02
 

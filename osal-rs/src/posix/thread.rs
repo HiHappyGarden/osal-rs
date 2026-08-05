@@ -60,7 +60,8 @@ use crate::posix::ffi::{PTHREAD_EXPLICIT_SCHED, SCHED_FIFO, pthread_attr_setinhe
 use crate::posix::ffi::{
 	__libc_current_sigrtmin, CLOCK_MONOTONIC, ETIMEDOUT, PTHREAD_ONCE_INIT, PTHREAD_STACK_MIN, clock_gettime, pthread_attr_init, pthread_attr_setstacksize, pthread_attr_t,
 	pthread_cond_broadcast, pthread_cond_destroy, pthread_cond_init, pthread_cond_t, pthread_cond_timedwait, pthread_cond_wait, pthread_condattr_init, pthread_condattr_setclock,
-	pthread_condattr_t, pthread_create, pthread_join, pthread_kill, pthread_once, pthread_once_t, pthread_self, pthread_setname_np, sigdelset, sigfillset, sigset_t, signal, sigsuspend,
+	pthread_condattr_t, pthread_create, pthread_detach, pthread_join, pthread_kill, pthread_once, pthread_once_t, pthread_self, pthread_setname_np, sigdelset, sigfillset, sigset_t, signal,
+	sigsuspend,
 	timespec,
 };
 use crate::posix::types::{BaseType, StackType, ThreadHandle, TickType, UBaseType};
@@ -279,7 +280,7 @@ fn notify_slot(handle: ThreadHandle) -> Arc<NotifySlot> {
 /// slot left behind after that point could be silently inherited by an
 /// unrelated future thread. Called once a thread is known to be gone
 /// (`delete()`/`join()` returning successfully).
-pub(super) fn forget_notify_slot(handle: ThreadHandle) {
+fn forget_notify_slot(handle: ThreadHandle) {
     if let Ok(mut registry) = notify_registry().lock() {
         registry.remove(&handle);
     }
@@ -316,7 +317,7 @@ fn register_thread(metadata: ThreadMetadata) {
 }
 
 /// Drops `handle`'s registry entry, if any (see [`forget_notify_slot`] for why).
-pub(super) fn forget_thread(handle: ThreadHandle) {
+fn forget_thread(handle: ThreadHandle) {
     if let Ok(mut registry) = thread_registry().lock() {
         registry.remove(&handle);
     }
@@ -616,6 +617,21 @@ impl Thread {
 
     fn metadata(&self) -> ThreadMetadata {
         Self::get_metadata(self)
+    }
+
+    /// Gives up on ever joining this thread: `pthread_detach(3)` makes the
+    /// system reclaim it on its own once it returns, and its registry and
+    /// notification-slot entries are dropped now rather than at the join
+    /// [`ThreadFn::delete`] would have performed.
+    ///
+    /// Only useful where joining is impossible rather than merely unwanted -
+    /// namely from the thread itself, which is why this is crate-internal
+    /// (`posix::Timer` needs it when a timer callback drops the last handle
+    /// to its own timer). Everything else should use [`ThreadFn::delete`].
+    pub(super) fn detach(&self) {
+        let _ = unsafe { pthread_detach(self.handle) };
+        forget_notify_slot(self.handle);
+        forget_thread(self.handle);
     }
 }
 

@@ -91,13 +91,13 @@ use alloc::sync::{Arc, Weak};
 use crate::os::ThreadFn;
 use crate::posix::config::TICK_PERIOD_MS;
 use crate::posix::ffi::{
-    CLOCK_MONOTONIC, SIGALRM, SIGEV_THREAD_ID, SIG_BLOCK, gettid, itimerspec, pthread_detach, pthread_kill, sched_yield, sigaddset, sigemptyset, sigevent, sigevent_un, sigprocmask, sigset_t,
-    sigwait, timer_create, timer_delete, timer_settime, timer_t, timespec,
+    CLOCK_MONOTONIC, SIGALRM, SIGEV_THREAD_ID, SIG_BLOCK, gettid, itimerspec, pthread_kill, sched_yield, sigaddset, sigemptyset, sigevent, sigevent_un, sigprocmask, sigset_t, sigwait,
+    timer_create, timer_delete, timer_settime, timer_t, timespec,
 };
-use crate::posix::thread::{Thread, forget_notify_slot, forget_thread};
+use crate::posix::thread::Thread;
 use crate::posix::types::{StackType, TickType, TimerHandle, UBaseType};
-use crate::traits::{TimerFn, TimerFnPtr, TimerParam, ToTick};
-use crate::utils::{Error, OsalRsBool, Result};
+use crate::traits::{MAX_TASK_NAME_LEN, TimerFn, TimerFnPtr, TimerParam, ToTick};
+use crate::utils::{Bytes, Error, OsalRsBool, Result};
 
 /// Name (glibc `pthread_setname_np`, `<= 15` chars) given to every timer's
 /// background thread. Fixed rather than derived from the timer's own name so
@@ -185,11 +185,7 @@ impl TimerShared {
             // when a callback drops the last `Timer` handle. Joining would
             // be joining ourselves, so detach instead and let the thread
             // release itself once it falls out of the loop.
-            unsafe {
-                pthread_detach(*bg_thread);
-            }
-            forget_notify_slot(*bg_thread);
-            forget_thread(*bg_thread);
+            bg_thread.detach();
             return;
         }
 
@@ -221,9 +217,10 @@ pub struct Timer {
     /// (`Debug`/`Display`). `null` until [`Timer::new`] successfully calls
     /// `timer_create`.
     pub handle: TimerHandle,
-    /// Shared with the background thread so that handing a named handle to
-    /// the callback on every firing costs a refcount rather than a copy.
-    name: Arc<str>,
+    /// In the same fixed-size buffer every other named object in this crate
+    /// uses. `Bytes` is `Copy`, so handing a named handle to the callback on
+    /// every firing costs nothing.
+    name: Bytes<MAX_TASK_NAME_LEN>,
     callback: Option<Arc<TimerFnPtr>>,
     param: Option<TimerParam>,
     shared: Option<Arc<TimerShared>>,
@@ -280,7 +277,7 @@ fn arm(shared: &TimerShared, us: u32) -> OsalRsBool {
 /// thread would keep [`TimerShared`] alive for as long as the thread runs,
 /// and the thread only stops when [`TimerShared`] is dropped - a cycle in
 /// which neither ever goes away.
-fn run_timer_thread(weak: Weak<TimerShared>, name: Arc<str>, callback: Option<Arc<TimerFnPtr>>, mut param: Option<TimerParam>) -> Result<TimerParam> {
+fn run_timer_thread(weak: Weak<TimerShared>, name: Bytes<MAX_TASK_NAME_LEN>, callback: Option<Arc<TimerFnPtr>>, mut param: Option<TimerParam>) -> Result<TimerParam> {
     if let Some(shared) = weak.upgrade() {
         shared.thread_id.store(unsafe { gettid() }, Ordering::Release);
     }
@@ -315,7 +312,7 @@ fn run_timer_thread(weak: Weak<TimerShared>, name: Arc<str>, callback: Option<Ar
             // it on return.
             let timer_self = Timer {
                 handle: shared.timerid.load(Ordering::Acquire),
-                name: name.clone(),
+                name,
                 callback: callback.clone(),
                 param: param.clone(),
                 shared: Some(shared.clone()),
@@ -426,11 +423,11 @@ impl Timer {
             thread: Mutex::new(None),
         });
 
-        let name: Arc<str> = Arc::from(name);
+        let name = Bytes::<MAX_TASK_NAME_LEN>::from_str(name);
 
         let mut timer = Self {
             handle: null_mut(),
-            name: name.clone(),
+            name,
             callback: Some(Arc::new(callback)),
             param,
             shared: Some(shared.clone()),
@@ -451,7 +448,7 @@ impl Timer {
         let bg_param = timer.param.clone();
 
         let mut bg_thread = Thread::new(TIMER_THREAD_NAME, TIMER_THREAD_STACK, TIMER_THREAD_PRIORITY);
-        let bg_thread = bg_thread.spawn_simple(move || run_timer_thread(bg_shared.clone(), bg_name.clone(), bg_callback.clone(), bg_param.clone()))?;
+        let bg_thread = bg_thread.spawn_simple(move || run_timer_thread(bg_shared.clone(), bg_name, bg_callback.clone(), bg_param.clone()))?;
 
         // Handed over before anything below can fail, so that an early
         // return reaps the thread through `TimerShared::drop` rather than

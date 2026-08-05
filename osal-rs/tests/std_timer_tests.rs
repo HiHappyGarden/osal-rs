@@ -445,3 +445,46 @@ fn test_timer_dropping_last_handle_stops_it() -> Result<()> {
     log_info!(TAG, "test_timer_dropping_last_handle_stops_it PASSED");
     Ok(())
 }
+
+#[test]
+fn test_timer_callback_dropping_last_handle() -> Result<()> {
+    log_info!(TAG, "Starting test_timer_callback_dropping_last_handle");
+
+    // Holds the only surviving handle, so that the callback itself can drop
+    // it. Teardown then runs *on* the timer's own background thread, which
+    // cannot join itself - see `posix::Thread::detach`.
+    static SLOT: std::sync::Mutex<Option<Timer>> = std::sync::Mutex::new(None);
+    static FIRES: AtomicU32 = AtomicU32::new(0);
+
+    let timer = Timer::new(
+        "self_drop_timer",
+        Duration::from_millis(20).to_ticks(),
+        true,
+        None,
+        |_handle, param| {
+            FIRES.fetch_add(1, Ordering::SeqCst);
+            if let Ok(mut slot) = SLOT.lock() {
+                drop(slot.take());
+            }
+            Ok(param.unwrap_or_else(|| Arc::new(())))
+        }
+    )?;
+
+    *SLOT.lock().unwrap() = Some(timer.clone());
+    assert_eq!(timer.start(0), OsalRsBool::True);
+    drop(timer);
+
+    System::delay(Duration::from_millis(150).to_ticks());
+
+    let fires = FIRES.load(Ordering::SeqCst);
+    log_debug!(TAG, "fired {} time(s) before tearing itself down", fires);
+    assert!(fires >= 1, "the timer must have fired at least once (saw {fires})");
+
+    // Having torn itself down from inside its own callback, it must neither
+    // deadlock nor keep firing.
+    System::delay(Duration::from_millis(100).to_ticks());
+    assert_eq!(FIRES.load(Ordering::SeqCst), fires, "the timer must be gone");
+
+    log_info!(TAG, "test_timer_callback_dropping_last_handle PASSED");
+    Ok(())
+}

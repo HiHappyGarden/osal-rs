@@ -429,6 +429,15 @@ pub fn test_timer_dropping_last_handle_stops_it() -> Result<()> {
     Ok(())
 }
 
+// NOTE: the POSIX suite has one further ownership test with no counterpart
+// here, `test_timer_callback_dropping_last_handle`. It exists to cover
+// `posix::Thread::detach`: on that backend each timer owns a background
+// thread, so a callback that drops the last handle to its own timer forces
+// teardown to run on a thread that cannot join itself. FreeRTOS timers share
+// the one daemon task and nothing is ever joined, so the same scenario is
+// just the ordinary `TimerShared::drop` path already covered by
+// `test_timer_dropping_last_handle_stops_it`. Do not port it.
+
 pub fn run_all_tests() -> Result<()> {
     log_info!(TAG, "========== Running Timer Tests ==========");
     test_timer_creation()?;

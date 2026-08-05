@@ -32,12 +32,11 @@ use core::ptr::null_mut;
 use core::sync::atomic::{AtomicBool, AtomicPtr, Ordering};
 
 use alloc::boxed::Box;
-use alloc::ffi::CString;
 use alloc::sync::{Arc, Weak};
 
 use crate::freertos::ffi::pdPASS;
-use crate::traits::{ToTick, TimerParam, TimerFn, TimerFnPtr};
-use crate::utils::{OsalRsBool, Result, Error};
+use crate::traits::{MAX_TASK_NAME_LEN, ToTick, TimerParam, TimerFn, TimerFnPtr};
+use crate::utils::{Bytes, Error, OsalRsBool, Result};
 use super::ffi::{TimerHandle, pvTimerGetTimerID, vTimerSetTimerID, xTimerCreate, osal_rs_timer_start, osal_rs_timer_change_period, osal_rs_timer_delete, osal_rs_timer_reset, osal_rs_timer_stop};
 use super::types::{TickType};
 
@@ -185,11 +184,12 @@ pub struct Timer {
     /// below actually use lives in [`TimerShared`], so that clones see a
     /// deletion performed through any other handle.
     pub handle: TimerHandle,
-    /// Timer name, shared with [`TimerShared`] so that handing a named clone
-    /// to the callback on every firing costs a refcount rather than an
-    /// allocation. Kept here as well as there so `Debug`/`Display` still
-    /// work after [`TimerFn::delete`] has dropped the shared state.
-    name: Arc<CString>,
+    /// Timer name, in the same fixed-size buffer every other named object in
+    /// this crate uses. `Bytes` is `Copy`, so handing a named handle to the
+    /// callback on every firing costs nothing, and keeping a copy here rather
+    /// than only in [`TimerShared`] means `Debug`/`Display` still work after
+    /// [`TimerFn::delete`] has dropped the shared state.
+    name: Bytes<MAX_TASK_NAME_LEN>,
     /// The one underlying timer, shared by every clone of this handle.
     /// `None` once this particular handle has been deleted.
     shared: Option<Arc<TimerShared>>,
@@ -211,11 +211,13 @@ struct TimerShared {
     /// operation, and lets destruction claim the timer exactly once however
     /// many clones race for it.
     ready: AtomicBool,
-    /// NUL-terminated timer name. `xTimerCreate` *stores the pointer it is
-    /// handed* instead of copying the string, so the buffer has to be both
-    /// NUL-terminated and owned by something outliving the timer - which is
-    /// why it lives here rather than being borrowed from the caller.
-    name: Arc<CString>,
+    /// The buffer whose address is handed to `xTimerCreate`, which *stores
+    /// the pointer* instead of copying the string - so it has to live at a
+    /// stable address for as long as the timer does, which is exactly the
+    /// lifetime of this block. `Bytes::from_str` zero-fills, so the name is
+    /// NUL-terminated unless it fills the buffer exactly, in which case it is
+    /// truncated to fit like every other name in this crate.
+    name: Bytes<MAX_TASK_NAME_LEN>,
     /// Callback to run when the timer expires.
     callback: Option<Arc<TimerFnPtr>>,
     /// Rolling callback parameter: a `*mut TimerParam` from `Box::into_raw`,
@@ -557,7 +559,7 @@ extern "C" fn callback_c_wrapper(handle: TimerHandle) {
     // timer at its own first firing.
     let timer_self = Timer {
         handle,
-        name: shared.name.clone(),
+        name: shared.name,
         shared: Some(shared.clone()),
     };
 
@@ -609,13 +611,13 @@ impl Timer {
 
             // `xTimerCreate` keeps the name pointer it is given rather than
             // copying the string, so the name has to be NUL-terminated (a
-            // `&str` is not) and owned by something that outlives the timer.
-            let name = Arc::new(CString::new(name).map_err(|_| Error::StringConversionError)?);
+            // `&str` is not) and live at an address that outlives the timer.
+            let name = Bytes::<MAX_TASK_NAME_LEN>::from_str(name);
 
             let shared = Arc::new(TimerShared {
                 handle: AtomicPtr::new(null_mut()),
                 ready: AtomicBool::new(false),
-                name: name.clone(),
+                name,
                 callback: Some(Arc::new(callback)),
                 param: AtomicPtr::new(null_mut()),
             });
@@ -636,7 +638,7 @@ impl Timer {
             let id = Weak::into_raw(Arc::downgrade(&shared));
 
             let handle = unsafe {
-                xTimerCreate( shared.name.as_ptr(),
+                xTimerCreate( shared.name.as_cstr().as_ptr(),
                     timer_period_in_ticks,
                     if auto_reload { 1 } else { 0 },
                     id as *mut c_void,
@@ -886,7 +888,7 @@ impl Debug for Timer {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("Timer")
             .field("handle", &self.handle)
-            .field("name", &self.name.to_string_lossy())
+            .field("name", &self.name)
             .field("is_null", &self.is_null())
             .finish()
     }
@@ -897,6 +899,6 @@ impl Debug for Timer {
 /// Shows a concise representation with name and handle.
 impl Display for Timer {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        write!(f, "Timer {{ name: {}, handle: {:?} }}", self.name.to_string_lossy(), self.handle)
+        write!(f, "Timer {{ name: {}, handle: {:?} }}", self.name, self.handle)
     }
 }

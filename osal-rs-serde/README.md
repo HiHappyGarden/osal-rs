@@ -66,7 +66,7 @@ Add to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-osal-rs-serde = { version = "1.0", features = ["derive"] }
+osal-rs-serde = { version = "1", features = ["derive"] }
 ```
 
 There is no default feature set. Available features:
@@ -78,7 +78,7 @@ There is no default feature set. Available features:
 For no-std environments, `derive` alone is enough:
 ```toml
 [dependencies]
-osal-rs-serde = { version = "1.0", features = ["derive"] }
+osal-rs-serde = { version = "1", features = ["derive"] }
 ```
 
 For integration tests with derive macros:

@@ -29,6 +29,41 @@ OSAL-RS provides a unified API for developing multi-platform embedded applicatio
 
 ## Breaking Changes
 
+### `Timer` clones share one timer, and the last handle destroys it (from version 1.2.0)
+
+```rust
+let timer = Timer::new("tick", 100, true, None, |_t, p| Ok(p.unwrap_or(Arc::new(()))))?;
+let clone = timer.clone();
+
+timer.start(0);
+clone.stop(0);  // the same timer: either handle drives it
+
+drop(clone);    // not the last handle: the timer stays alive
+drop(timer);    // last handle gone: the timer is destroyed here
+```
+
+`Timer` was already `Clone`, but on FreeRTOS a clone merely copied the raw handle: a `delete()` through one handle left every other one holding a dangling handle, and because `Drop` deleted per-handle, the *first* clone dropped destroyed the timer for everyone. Both backends now keep the timer in shared state, so every clone observes a deletion performed through any of them, and the timer is destroyed exactly once - when the last handle goes away. That last part is new on POSIX too, where the timer and its background thread previously leaked unless `delete()` was called explicitly.
+
+Two further changes come with it, both bringing FreeRTOS in line with POSIX and with the trait documentation:
+
+- the value a timer callback returns is now handed to the next firing; FreeRTOS discarded it and always re-passed the original parameter.
+- the callback receives a *non-owning* handle. It used to receive one that owned the timer and destroyed it on return, so an auto-reload FreeRTOS timer deleted itself at its own first firing.
+
+On FreeRTOS, destroying a timer by dropping its last handle completes on the timer daemon task rather than inline, so it takes effect one tick later; `delete()` is still immediate. Code that relied on `Drop` doing nothing (POSIX) or on a clone's `Drop` destroying the timer (FreeRTOS) needs revisiting.
+
+### `ThreadFn::join` blocks on FreeRTOS instead of killing the thread (from version 1.2.0)
+
+```rust
+// Before, on FreeRTOS only: join() deleted the task, killing it mid-work
+spawned.join(core::ptr::null_mut())?;
+
+// After, on both backends: join() blocks until the thread's closure returns
+let mut ret: *mut core::ffi::c_void = core::ptr::null_mut();
+spawned.join(&raw mut ret)?;
+```
+
+The FreeRTOS implementation called `vTaskDelete` on the target task - the opposite of both the trait documentation ("blocks the calling thread until this thread terminates") and the POSIX implementation, which forwards to `pthread_join`. Since both FreeRTOS task wrappers already delete themselves once their callback returns, the old code was additionally a use-after-free whenever the task had already finished. Every spawned thread now carries an exit latch, so `join` waits for the thread and collects its return value on both backends. Code that used `join()` as a way to *kill* a FreeRTOS task must call `delete()` instead.
+
 ### `EventGroupFn::wait` gained a `wait_for_all_bits` parameter (from version 1.1.0)
 
 `EventGroup::wait` and `EventGroup::wait_with_to_tick` now take an explicit `wait_for_all_bits: bool`, matching FreeRTOS's `xEventGroupWaitBits`:

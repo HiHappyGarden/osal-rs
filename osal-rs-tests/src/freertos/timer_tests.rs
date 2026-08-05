@@ -264,6 +264,171 @@ pub fn test_timer_with_to_tick_variants() -> Result<()> {
     Ok(())
 }
 
+// ---------------------------------------------------------------------------
+// Ownership
+//
+// Mirrors the block of the same name at the end of the POSIX suite
+// (`osal-rs/tests/std_timer_tests.rs`): both backends share one timer between
+// every clone of a `Timer`, hand the callback a borrowed handle rather than an
+// owning one, thread the callback's return value into the next firing, and
+// destroy the timer when the last handle is dropped.
+// ---------------------------------------------------------------------------
+
+pub fn test_timer_callback_handle_is_not_owning() -> Result<()> {
+    log_info!(TAG, "Starting test_timer_callback_handle_is_not_owning");
+
+    static FIRES: AtomicU32 = AtomicU32::new(0);
+    static NULL_SEEN: AtomicU32 = AtomicU32::new(0);
+    FIRES.store(0, Ordering::SeqCst);
+    NULL_SEEN.store(0, Ordering::SeqCst);
+
+    // `TimerFnPtr` takes its `Box<dyn TimerFn>` by value and drops it on
+    // return, so the handle the callback is given must not own the timer -
+    // otherwise an auto-reload timer would delete itself at its own first
+    // firing.
+    let timer = Timer::new(
+        "cb_handle_timer",
+        Duration::from_millis(20).to_ticks(),
+        true,
+        None,
+        |handle, param| {
+            if handle.is_null() {
+                NULL_SEEN.fetch_add(1, Ordering::SeqCst);
+            }
+            FIRES.fetch_add(1, Ordering::SeqCst);
+            Ok(param.unwrap_or_else(|| Arc::new(())))
+        }
+    )?;
+
+    timer.start(0);
+    System::delay(Duration::from_millis(150).to_ticks());
+
+    let fires = FIRES.load(Ordering::SeqCst);
+    log_debug!(TAG, "auto-reload timer fired {} time(s)", fires);
+    assert_eq!(NULL_SEEN.load(Ordering::SeqCst), 0);
+    assert!(fires >= 3);
+
+    log_info!(TAG, "test_timer_callback_handle_is_not_owning PASSED");
+    Ok(())
+}
+
+pub fn test_timer_param_carries_forward() -> Result<()> {
+    log_info!(TAG, "Starting test_timer_param_carries_forward");
+
+    static LAST: AtomicU32 = AtomicU32::new(0);
+    LAST.store(0, Ordering::SeqCst);
+
+    // Each firing is handed whatever the previous one returned, which is what
+    // makes `TimerFnPtr`'s `Result<TimerParam>` return type useful: an
+    // auto-reload timer can carry state forward without a static of its own.
+    let seed: TimerParam = Arc::new(1u32);
+
+    let timer = Timer::new(
+        "carry_forward_timer",
+        Duration::from_millis(20).to_ticks(),
+        true,
+        Some(seed),
+        |_handle, param| {
+            let previous = param.and_then(|p| p.downcast_ref::<u32>().copied()).unwrap_or(0);
+            LAST.store(previous, Ordering::SeqCst);
+            let next: TimerParam = Arc::new(previous + 1);
+            Ok(next)
+        }
+    )?;
+
+    timer.start(0);
+    System::delay(Duration::from_millis(150).to_ticks());
+    timer.stop(0);
+
+    let last = LAST.load(Ordering::SeqCst);
+    log_debug!(TAG, "last parameter handed to the callback: {}", last);
+    assert!(last >= 3);
+
+    log_info!(TAG, "test_timer_param_carries_forward PASSED");
+    Ok(())
+}
+
+pub fn test_timer_clone_shares_one_timer() -> Result<()> {
+    log_info!(TAG, "Starting test_timer_clone_shares_one_timer");
+
+    static FIRES: AtomicU32 = AtomicU32::new(0);
+    FIRES.store(0, Ordering::SeqCst);
+
+    let timer = Timer::new(
+        "shared_timer",
+        Duration::from_millis(20).to_ticks(),
+        true,
+        None,
+        |_handle, param| {
+            FIRES.fetch_add(1, Ordering::SeqCst);
+            Ok(param.unwrap_or_else(|| Arc::new(())))
+        }
+    )?;
+
+    let mut clone = timer.clone();
+
+    // Starting through one handle and stopping through the other has to act
+    // on the same timer.
+    assert_eq!(timer.start(0), OsalRsBool::True);
+    System::delay(Duration::from_millis(80).to_ticks());
+    assert_eq!(clone.stop(0), OsalRsBool::True);
+
+    let fired = FIRES.load(Ordering::SeqCst);
+    assert!(fired >= 2);
+
+    // And a deletion through one handle has to be visible from the other.
+    assert_eq!(clone.delete(0), OsalRsBool::True);
+    assert!(clone.is_null());
+    assert!(timer.is_null());
+    assert_eq!(timer.start(0), OsalRsBool::False);
+
+    log_info!(TAG, "test_timer_clone_shares_one_timer PASSED");
+    Ok(())
+}
+
+pub fn test_timer_dropping_last_handle_stops_it() -> Result<()> {
+    log_info!(TAG, "Starting test_timer_dropping_last_handle_stops_it");
+
+    static FIRES: AtomicU32 = AtomicU32::new(0);
+    FIRES.store(0, Ordering::SeqCst);
+
+    {
+        let timer = Timer::new(
+            "dropped_timer",
+            Duration::from_millis(20).to_ticks(),
+            true,
+            None,
+            |_handle, param| {
+                FIRES.fetch_add(1, Ordering::SeqCst);
+                Ok(param.unwrap_or_else(|| Arc::new(())))
+            }
+        )?;
+
+        // A clone keeps the timer alive; only the *last* handle going away
+        // may tear it down.
+        let clone = timer.clone();
+        assert_eq!(timer.start(0), OsalRsBool::True);
+        System::delay(Duration::from_millis(80).to_ticks());
+        drop(timer);
+
+        System::delay(Duration::from_millis(50).to_ticks());
+        assert!(!clone.is_null());
+    }
+
+    let fired_while_alive = FIRES.load(Ordering::SeqCst);
+    log_debug!(TAG, "fired {} time(s) before the last handle was dropped", fired_while_alive);
+    assert!(fired_while_alive >= 2);
+
+    // On this backend the teardown hands the final deletion to the timer
+    // daemon (see `TimerShared::drop`), so allow it a few ticks to land.
+    System::delay(Duration::from_millis(120).to_ticks());
+
+    assert_eq!(FIRES.load(Ordering::SeqCst), fired_while_alive);
+
+    log_info!(TAG, "test_timer_dropping_last_handle_stops_it PASSED");
+    Ok(())
+}
+
 pub fn run_all_tests() -> Result<()> {
     log_info!(TAG, "========== Running Timer Tests ==========");
     test_timer_creation()?;
@@ -275,6 +440,10 @@ pub fn run_all_tests() -> Result<()> {
     test_timer_with_param()?;
     test_timer_with_to_tick_variants()?;
     test_timer_delete()?;
+    test_timer_callback_handle_is_not_owning()?;
+    test_timer_param_carries_forward()?;
+    test_timer_clone_shares_one_timer()?;
+    test_timer_dropping_last_handle_stops_it()?;
     log_info!(TAG, "========== All Timer Tests PASSED ==========");
     Ok(())
 }

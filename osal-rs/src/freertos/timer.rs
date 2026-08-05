@@ -24,20 +24,21 @@
 //! Timers can be one-shot or auto-reloading (periodic) and execute their callbacks
 //! in the timer daemon task context.
 
-use core::any::Any;
-use core::ffi::c_char;
+use core::ffi::c_void;
 use core::fmt::{Debug, Display};
+use core::mem::forget;
 use core::ops::Deref;
 use core::ptr::null_mut;
+use core::sync::atomic::{AtomicBool, AtomicPtr, Ordering};
 
 use alloc::boxed::Box;
-use alloc::string::{String, ToString};
-use alloc::sync::Arc;
+use alloc::ffi::CString;
+use alloc::sync::{Arc, Weak};
 
 use crate::freertos::ffi::pdPASS;
 use crate::traits::{ToTick, TimerParam, TimerFn, TimerFnPtr};
 use crate::utils::{OsalRsBool, Result, Error};
-use super::ffi::{TimerHandle, pvTimerGetTimerID, xTimerCreate, osal_rs_timer_start, osal_rs_timer_change_period, osal_rs_timer_delete, osal_rs_timer_reset, osal_rs_timer_stop};
+use super::ffi::{TimerHandle, pvTimerGetTimerID, vTimerSetTimerID, xTimerCreate, osal_rs_timer_start, osal_rs_timer_change_period, osal_rs_timer_delete, osal_rs_timer_reset, osal_rs_timer_stop};
 use super::types::{TickType};
 
 /// A software timer that executes a callback at regular intervals.
@@ -179,18 +180,138 @@ use super::types::{TickType};
 /// ```
 #[derive(Clone)]
 pub struct Timer {
-    /// FreeRTOS timer handle
+    /// FreeRTOS timer handle, exposed for diagnostics (`Debug`/`Display`).
+    /// Reset to `null` by [`TimerFn::delete`]; the handle the operations
+    /// below actually use lives in [`TimerShared`], so that clones see a
+    /// deletion performed through any other handle.
     pub handle: TimerHandle,
-    /// Timer name for debugging
-    name: String, 
-    /// Callback function to execute when timer expires
-    callback: Option<Arc<TimerFnPtr>>,
-    /// Optional parameter passed to callback
-    param: Option<TimerParam>, 
+    /// Timer name, shared with [`TimerShared`] so that handing a named clone
+    /// to the callback on every firing costs a refcount rather than an
+    /// allocation. Kept here as well as there so `Debug`/`Display` still
+    /// work after [`TimerFn::delete`] has dropped the shared state.
+    name: Arc<CString>,
+    /// The one underlying timer, shared by every clone of this handle.
+    /// `None` once this particular handle has been deleted.
+    shared: Option<Arc<TimerShared>>,
 }
 
 unsafe impl Send for Timer {}
 unsafe impl Sync for Timer {}
+
+/// State shared, via [`Arc`], between every clone of a given [`Timer`].
+///
+/// [`Timer`] itself is freely `Clone` (matching every other handle type in
+/// this crate), but the FreeRTOS timer, its name buffer, its callback and its
+/// rolling parameter all belong to one underlying resource - this is that
+/// resource. Mirrors `posix::TimerShared`.
+struct TimerShared {
+    /// The FreeRTOS timer handle; `null` once the timer has been destroyed.
+    handle: AtomicPtr<c_void>,
+    /// Set between a successful `xTimerCreate` and destruction. Guards every
+    /// operation, and lets destruction claim the timer exactly once however
+    /// many clones race for it.
+    ready: AtomicBool,
+    /// NUL-terminated timer name. `xTimerCreate` *stores the pointer it is
+    /// handed* instead of copying the string, so the buffer has to be both
+    /// NUL-terminated and owned by something outliving the timer - which is
+    /// why it lives here rather than being borrowed from the caller.
+    name: Arc<CString>,
+    /// Callback to run when the timer expires.
+    callback: Option<Arc<TimerFnPtr>>,
+    /// Rolling callback parameter: a `*mut TimerParam` from `Box::into_raw`,
+    /// or null for `None`. Each firing hands the callback a clone and stores
+    /// whatever it returns for the next one, mirroring the `param` local in
+    /// `posix::run_timer_thread`. Only the timer daemon task - which runs
+    /// callbacks one at a time - and teardown ever touch it, so an atomic
+    /// swap is enough and no lock is needed.
+    param: AtomicPtr<c_void>,
+}
+
+impl TimerShared {
+    /// Takes the current callback parameter out of the shared slot, leaving
+    /// it empty.
+    fn take_param(&self) -> Option<TimerParam> {
+        let raw = self.param.swap(null_mut(), Ordering::AcqRel);
+
+        if raw.is_null() {
+            None
+        } else {
+            Some(*unsafe { Box::from_raw(raw as *mut TimerParam) })
+        }
+    }
+
+    /// Puts `param` into the shared slot, releasing whatever was there.
+    fn store_param(&self, param: Option<TimerParam>) {
+        let raw = match param {
+            Some(param) => Box::into_raw(Box::new(param)) as *mut c_void,
+            None => null_mut(),
+        };
+
+        let previous = self.param.swap(raw, Ordering::AcqRel);
+
+        if !previous.is_null() {
+            drop(unsafe { Box::from_raw(previous as *mut TimerParam) });
+        }
+    }
+
+    /// Destroys the underlying FreeRTOS timer, at most once however many
+    /// handles ask for it. Returns whether this call is the one that did it.
+    fn destroy(&self, ticks_to_wait: TickType) -> bool {
+        if !self.ready.swap(false, Ordering::AcqRel) {
+            return false;
+        }
+
+        let handle = self.handle.swap(null_mut(), Ordering::AcqRel) as TimerHandle;
+
+        // Detach the timer from this block *before* deleting it: deletion
+        // only queues a command to the timer daemon, so a firing that was
+        // already due can still be dispatched afterwards, and a null ID
+        // turns that dispatch into a no-op instead of a visit to a block
+        // that is on its way out.
+        unsafe {
+            vTimerSetTimerID(handle, null_mut());
+            osal_rs_timer_delete(handle, ticks_to_wait);
+        }
+
+        self.store_param(None);
+
+        true
+    }
+}
+
+/// Destroys the underlying timer once the last [`Timer`] handle referring to
+/// it is gone - the RAII half of [`TimerFn::delete`], and the reason `Timer`
+/// itself has no `Drop` of its own (a per-handle `Drop` would tear the timer
+/// down as soon as *any* clone was dropped).
+impl Drop for TimerShared {
+    fn drop(&mut self) {
+        // Reaching here means every handle is gone, so nothing but the timer
+        // daemon can still reach this block. If the timer is still alive,
+        // hand it the last rites rather than deleting it here: re-arming it
+        // for a single tick (`xTimerChangePeriod` starts a dormant timer as
+        // well as re-arming a running one) makes it dispatch one final time,
+        // and `callback_c_wrapper` will find this block dead, delete the
+        // timer, and release the `Weak` that keeps this allocation alive.
+        // Doing it from the daemon - the same task that processes deletions
+        // and dispatches callbacks, one at a time - is what makes releasing
+        // that `Weak` free of any race with a dispatch already in flight.
+        if self.ready.swap(false, Ordering::AcqRel) {
+            let handle = self.handle.swap(null_mut(), Ordering::AcqRel) as TimerHandle;
+
+            if unsafe { osal_rs_timer_change_period(handle, 1, 0) } != pdPASS {
+                // Timer command queue full: there is no way to get a final
+                // dispatch, so delete from here and accept that the `Weak`
+                // is never released (see `Timer::new`).
+                unsafe {
+                    vTimerSetTimerID(handle, null_mut());
+                    osal_rs_timer_delete(handle, 0);
+                }
+            }
+        }
+
+        self.store_param(None);
+    }
+}
 
 impl Timer {
     /// Creates a new software timer with tick conversion.
@@ -371,13 +492,14 @@ impl Timer {
 }
 
 /// Internal C-compatible wrapper for timer callbacks.
-/// 
-/// This function bridges between FreeRTOS C API and Rust closures.
-/// It retrieves the timer instance from the timer ID, extracts the callback
-/// and parameters, and executes the user-provided callback.
-/// 
+///
+/// This function bridges between FreeRTOS C API and Rust closures. It runs on
+/// the timer daemon task, recovers the [`TimerShared`] block from the timer
+/// ID, and invokes the user callback with a fresh [`Timer`] handle and the
+/// current parameter.
+///
 /// # Safety
-/// 
+///
 /// This function is marked extern "C" because it:
 /// - Is called from FreeRTOS C code (timer daemon task)
 /// - Performs raw pointer conversions
@@ -388,20 +510,65 @@ extern "C" fn callback_c_wrapper(handle: TimerHandle) {
         return;
     }
 
-    let param_ptr = unsafe {
-        pvTimerGetTimerID(handle) 
+    let id = unsafe { pvTimerGetTimerID(handle) } as *const TimerShared;
+
+    if id.is_null() {
+        // `TimerShared::destroy` has detached the timer: this dispatch was
+        // already due when the deletion was queued. Nothing left to look at.
+        return;
+    }
+
+    // The `Weak` belongs to the FreeRTOS timer object, not to this call, so
+    // it is reconstructed only to be inspected and is then handed straight
+    // back with `forget`. Consuming it is reserved for the one branch below
+    // that also destroys the timer object owning it.
+    let weak = unsafe { Weak::from_raw(id) };
+
+    let Some(shared) = weak.upgrade() else {
+        // Every `Timer` handle is gone and `TimerShared::drop` deliberately
+        // left the timer alive so that this final dispatch could finish the
+        // job from the daemon task. See that `Drop` impl for why here is the
+        // only place this is race-free.
+        unsafe {
+            vTimerSetTimerID(handle, null_mut());
+            osal_rs_timer_delete(handle, 0);
+        }
+        drop(weak);
+        return;
     };
-    
-    let mut timer_instance: Box<Timer> = unsafe { Box::from_raw(param_ptr as *mut _) };
 
-    timer_instance.as_mut().handle = handle;
+    forget(weak);
 
-    let param_arc: Option<Arc<dyn Any + Send + Sync>> = timer_instance
-        .param
-        .clone();
+    // A `delete()` through some other handle got in first: the timer is on
+    // its way out, so do not run the user callback against a half torn down
+    // state. Mirrors `posix::run_timer_thread` re-checking `exit` after
+    // `sigwait` returns.
+    if !shared.ready.load(Ordering::Acquire) {
+        return;
+    }
 
-    if let Some(callback) = &timer_instance.callback.clone() {
-        let _ = callback(timer_instance, param_arc);
+    let Some(callback) = shared.callback.clone() else {
+        return;
+    };
+
+    // The callback is handed a *clone* of the handle, never anything that
+    // owns the timer: `TimerFnPtr` takes its `Box<dyn TimerFn>` by value and
+    // drops it on return, so passing an owning handle would destroy the
+    // timer at its own first firing.
+    let timer_self = Timer {
+        handle,
+        name: shared.name.clone(),
+        shared: Some(shared.clone()),
+    };
+
+    // Thread the parameter through the callback exactly the way POSIX does:
+    // what one firing returns is what the next one receives, and a failed
+    // firing leaves the previous value in place.
+    let current = shared.take_param();
+
+    match callback(Box::new(timer_self), current.clone()) {
+        Ok(next) => shared.store_param(Some(next)),
+        Err(_) => shared.store_param(current),
     }
 }
 
@@ -435,45 +602,84 @@ impl Timer {
     ///     None,
     ///     |_timer, _param| Ok(None)
     /// ).unwrap();
-    /// ``
-    
+    /// ```
     pub fn new<F>(name: &str, timer_period_in_ticks: TickType, auto_reload: bool, param: Option<TimerParam>, callback: F) -> Result<Self>
     where
         F: Fn(Box<dyn TimerFn>, Option<TimerParam>) -> Result<TimerParam> + Send + Sync + Clone + 'static {
 
-            let mut boxed_timer = Box::new(Self {
-                handle: core::ptr::null_mut(),
-                name: name.to_string(),
-                callback: Some(Arc::new(callback.clone())),
-                param: param.clone(),
+            // `xTimerCreate` keeps the name pointer it is given rather than
+            // copying the string, so the name has to be NUL-terminated (a
+            // `&str` is not) and owned by something that outlives the timer.
+            let name = Arc::new(CString::new(name).map_err(|_| Error::StringConversionError)?);
+
+            let shared = Arc::new(TimerShared {
+                handle: AtomicPtr::new(null_mut()),
+                ready: AtomicBool::new(false),
+                name: name.clone(),
+                callback: Some(Arc::new(callback)),
+                param: AtomicPtr::new(null_mut()),
             });
 
+            shared.store_param(param);
+
+            // The timer object gets a *weak* reference. A strong one would
+            // keep `TimerShared` alive for as long as the timer exists -
+            // and since the timer is only destroyed when `TimerShared` is
+            // dropped, that cycle would mean neither ever goes away.
+            //
+            // Ownership of the `Weak` passes to the timer object, and it is
+            // released by `callback_c_wrapper` on the final dispatch that
+            // `TimerShared::drop` arranges. The one path that cannot get
+            // that dispatch - a timer command queue too full to re-arm - is
+            // the one case where this allocation is leaked; on a target that
+            // creates its timers once at start-up it never arises.
+            let id = Weak::into_raw(Arc::downgrade(&shared));
+
             let handle = unsafe {
-                xTimerCreate( name.as_ptr() as *const c_char, 
-                    timer_period_in_ticks, 
-                    if auto_reload { 1 } else { 0 }, 
-                    Box::into_raw(boxed_timer.clone()) as *mut _, 
+                xTimerCreate( shared.name.as_ptr(),
+                    timer_period_in_ticks,
+                    if auto_reload { 1 } else { 0 },
+                    id as *mut c_void,
                     Some(super::timer::callback_c_wrapper)
                 )
             };
 
             if handle.is_null() {
-                Err(Error::NullPtr)
-            } else {
-                boxed_timer.as_mut().handle = handle;
-                Ok(*boxed_timer)
+                drop(unsafe { Weak::from_raw(id) });
+                return Err(Error::NullPtr);
             }
 
+            shared.handle.store(handle as *mut c_void, Ordering::Release);
+            shared.ready.store(true, Ordering::Release);
+
+            Ok(Self { handle, name, shared: Some(shared) })
     }
-    
+
+    /// Returns the live FreeRTOS handle, or `None` if this timer has been
+    /// deleted through this handle or any clone of it - the guard every
+    /// operation in `impl TimerFn` starts with.
+    fn live_handle(&self) -> Option<TimerHandle> {
+        let shared = self.shared.as_ref()?;
+
+        if !shared.ready.load(Ordering::Acquire) {
+            return None;
+        }
+
+        Some(shared.handle.load(Ordering::Acquire) as TimerHandle)
+    }
+
 }
 
 impl TimerFn for Timer {
 
-    /// Returns `true` if the underlying OS handle is null, i.e. the timer
-    /// has not been created yet or has already been deleted.
+    /// Returns `true` if the timer has already been deleted - through this
+    /// handle or through any clone of it, since clones share one underlying
+    /// timer.
     fn is_null(&self) -> bool {
-        self.handle.is_null()
+        match &self.shared {
+            Some(shared) => !shared.ready.load(Ordering::Acquire),
+            None => true,
+        }
     }
 
     /// Starts the timer.
@@ -499,12 +705,12 @@ impl TimerFn for Timer {
     /// timer.start(10);  // Wait up to 10 ticks
     /// ```
     fn start(&self, ticks_to_wait: TickType) -> OsalRsBool {
-        if self.is_null() {
+        let Some(handle) = self.live_handle() else {
             return OsalRsBool::False;
-        }
+        };
 
         if unsafe {
-            osal_rs_timer_start(self.handle, ticks_to_wait)
+            osal_rs_timer_start(handle, ticks_to_wait)
         } != pdPASS {
             OsalRsBool::False
         } else {
@@ -534,12 +740,12 @@ impl TimerFn for Timer {
     /// timer.stop(10);  // Wait up to 10 ticks to stop
     /// ```
     fn stop(&self, ticks_to_wait: TickType)  -> OsalRsBool {
-        if self.is_null() {
+        let Some(handle) = self.live_handle() else {
             return OsalRsBool::False;
-        }
+        };
 
         if unsafe {
-            osal_rs_timer_stop(self.handle, ticks_to_wait)
+            osal_rs_timer_stop(handle, ticks_to_wait)
         } != pdPASS {
             OsalRsBool::False
         } else {
@@ -570,12 +776,12 @@ impl TimerFn for Timer {
     /// timer.reset(10);
     /// ```
     fn reset(&self, ticks_to_wait: TickType) -> OsalRsBool {
-        if self.is_null() {
+        let Some(handle) = self.live_handle() else {
             return OsalRsBool::False;
-        }
+        };
 
         if unsafe {
-            osal_rs_timer_reset(self.handle, ticks_to_wait)
+            osal_rs_timer_reset(handle, ticks_to_wait)
         } != pdPASS {
             OsalRsBool::False
         } else {
@@ -607,12 +813,12 @@ impl TimerFn for Timer {
     /// timer.change_period(500, 10);
     /// ```
     fn change_period(&self, new_period_in_ticks: TickType, new_period_ticks: TickType) -> OsalRsBool {
-        if self.is_null() {
+        let Some(handle) = self.live_handle() else {
             return OsalRsBool::False;
-        }
+        };
 
         if unsafe {
-            osal_rs_timer_change_period(self.handle, new_period_in_ticks, new_period_ticks)
+            osal_rs_timer_change_period(handle, new_period_in_ticks, new_period_ticks)
         } != pdPASS {
             OsalRsBool::False
         } else {
@@ -647,34 +853,20 @@ impl TimerFn for Timer {
     /// timer.delete(10);
     /// ```
     fn delete(&mut self, ticks_to_wait: TickType) -> OsalRsBool {
-        // Already deleted: report it instead of asking the timer daemon to
-        // delete NULL, matching `posix::Timer::delete`.
-        if self.is_null() {
+        // Giving up the shared state is what makes this handle null; the
+        // timer itself is destroyed by whichever handle gets there first,
+        // and every clone sees it through the `ready` flag. Matches
+        // `posix::Timer::delete`, down to reporting `False` only for a
+        // second delete through this same handle.
+        let Some(shared) = self.shared.take() else {
             return OsalRsBool::False;
-        }
+        };
 
-        if unsafe {
-            osal_rs_timer_delete(self.handle, ticks_to_wait)
-        } != pdPASS {
-            self.handle = null_mut();
-            OsalRsBool::False
-        } else {
-            self.handle = null_mut();
-            OsalRsBool::True
-        }
-    }
-}
+        shared.destroy(ticks_to_wait);
 
-/// Automatically deletes the timer when it goes out of scope.
-/// 
-/// This ensures proper cleanup of FreeRTOS resources by calling
-/// `delete(0)` when the timer is dropped.
-impl Drop for Timer {
-    fn drop(&mut self) {
-        if self.is_null() {
-            return;
-        }
-        self.delete(0);
+        self.handle = null_mut();
+
+        OsalRsBool::True
     }
 }
 
@@ -694,7 +886,8 @@ impl Debug for Timer {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("Timer")
             .field("handle", &self.handle)
-            .field("name", &self.name)
+            .field("name", &self.name.to_string_lossy())
+            .field("is_null", &self.is_null())
             .finish()
     }
 }
@@ -704,6 +897,6 @@ impl Debug for Timer {
 /// Shows a concise representation with name and handle.
 impl Display for Timer {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        write!(f, "Timer {{ name: {}, handle: {:?} }}", self.name, self.handle)
+        write!(f, "Timer {{ name: {}, handle: {:?} }}", self.name.to_string_lossy(), self.handle)
     }
 }

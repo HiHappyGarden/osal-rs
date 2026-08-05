@@ -397,6 +397,8 @@ unsafe extern "C" {
 
     pub(super) fn pvTimerGetTimerID(xTimer: TimerHandle) -> *mut c_void;
 
+    pub(super) fn vTimerSetTimerID(xTimer: TimerHandle, pvNewID: *mut c_void);
+
     // pub fn printf(fmt: *const u8, ...) -> i32; 
 }
 

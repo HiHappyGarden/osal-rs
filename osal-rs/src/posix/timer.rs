@@ -86,16 +86,15 @@ use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, AtomicI32, AtomicPtr, AtomicU32, Ordering};
 
 use alloc::boxed::Box;
-use alloc::string::{String, ToString};
-use alloc::sync::Arc;
+use alloc::sync::{Arc, Weak};
 
 use crate::os::ThreadFn;
 use crate::posix::config::TICK_PERIOD_MS;
 use crate::posix::ffi::{
-    CLOCK_MONOTONIC, SIGALRM, SIGEV_THREAD_ID, SIG_BLOCK, gettid, itimerspec, pthread_kill, sched_yield, sigaddset, sigemptyset, sigevent, sigevent_un, sigprocmask, sigset_t, sigwait,
-    timer_create, timer_delete, timer_settime, timer_t, timespec,
+    CLOCK_MONOTONIC, SIGALRM, SIGEV_THREAD_ID, SIG_BLOCK, gettid, itimerspec, pthread_detach, pthread_kill, sched_yield, sigaddset, sigemptyset, sigevent, sigevent_un, sigprocmask, sigset_t,
+    sigwait, timer_create, timer_delete, timer_settime, timer_t, timespec,
 };
-use crate::posix::thread::Thread;
+use crate::posix::thread::{Thread, forget_notify_slot, forget_thread};
 use crate::posix::types::{StackType, TickType, TimerHandle, UBaseType};
 use crate::traits::{TimerFn, TimerFnPtr, TimerParam, ToTick};
 use crate::utils::{Error, OsalRsBool, Result};
@@ -142,11 +141,74 @@ struct TimerShared {
     /// Current period, in microseconds.
     us: AtomicU32,
     oneshot: AtomicBool,
-    /// Set by `delete()` to tell the background thread's `sigwait` loop to
+    /// Set by teardown to tell the background thread's `sigwait` loop to
     /// stop instead of invoking the callback again.
     exit: AtomicBool,
-    /// The background thread, so `delete()` can wake and join it.
+    /// The background thread, so teardown can wake and join it.
     thread: Mutex<Option<Thread>>,
+}
+
+impl TimerShared {
+    /// Destroys the kernel timer and reaps the background thread, at most
+    /// once however many handles ask for it. Shared by [`TimerFn::delete`]
+    /// and by `Drop`.
+    fn destroy(&self) {
+        // `swap` (not `load` + `store`) so concurrent teardowns from clones
+        // of the same `Timer` can't both attempt to delete the underlying
+        // resources.
+        if self.ready.swap(false, Ordering::AcqRel) {
+            let timerid = self.timerid.load(Ordering::Acquire);
+            unsafe {
+                timer_delete(timerid);
+            }
+        }
+
+        self.exit.store(true, Ordering::Release);
+
+        let Ok(mut guard) = self.thread.lock() else {
+            return;
+        };
+
+        let Some(bg_thread) = guard.take() else {
+            return;
+        };
+
+        // Wake the background thread out of `sigwait` so it observes `exit`
+        // and returns; harmless if it's already on its way out because the
+        // timer just fired for the last time.
+        unsafe {
+            pthread_kill(*bg_thread, SIGALRM);
+        }
+
+        if unsafe { gettid() } == self.thread_id.load(Ordering::Acquire) {
+            // Teardown is running *on* the background thread, which happens
+            // when a callback drops the last `Timer` handle. Joining would
+            // be joining ourselves, so detach instead and let the thread
+            // release itself once it falls out of the loop.
+            unsafe {
+                pthread_detach(*bg_thread);
+            }
+            forget_notify_slot(*bg_thread);
+            forget_thread(*bg_thread);
+            return;
+        }
+
+        bg_thread.delete();
+    }
+}
+
+/// Destroys the underlying timer once the last [`Timer`] handle referring to
+/// it is gone - the RAII half of [`TimerFn::delete`], and the reason `Timer`
+/// itself has no `Drop` of its own (a per-handle `Drop` would tear the timer
+/// down as soon as *any* clone was dropped).
+///
+/// For this to be reachable at all, the background thread must hold only a
+/// [`Weak`] reference and must not hold even that across `sigwait` - see
+/// [`run_timer_thread`].
+impl Drop for TimerShared {
+    fn drop(&mut self) {
+        self.destroy();
+    }
 }
 
 /// A software timer backed by a POSIX `timer_create`/`SIGALRM` timer and a
@@ -159,7 +221,9 @@ pub struct Timer {
     /// (`Debug`/`Display`). `null` until [`Timer::new`] successfully calls
     /// `timer_create`.
     pub handle: TimerHandle,
-    name: String,
+    /// Shared with the background thread so that handing a named handle to
+    /// the callback on every firing costs a refcount rather than a copy.
+    name: Arc<str>,
     callback: Option<Arc<TimerFnPtr>>,
     param: Option<TimerParam>,
     shared: Option<Arc<TimerShared>>,
@@ -210,8 +274,16 @@ fn arm(shared: &TimerShared, us: u32) -> OsalRsBool {
 /// kernel TID, then loops accepting one blocked `SIGALRM` at a time via
 /// `sigwait` and invoking the user callback in response. See the module
 /// docs for the full rationale.
-fn run_timer_thread(shared: Arc<TimerShared>, callback: Option<Arc<TimerFnPtr>>, mut param: Option<TimerParam>, timer_self: Timer) -> Result<TimerParam> {
-    shared.thread_id.store(unsafe { gettid() }, Ordering::Release);
+///
+/// Holds a [`Weak`] rather than an [`Arc`], and does not hold even that
+/// across `sigwait`: a strong reference parked here for the lifetime of the
+/// thread would keep [`TimerShared`] alive for as long as the thread runs,
+/// and the thread only stops when [`TimerShared`] is dropped - a cycle in
+/// which neither ever goes away.
+fn run_timer_thread(weak: Weak<TimerShared>, name: Arc<str>, callback: Option<Arc<TimerFnPtr>>, mut param: Option<TimerParam>) -> Result<TimerParam> {
+    if let Some(shared) = weak.upgrade() {
+        shared.thread_id.store(unsafe { gettid() }, Ordering::Release);
+    }
 
     let mut sigset = sigset_t::default();
     unsafe {
@@ -219,7 +291,7 @@ fn run_timer_thread(shared: Arc<TimerShared>, callback: Option<Arc<TimerFnPtr>>,
         sigaddset(&mut sigset, SIGALRM);
     }
 
-    while !shared.exit.load(Ordering::Acquire) {
+    loop {
         let mut sig: c_int = 0;
 
         if unsafe { sigwait(&sigset, &mut sig) } != 0 || sig != SIGALRM {
@@ -227,13 +299,29 @@ fn run_timer_thread(shared: Arc<TimerShared>, callback: Option<Arc<TimerFnPtr>>,
         }
 
         // The signal that just woke us might be the real timer expiration,
-        // or the artificial one `delete()` sends to break out of `sigwait`.
+        // or the artificial one teardown sends to break out of `sigwait`.
+        let Some(shared) = weak.upgrade() else {
+            break;
+        };
+
         if shared.exit.load(Ordering::Acquire) {
             break;
         }
 
         if let Some(cb) = &callback {
-            if let Ok(new_param) = cb(Box::new(timer_self.clone()), param.clone()) {
+            // The callback is handed a fresh handle onto the same shared
+            // state - never anything that owns the timer, since
+            // `TimerFnPtr` takes its `Box<dyn TimerFn>` by value and drops
+            // it on return.
+            let timer_self = Timer {
+                handle: shared.timerid.load(Ordering::Acquire),
+                name: name.clone(),
+                callback: callback.clone(),
+                param: param.clone(),
+                shared: Some(shared.clone()),
+            };
+
+            if let Ok(new_param) = cb(Box::new(timer_self), param.clone()) {
                 param = Some(new_param);
             }
         }
@@ -338,9 +426,11 @@ impl Timer {
             thread: Mutex::new(None),
         });
 
+        let name: Arc<str> = Arc::from(name);
+
         let mut timer = Self {
             handle: null_mut(),
-            name: name.to_string(),
+            name: name.clone(),
             callback: Some(Arc::new(callback)),
             param,
             shared: Some(shared.clone()),
@@ -355,13 +445,18 @@ impl Timer {
             sigprocmask(SIG_BLOCK, &sigset, null_mut());
         }
 
-        let bg_shared = shared.clone();
+        let bg_shared = Arc::downgrade(&shared);
+        let bg_name = name;
         let bg_callback = timer.callback.clone();
         let bg_param = timer.param.clone();
-        let bg_self = timer.clone();
 
         let mut bg_thread = Thread::new(TIMER_THREAD_NAME, TIMER_THREAD_STACK, TIMER_THREAD_PRIORITY);
-        let bg_thread = bg_thread.spawn_simple(move || run_timer_thread(bg_shared.clone(), bg_callback.clone(), bg_param.clone(), bg_self.clone()))?;
+        let bg_thread = bg_thread.spawn_simple(move || run_timer_thread(bg_shared.clone(), bg_name.clone(), bg_callback.clone(), bg_param.clone()))?;
+
+        // Handed over before anything below can fail, so that an early
+        // return reaps the thread through `TimerShared::drop` rather than
+        // stranding it in `sigwait`.
+        *shared.thread.lock().unwrap() = Some(bg_thread);
 
         // Wait until the background thread has published its kernel TID,
         // needed below to target it with SIGEV_THREAD_ID.
@@ -384,17 +479,15 @@ impl Timer {
         let ret = unsafe { timer_create(CLOCK_MONOTONIC, &sev, &mut timerid) };
 
         if ret != 0 {
-            shared.exit.store(true, Ordering::Release);
-            unsafe {
-                pthread_kill(*bg_thread, SIGALRM);
-            }
-            bg_thread.delete();
+            // Dropping `timer` and `shared` on the way out runs
+            // `TimerShared::drop`, which wakes and reaps the thread spawned
+            // above. `ready` is still false, so it won't try to delete a
+            // kernel timer that was never created.
             return Err(Error::ReturnWithCode(ret));
         }
 
         shared.timerid.store(timerid, Ordering::Release);
         shared.ready.store(true, Ordering::Release);
-        *shared.thread.lock().unwrap() = Some(bg_thread);
 
         timer.handle = timerid;
         Ok(timer)
@@ -509,41 +602,18 @@ impl TimerFn for Timer {
     /// resetting this [`Timer`] to its "null" state. See
     /// [`TimerFn::is_null`] for a complete example.
     fn delete(&mut self, _ticks_to_wait: TickType) -> OsalRsBool {
+        // Giving up the shared state is what makes this handle null; the
+        // timer itself is destroyed by whichever handle gets there first,
+        // and every clone sees it through the `ready` flag.
         let Some(shared) = self.shared.take() else {
             return OsalRsBool::False;
         };
 
-        // `swap` (not `load` + `store`) so concurrent `delete()` calls on
-        // clones of the same `Timer` can't both attempt to delete the
-        // underlying resources.
-        if shared.ready.swap(false, Ordering::AcqRel) {
-            let timerid = shared.timerid.load(Ordering::Acquire);
-            unsafe {
-                timer_delete(timerid);
-            }
-        }
-
-        shared.exit.store(true, Ordering::Release);
-
-        if let Ok(mut guard) = shared.thread.lock() {
-            if let Some(bg_thread) = guard.take() {
-                // Wake the background thread out of `sigwait` so it observes
-                // `exit` and returns; harmless if it's already on its way
-                // out because the timer just fired for the last time.
-                unsafe {
-                    pthread_kill(*bg_thread, SIGALRM);
-                }
-                bg_thread.delete();
-            }
-        }
+        shared.destroy();
 
         self.handle = null_mut();
         OsalRsBool::True
     }
-}
-
-impl Drop for Timer {
-    fn drop(&mut self) {}
 }
 
 impl Deref for Timer {

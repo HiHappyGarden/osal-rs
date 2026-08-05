@@ -429,6 +429,36 @@ pub fn test_queue_blocking_forever_both_directions() -> Result<()> {
 // Timer
 // ---------------------------------------------------------------------------
 
+pub fn test_timer_clone_after_original_deleted() -> Result<()> {
+    log_info!(TAG, "Starting test_timer_clone_after_original_deleted");
+
+    // `Timer` is `Clone` and clones share one `TimerShared`, so a clone can
+    // outlive the `delete()` that tore the timer down. Its `shared` is still
+    // `Some`, but no longer `ready`.
+    let mut original = Timer::new("clone-src", millis(20), true, None, |_, param| {
+        Ok(param.unwrap_or(Arc::new(())))
+    })?;
+    let mut clone = original.clone();
+
+    assert_eq!(original.delete(0), OsalRsBool::True);
+
+    // The clone still holds the shared state, so it gets past the `Option`
+    // guard - and is then stopped by the `ready` flag instead.
+    assert!(clone.is_null());
+    assert_eq!(clone.start(0), OsalRsBool::False);
+    assert_eq!(clone.stop(0), OsalRsBool::False);
+    assert_eq!(clone.reset(0), OsalRsBool::False);
+    assert_eq!(clone.change_period(millis(40), 0), OsalRsBool::False);
+
+    // Deleting the clone is accepted (it does own a `shared`) but must not
+    // ask the timer daemon to delete the already-deleted timer again.
+    assert_eq!(clone.delete(0), OsalRsBool::True);
+    assert_eq!(clone.delete(0), OsalRsBool::False);
+
+    log_info!(TAG, "test_timer_clone_after_original_deleted PASSED");
+    Ok(())
+}
+
 pub fn test_timer_callback_returning_error() -> Result<()> {
     log_info!(TAG, "Starting test_timer_callback_returning_error");
 
@@ -753,6 +783,7 @@ pub fn run_all_tests() -> Result<()> {
     test_event_group_after_delete()?;
     test_queue_after_delete()?;
     test_timer_after_delete()?;
+    test_timer_clone_after_original_deleted()?;
     test_queue_invalid_construction()?;
     test_queue_undersized_buffers()?;
     test_mutex_accessors_without_locking()?;

@@ -507,6 +507,8 @@ unsafe extern "C" {
     /// target thread is stored in `*retval`.
     pub(super) fn pthread_join(thread: ThreadHandle, retval: *mut *mut c_void) -> c_int;
 
+    pub(super) fn pthread_detach(thread: ThreadHandle) -> c_int;
+
     /// Set the name (glibc extension, `<= 15` chars + NUL) of an existing thread.
     pub(super) fn pthread_setname_np(thread: ThreadHandle, name: *const c_char) -> c_int;
 

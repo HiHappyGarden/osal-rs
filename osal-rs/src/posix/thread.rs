@@ -279,7 +279,7 @@ fn notify_slot(handle: ThreadHandle) -> Arc<NotifySlot> {
 /// slot left behind after that point could be silently inherited by an
 /// unrelated future thread. Called once a thread is known to be gone
 /// (`delete()`/`join()` returning successfully).
-fn forget_notify_slot(handle: ThreadHandle) {
+pub(super) fn forget_notify_slot(handle: ThreadHandle) {
     if let Ok(mut registry) = notify_registry().lock() {
         registry.remove(&handle);
     }
@@ -316,7 +316,7 @@ fn register_thread(metadata: ThreadMetadata) {
 }
 
 /// Drops `handle`'s registry entry, if any (see [`forget_notify_slot`] for why).
-fn forget_thread(handle: ThreadHandle) {
+pub(super) fn forget_thread(handle: ThreadHandle) {
     if let Ok(mut registry) = thread_registry().lock() {
         registry.remove(&handle);
     }

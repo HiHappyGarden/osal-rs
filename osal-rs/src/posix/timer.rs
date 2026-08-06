@@ -82,7 +82,6 @@ use core::fmt::{Debug, Display};
 use core::ops::Deref;
 use core::ptr::null_mut;
 
-use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, AtomicI32, AtomicPtr, AtomicU32, Ordering};
 
 use alloc::boxed::Box;
@@ -94,9 +93,10 @@ use crate::posix::ffi::{
     CLOCK_MONOTONIC, SIGALRM, SIGEV_THREAD_ID, SIG_BLOCK, gettid, itimerspec, pthread_kill, sched_yield, sigaddset, sigemptyset, sigevent, sigevent_un, sigprocmask, sigset_t, sigwait,
     timer_create, timer_delete, timer_settime, timer_t, timespec,
 };
+use crate::posix::mutex::Mutex;
 use crate::posix::thread::Thread;
 use crate::posix::types::{StackType, TickType, TimerHandle, UBaseType};
-use crate::traits::{MAX_TASK_NAME_LEN, TimerFn, TimerFnPtr, TimerParam, ToTick};
+use crate::traits::{MAX_TASK_NAME_LEN, MutexFn, TimerFn, TimerFnPtr, TimerParam, ToTick};
 use crate::utils::{Bytes, Error, OsalRsBool, Result};
 
 /// Name (glibc `pthread_setname_np`, `<= 15` chars) given to every timer's

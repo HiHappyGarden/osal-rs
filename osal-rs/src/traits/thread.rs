@@ -69,17 +69,18 @@ pub(crate) const MAX_TASK_NAME_LEN: usize = 16;
 ///
 /// # Examples
 ///
-/// ```ignore
+/// ```
+/// use osal_rs::os::*;
 /// use std::sync::Arc;
-/// use osal_rs::traits::ThreadParam;
 ///
 /// // Create a parameter
 /// let param: ThreadParam = Arc::new(42u32);
 ///
-/// // In the thread callback, downcast to access
-/// if let Some(value) = param.downcast_ref::<u32>() {
-///     println!("Received: {}", value);
-/// }
+/// // In the thread callback, downcast to access it
+/// assert_eq!(param.downcast_ref::<u32>(), Some(&42));
+///
+/// // A downcast to the wrong type simply reports `None`.
+/// assert!(param.downcast_ref::<i8>().is_none());
 /// ```
 pub type ThreadParam = Arc<dyn Any + Send + Sync>;
 
@@ -104,18 +105,25 @@ pub type ThreadParam = Arc<dyn Any + Send + Sync>;
 ///
 /// # Examples
 ///
-/// ```ignore
-/// use osal_rs::os::{Thread, ThreadParam};
+/// ```
+/// use osal_rs::os::*;
 /// use std::sync::Arc;
 ///
-/// let callback: Box<ThreadFnPtr> = Box::new(|thread, param| {
+/// let callback: Box<ThreadFnPtr> = Box::new(|_thread, param| {
 ///     if let Some(p) = param {
 ///         if let Some(count) = p.downcast_ref::<u32>() {
-///             println!("Count: {}", count);
+///             return Ok(Arc::new(*count + 1));
 ///         }
 ///     }
 ///     Ok(Arc::new(0u32))
 /// });
+///
+/// // This is how `spawn` invokes it: with a handle to the thread itself and
+/// // the parameter it was spawned with.
+/// let thread = Thread::new("worker", 1024, 1);
+/// let result = callback(Box::new(thread), Some(Arc::new(41u32))).unwrap();
+///
+/// assert_eq!(result.downcast_ref::<u32>(), Some(&42));
 /// ```
 pub type ThreadFnPtr = dyn Fn(Box<dyn Thread>, Option<ThreadParam>) -> Result<ThreadParam> + Send + Sync + 'static;
 
@@ -131,16 +139,24 @@ pub type ThreadFnPtr = dyn Fn(Box<dyn Thread>, Option<ThreadParam>) -> Result<Th
 ///
 /// # Examples
 ///
-/// ```ignore
-/// use osal_rs::os::Thread;
+/// ```
+/// use osal_rs::os::*;
+/// use std::sync::Arc;
+/// use std::sync::atomic::{AtomicU32, Ordering};
+///
+/// static RUNS: AtomicU32 = AtomicU32::new(0);
 ///
 /// let mut thread = Thread::new("simple", 1024, 1);
-/// thread.spawn_simple(|| {
-///     loop {
-///         println!("Hello from thread!");
-///         System::delay(1000);
+/// let worker = thread.spawn_simple(|| {
+///     for _ in 0..3 {
+///         RUNS.fetch_add(1, Ordering::SeqCst);
+///         System::delay(5);
 ///     }
+///     Ok(Arc::new(()))
 /// }).unwrap();
+///
+/// worker.delete(); // waits for the thread to finish
+/// assert_eq!(RUNS.load(Ordering::SeqCst), 3);
 /// ```
 pub type ThreadSimpleFnPtr = dyn Fn() -> Result<ThreadParam> + Send + Sync + 'static;
 
@@ -164,22 +180,27 @@ pub type ThreadSimpleFnPtr = dyn Fn() -> Result<ThreadParam> + Send + Sync + 'st
 ///
 /// # Examples
 ///
-/// ```ignore
-/// use osal_rs::os::{Thread, ThreadNotification};
-/// 
-/// let thread = Thread::current();
-/// 
+/// ```
+/// use osal_rs::os::*;
+///
+/// let thread = Thread::get_current();
+///
 /// // Increment notification counter
-/// thread.notify(ThreadNotification::Increment);
-/// 
+/// thread.notify(ThreadNotification::Increment).unwrap();
+/// assert_eq!(thread.wait_notification(0, 0xFFFF_FFFF, 10).unwrap(), 1);
+///
 /// // Set specific bits (can combine multiple events)
-/// thread.notify(ThreadNotification::SetBits(0b1010));
-/// 
+/// thread.notify(ThreadNotification::SetBits(0b1010)).unwrap();
+/// assert_eq!(thread.wait_notification(0, 0xFFFF_FFFF, 10).unwrap(), 0b1010);
+///
 /// // Set value, overwriting any existing value
-/// thread.notify(ThreadNotification::SetValueWithOverwrite(42));
-/// 
-/// // Set value only if no pending notifications
-/// thread.notify(ThreadNotification::SetValueWithoutOverwrite(100));
+/// thread.notify(ThreadNotification::SetValueWithOverwrite(42)).unwrap();
+/// assert_eq!(thread.wait_notification(0, 0, 10).unwrap(), 42);
+///
+/// // Set value only if no pending notifications - the previous one was
+/// // consumed by the wait above, so this one goes through.
+/// thread.notify(ThreadNotification::SetValueWithoutOverwrite(100)).unwrap();
+/// assert_eq!(thread.wait_notification(0, 0, 10).unwrap(), 100);
 /// ```
 #[derive(Debug, Copy, Clone)]
 pub enum ThreadNotification {
@@ -224,19 +245,22 @@ impl Into<(u32, u32)> for ThreadNotification {
 ///
 /// # Examples
 ///
-/// ```ignore
-/// use osal_rs::os::{Thread, ThreadState};
+/// ```
+/// use osal_rs::os::*;
 ///
-/// let thread = Thread::current();
-/// let metadata = thread.metadata().unwrap();
+/// let thread = Thread::get_current();
+/// let metadata = thread.get_metadata();
 ///
 /// match metadata.state {
-///     ThreadState::Running => println!("Thread is currently executing"),
-///     ThreadState::Ready => println!("Thread is ready to run"),
-///     ThreadState::Blocked => println!("Thread is waiting for an event"),
-///     ThreadState::Suspended => println!("Thread is suspended"),
-///     _ => println!("Unknown state"),
+///     ThreadState::Running => (),   // currently executing
+///     ThreadState::Ready => (),     // ready to run
+///     ThreadState::Blocked => (),   // waiting for an event
+///     ThreadState::Suspended => (), // explicitly suspended
+///     _ => (),                      // deleted or unknown
 /// }
+///
+/// // The thread asking is, by definition, the one running.
+/// assert_eq!(metadata.state, ThreadState::Running);
 /// ```
 #[derive(Copy, Clone, Debug, PartialEq)]
 #[repr(u8)]
@@ -262,15 +286,16 @@ pub enum ThreadState {
 ///
 /// # Examples
 ///
-/// ```ignore
-/// use osal_rs::os::Thread;
+/// ```
+/// use osal_rs::os::*;
 ///
-/// let thread = Thread::current();
-/// let metadata = thread.metadata().unwrap();
+/// let thread = Thread::get_current();
+/// let metadata = thread.get_metadata();
 ///
-/// println!("Thread: {}", metadata.name);
-/// println!("Priority: {}", metadata.priority);
-/// println!("Stack high water mark: {}", metadata.stack_high_water_mark);
+/// // Name, priority and stack usage are all part of the snapshot.
+/// let _ = (metadata.name.as_str(), metadata.priority, metadata.stack_high_water_mark);
+///
+/// assert_ne!(metadata.state, ThreadState::Invalid);
 /// ```
 #[derive(Clone, Debug)]
 pub struct ThreadMetadata {
@@ -342,26 +367,39 @@ impl Default for ThreadMetadata {
 ///
 /// # Examples
 ///
-/// ```ignore
-/// use osal_rs::os::{Thread, System};
+/// ```
+/// use osal_rs::os::*;
 /// use std::sync::Arc;
+/// use std::sync::atomic::{AtomicU32, Ordering};
+///
+/// static WORK: AtomicU32 = AtomicU32::new(0);
 ///
 /// // Create and spawn a simple thread
 /// let mut thread = Thread::new("worker", 2048, 5);
-/// thread.spawn_simple(|| {
-///     loop {
-///         println!("Working...");
-///         System::delay(1000);
+/// let worker = thread.spawn_simple(|| {
+///     for _ in 0..3 {
+///         WORK.fetch_add(1, Ordering::SeqCst);
+///         System::delay(5);
 ///     }
+///     Ok(Arc::new(()))
 /// }).unwrap();
 ///
 /// // Create thread with parameter
 /// let mut thread2 = Thread::new("counter", 1024, 5);
-/// let counter = Arc::new(0u32);
-/// thread2.spawn(Some(counter.clone()), |_thread, param| {
-///     // Use param here
-///     Ok(param.unwrap())
+/// let counter: ThreadParam = Arc::new(AtomicU32::new(0));
+/// let counting = thread2.spawn(Some(counter.clone()), |_thread, param| {
+///     let param = param.unwrap();
+///     if let Some(count) = param.downcast_ref::<AtomicU32>() {
+///         count.fetch_add(1, Ordering::SeqCst);
+///     }
+///     Ok(param)
 /// }).unwrap();
+///
+/// worker.delete();
+/// counting.delete();
+///
+/// assert_eq!(WORK.load(Ordering::SeqCst), 3);
+/// assert_eq!(counter.downcast_ref::<AtomicU32>().unwrap().load(Ordering::SeqCst), 1);
 /// ```
 pub trait Thread {
 
@@ -386,21 +424,27 @@ pub trait Thread {
     ///
     /// # Examples
     ///
-    /// ```ignore
-    /// use osal_rs::os::Thread;
+    /// ```
+    /// use osal_rs::os::*;
     /// use std::sync::Arc;
+    /// use std::sync::atomic::{AtomicU32, Ordering};
+    ///
+    /// static SEEN: AtomicU32 = AtomicU32::new(0);
     ///
     /// let mut thread = Thread::new("worker", 1024, 5);
-    /// let counter = Arc::new(100u32);
+    /// let counter: ThreadParam = Arc::new(100u32);
     ///
-    /// thread.spawn(Some(counter.clone()), |thread, param| {
+    /// let spawned = thread.spawn(Some(counter.clone()), |_thread, param| {
     ///     if let Some(p) = param {
     ///         if let Some(count) = p.downcast_ref::<u32>() {
-    ///             println!("Starting with count: {}", count);
+    ///             SEEN.store(*count, Ordering::SeqCst);
     ///         }
     ///     }
     ///     Ok(Arc::new(200u32))
     /// }).unwrap();
+    ///
+    /// spawned.delete(); // waits for the thread to finish
+    /// assert_eq!(SEEN.load(Ordering::SeqCst), 100);
     /// ```
     fn spawn<F>(&mut self, param: Option<ThreadParam>, callback: F) -> Result<Self>
     where 
@@ -425,16 +469,24 @@ pub trait Thread {
     ///
     /// # Examples
     ///
-    /// ```ignore
-    /// use osal_rs::os::{Thread, System};
+    /// ```
+    /// use osal_rs::os::*;
+    /// use std::sync::Arc;
+    /// use std::sync::atomic::{AtomicBool, Ordering};
+    ///
+    /// static LED: AtomicBool = AtomicBool::new(false);
     ///
     /// let mut thread = Thread::new("blinker", 512, 3);
-    /// thread.spawn_simple(|| {
-    ///     loop {
-    ///         toggle_led();
-    ///         System::delay(500);
+    /// let blinker = thread.spawn_simple(|| {
+    ///     for _ in 0..4 {
+    ///         LED.fetch_xor(true, Ordering::SeqCst); // toggle the LED
+    ///         System::delay(5);
     ///     }
+    ///     Ok(Arc::new(()))
     /// }).unwrap();
+    ///
+    /// blinker.delete();
+    /// assert!(!LED.load(Ordering::SeqCst)); // toggled an even number of times
     /// ```
     fn spawn_simple<F>(&mut self, callback: F) -> Result<Self>
     where
@@ -454,16 +506,19 @@ pub trait Thread {
     ///
     /// # Examples
     ///
-    /// ```ignore
-    /// use osal_rs::os::Thread;
+    /// ```
+    /// use osal_rs::os::*;
+    /// use std::sync::Arc;
     ///
     /// let mut thread = Thread::new("temp", 512, 1);
-    /// thread.spawn_simple(|| {
+    /// let spawned = thread.spawn_simple(|| {
     ///     // Do some work
+    ///     System::delay(5);
+    ///     Ok(Arc::new(()))
     /// }).unwrap();
     ///
     /// // Later, from another thread
-    /// thread.delete();
+    /// spawned.delete();
     /// ```
     fn delete(&self);
 
@@ -480,11 +535,31 @@ pub trait Thread {
     ///
     /// # Examples
     ///
-    /// ```ignore
-    /// use osal_rs::os::Thread;
+    /// ```
+    /// use osal_rs::os::*;
+    /// use std::sync::Arc;
+    /// use std::sync::atomic::{AtomicU32, Ordering};
     ///
-    /// let thread = Thread::current();
-    /// thread.suspend();  // Pauses this thread
+    /// static COUNTER: AtomicU32 = AtomicU32::new(0);
+    ///
+    /// let mut thread = Thread::new("counter", 1024, 1);
+    /// let worker = thread.spawn_simple(|| {
+    ///     loop {
+    ///         COUNTER.fetch_add(1, Ordering::SeqCst);
+    ///         System::delay(1);
+    ///     }
+    /// }).unwrap();
+    ///
+    /// System::delay(30);
+    /// worker.suspend();  // Pauses the worker, not the caller
+    ///
+    /// let paused_at = COUNTER.load(Ordering::SeqCst);
+    /// System::delay(50);
+    ///
+    /// // No progress while suspended.
+    /// assert_eq!(COUNTER.load(Ordering::SeqCst), paused_at);
+    ///
+    /// worker.resume();
     /// ```
     fn suspend(&self);
 
@@ -495,12 +570,32 @@ pub trait Thread {
     ///
     /// # Examples
     ///
-    /// ```ignore
-    /// // Thread 1
+    /// ```
+    /// use osal_rs::os::*;
+    /// use std::sync::Arc;
+    /// use std::sync::atomic::{AtomicU32, Ordering};
+    ///
+    /// static COUNTER: AtomicU32 = AtomicU32::new(0);
+    ///
+    /// let mut thread = Thread::new("counter", 1024, 1);
+    /// let worker_thread = thread.spawn_simple(|| {
+    ///     loop {
+    ///         COUNTER.fetch_add(1, Ordering::SeqCst);
+    ///         System::delay(1);
+    ///     }
+    /// }).unwrap();
+    ///
+    /// System::delay(30);
     /// worker_thread.suspend();
     ///
-    /// // Thread 2
-    /// worker_thread.resume();  // Resume Thread 1
+    /// let paused_at = COUNTER.load(Ordering::SeqCst);
+    /// System::delay(50);
+    ///
+    /// worker_thread.resume();  // Resume the worker
+    /// System::delay(30);
+    ///
+    /// // Progress resumes.
+    /// assert!(COUNTER.load(Ordering::SeqCst) > paused_at);
     /// ```
     fn resume(&self);
 
@@ -520,16 +615,18 @@ pub trait Thread {
     ///
     /// # Examples
     ///
-    /// ```ignore
-    /// use osal_rs::os::Thread;
+    /// ```
+    /// use osal_rs::os::*;
+    /// use std::sync::Arc;
     ///
     /// let mut thread = Thread::new("worker", 1024, 1);
-    /// thread.spawn_simple(|| {
+    /// let spawned = thread.spawn_simple(|| {
     ///     // Do work
+    ///     Ok(Arc::new(()))
     /// }).unwrap();
     ///
-    /// let mut retval = core::ptr::null_mut();
-    /// thread.join(&mut retval).unwrap();
+    /// // Pass a null pointer when the exit value is not needed.
+    /// assert!(spawned.join(core::ptr::null_mut()).is_ok());
     /// ```
     fn join(&self, retval: DoublePtr) -> Result<i32>;
 
@@ -544,12 +641,14 @@ pub trait Thread {
     ///
     /// # Examples
     ///
-    /// ```ignore
-    /// use osal_rs::os::Thread;
+    /// ```
+    /// use osal_rs::os::*;
     ///
-    /// let thread = Thread::current();
+    /// let thread = Thread::new("worker", 1024, 3);
     /// let meta = thread.get_metadata();
-    /// println!("Thread: {} Priority: {}", meta.name, meta.priority);
+    ///
+    /// assert_eq!(meta.name.as_str(), "worker");
+    /// assert_eq!(meta.priority, 3);
     /// ```
     fn get_metadata(&self) -> ThreadMetadata;
 
@@ -564,12 +663,14 @@ pub trait Thread {
     ///
     /// # Examples
     ///
-    /// ```ignore
-    /// use osal_rs::os::Thread;
+    /// ```
+    /// use osal_rs::os::*;
     ///
     /// let current = Thread::get_current();
+    /// assert!(!current.is_null());
+    ///
     /// let meta = current.get_metadata();
-    /// println!("Running in thread: {}", meta.name);
+    /// assert_eq!(meta.state, ThreadState::Running);
     /// ```
     fn get_current() -> Self
     where 
@@ -591,16 +692,28 @@ pub trait Thread {
     ///
     /// # Examples
     ///
-    /// ```ignore
-    /// use osal_rs::os::{Thread, ThreadNotification};
+    /// ```
+    /// use osal_rs::os::*;
+    /// use std::sync::Arc;
+    /// use std::sync::atomic::{AtomicU32, Ordering};
     ///
-    /// let worker = get_worker_thread();
-    /// 
-    /// // Signal an event
-    /// worker.notify(ThreadNotification::SetBits(0b0001)).unwrap();
-    /// 
-    /// // Send a value
+    /// static RECEIVED: AtomicU32 = AtomicU32::new(0);
+    ///
+    /// let mut thread = Thread::new("worker", 1024, 1);
+    /// let worker = thread.spawn_simple(|| {
+    ///     let current = Thread::get_current();
+    ///     // Blocks until the notification below arrives.
+    ///     let value = current.wait_notification(0, 0, 1000).unwrap();
+    ///     RECEIVED.store(value, Ordering::SeqCst);
+    ///     Ok(Arc::new(()))
+    /// }).unwrap();
+    ///
+    /// // Send a value. `ThreadNotification::SetBits` would signal an event
+    /// // instead, without disturbing the bits another event already set.
     /// worker.notify(ThreadNotification::SetValueWithOverwrite(42)).unwrap();
+    ///
+    /// worker.delete();
+    /// assert_eq!(RECEIVED.load(Ordering::SeqCst), 42);
     /// ```
     fn notify(&self, notification: ThreadNotification) -> Result<()>;
 
@@ -620,21 +733,26 @@ pub trait Thread {
     ///
     /// # Examples
     ///
-    /// ```ignore
-    /// use osal_rs::os::{Thread, ThreadNotification, System};
+    /// ```
+    /// use osal_rs::os::*;
     ///
     /// // In interrupt handler
-    /// fn isr_handler() {
-    ///     let worker = get_worker_thread();
+    /// fn isr_handler(worker: &Thread) {
     ///     let mut task_woken = 0;
-    ///     
+    ///
     ///     worker.notify_from_isr(
     ///         ThreadNotification::Increment,
     ///         &mut task_woken
     ///     ).ok();
-    ///     
+    ///
     ///     System::yield_from_isr(task_woken);
     /// }
+    ///
+    /// let current = Thread::get_current();
+    /// isr_handler(&current);
+    ///
+    /// // The notification is now pending on the notified thread.
+    /// assert_eq!(current.wait_notification(0, 0xFFFF_FFFF, 10).unwrap(), 1);
     /// ```
     fn notify_from_isr(&self, notification: ThreadNotification, higher_priority_task_woken: &mut BaseType) -> Result<()>;
 
@@ -661,26 +779,28 @@ pub trait Thread {
     ///
     /// # Examples
     ///
-    /// ```ignore
-    /// use osal_rs::os::Thread;
+    /// ```
+    /// use osal_rs::os::*;
     ///
     /// let current = Thread::get_current();
     ///
+    /// // Nothing pending yet: this gives up once the timeout expires rather
+    /// // than blocking forever.
+    /// assert!(current.wait_notification(0, 0, 10).is_err());
+    ///
     /// // Wait for notification, clear all bits on exit
+    /// current.notify(ThreadNotification::SetValueWithOverwrite(7)).unwrap();
     /// match current.wait_notification(0, 0xFFFFFFFF, 1000) {
-    ///     Ok(value) => println!("Notified with value: {}", value),
-    ///     Err(_) => println!("Timeout waiting for notification"),
+    ///     Ok(value) => assert_eq!(value, 7),
+    ///     Err(_) => panic!("timeout waiting for notification"),
     /// }
     ///
     /// // Wait for specific bits
     /// let bits_of_interest = 0b0011;
+    /// current.notify(ThreadNotification::SetBits(bits_of_interest)).unwrap();
     /// match current.wait_notification(0, bits_of_interest, 5000) {
-    ///     Ok(value) => {
-    ///         if value & bits_of_interest != 0 {
-    ///             println!("Received expected bits");
-    ///         }
-    ///     },
-    ///     Err(_) => println!("Timeout"),
+    ///     Ok(value) => assert_ne!(value & bits_of_interest, 0),
+    ///     Err(_) => panic!("timeout"),
     /// }
     /// ```
     fn wait_notification(&self, bits_to_clear_on_entry: u32, bits_to_clear_on_exit: u32 , timeout_ticks: TickType) -> Result<u32>;
@@ -701,8 +821,9 @@ pub trait Thread {
 ///
 /// # Examples
 ///
-/// ```ignore
-/// use osal_rs::traits::ToPriority;
+/// ```
+/// use osal_rs::os::*;
+/// use osal_rs::os::types::UBaseType;
 ///
 /// // Implement for a custom priority enum
 /// enum TaskPriority {
@@ -721,7 +842,8 @@ pub trait Thread {
 ///     }
 /// }
 ///
-/// let thread = Thread::new("worker", 1024, TaskPriority::High);
+/// let thread = Thread::new_with_to_priority("worker", 1024, TaskPriority::High);
+/// assert_eq!(thread.get_metadata().priority, 10);
 /// ```
 pub trait ToPriority {
     /// Converts this value to a priority.

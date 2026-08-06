@@ -71,19 +71,30 @@ use crate::utils::OsalRsBool;
 ///
 /// # Examples
 ///
-/// ```ignore
-/// use osal_rs::os::System;
-/// 
-/// // Start the scheduler (does not return)
-/// System::start();
-/// 
+/// ```
+/// use osal_rs::os::*;
+/// use std::sync::Arc;
+///
 /// // In a task:
-/// System::delay(100);  // Delay for 100 ticks
-/// 
+/// System::delay(10);  // Delay for 10 ticks
+///
 /// // Critical section
 /// System::critical_section_enter();
 /// // Access shared data
 /// System::critical_section_exit();
+///
+/// // Hand control over to the scheduler. On FreeRTOS this never returns; the
+/// // POSIX backend returns once some task calls `System::stop()`.
+/// let mut stopper = Thread::new("stopper", 1024, 1);
+/// let worker = stopper.spawn_simple(|| {
+///     System::delay(10);
+///     System::stop();
+///     Ok(Arc::new(()))
+/// }).unwrap();
+///
+/// System::start();
+///
+/// worker.delete();
 /// ```
 pub trait System {
     /// Starts the RTOS scheduler.
@@ -106,22 +117,25 @@ pub trait System {
     ///
     /// # Examples
     ///
-    /// ```ignore
-    /// use osal_rs::os::{System, Thread};
-    /// 
+    /// ```
+    /// use osal_rs::os::*;
+    /// use std::sync::Arc;
+    ///
     /// // Create tasks
     /// let mut task = Thread::new("main_task", 1024, 1);
-    /// task.spawn_simple(|| {
-    ///     loop {
-    ///         System::delay(100);
-    ///         // Task work
-    ///     }
-    /// }).ok();
-    /// 
-    /// // Start scheduler - DOES NOT RETURN
+    /// let worker = task.spawn_simple(|| {
+    ///     System::delay(10);
+    ///     // Task work
+    ///
+    ///     // Only the POSIX backend can be asked to hand control back.
+    ///     System::stop();
+    ///     Ok(Arc::new(()))
+    /// }).unwrap();
+    ///
+    /// // Start scheduler - on FreeRTOS this DOES NOT RETURN
     /// System::start();
-    /// 
-    /// // This line is never reached
+    ///
+    /// worker.delete();
     /// ```
     fn start();
 
@@ -144,13 +158,23 @@ pub trait System {
     ///
     /// # Examples
     ///
-    /// ```ignore
-    /// use osal_rs::os::System;
-    /// 
+    /// ```
+    /// use osal_rs::os::*;
+    /// use std::sync::Arc;
+    ///
+    /// let mut worker = Thread::new("worker", 1024, 1);
+    /// worker.spawn_simple(|| {
+    ///     System::delay(200);
+    ///     Ok(Arc::new(()))
+    /// }).unwrap();
+    ///
+    /// System::delay(10); // give it a moment to start running
+    ///
     /// System::suspend_all();
     /// // Critical operations where task switches must not occur
     /// // Interrupts still occur but won't cause task switches
-    /// System::resume_all();
+    /// System::delay(10);
+    /// assert!(System::resume_all() >= 1);
     /// ```
     fn suspend_all();
     
@@ -166,10 +190,24 @@ pub trait System {
     ///
     /// # Examples
     ///
-    /// ```ignore
+    /// ```
+    /// use osal_rs::os::*;
+    /// use std::sync::Arc;
+    ///
+    /// let mut worker = Thread::new("worker", 1024, 1);
+    /// worker.spawn_simple(|| {
+    ///     System::delay(200);
+    ///     Ok(Arc::new(()))
+    /// }).unwrap();
+    ///
+    /// System::delay(10); // give it a moment to start running
+    ///
     /// System::suspend_all();
     /// // Protected operations
+    /// System::delay(10);
     /// let nesting = System::resume_all();
+    ///
+    /// assert!(nesting >= 1);
     /// ```
     fn resume_all() -> BaseType;
     
@@ -200,14 +238,16 @@ pub trait System {
     ///
     /// # Examples
     ///
-    /// ```ignore
-    /// use osal_rs::os::System;
-    /// 
+    /// ```
+    /// use osal_rs::os::*;
+    ///
     /// let start = System::get_tick_count();
+    ///
     /// // Perform work
-    /// do_some_work();
+    /// System::delay(20);
+    ///
     /// let elapsed = System::get_tick_count().wrapping_sub(start);
-    /// println!("Work took {} ticks", elapsed);
+    /// assert!(elapsed >= 20);
     /// ```
     fn get_tick_count() -> TickType;
     
@@ -222,13 +262,16 @@ pub trait System {
     ///
     /// # Examples
     ///
-    /// ```ignore
-    /// use osal_rs::os::System;
-    /// 
+    /// ```
+    /// use osal_rs::os::*;
+    ///
     /// let start = System::get_current_time();
-    /// perform_operation();
+    ///
+    /// // Perform the operation being measured
+    /// System::delay(20);
+    ///
     /// let elapsed = System::get_current_time() - start;
-    /// println!("Operation took {} µs", elapsed.as_micros());
+    /// assert!(elapsed.as_micros() >= 20_000);
     /// ```
     fn get_current_time () -> Duration;
     
@@ -253,13 +296,17 @@ pub trait System {
     ///
     /// # Examples
     ///
-    /// ```ignore
+    /// ```
     /// use core::time::Duration;
-    /// use osal_rs::os::System;
-    /// 
-    /// let duration = Duration::from_millis(100);
+    /// use osal_rs::os::*;
+    ///
+    /// let duration = Duration::from_millis(20);
     /// let ticks = System::get_from_tick(&duration);
+    /// assert!(ticks > 0);
+    ///
+    /// let before = System::get_tick_count();
     /// System::delay(ticks);
+    /// assert!(System::get_tick_count() - before >= ticks);
     /// ```
     fn get_from_tick(duration: &Duration) -> TickType;
 
@@ -279,11 +326,13 @@ pub trait System {
     ///
     /// # Examples
     ///
-    /// ```ignore
-    /// use osal_rs::os::System;
-    /// 
+    /// ```
+    /// use osal_rs::os::*;
+    ///
     /// let count = System::count_threads();
-    /// println!("System has {} threads", count);
+    ///
+    /// // The calling thread is always part of the count.
+    /// assert!(count >= 1);
     /// ```
     fn count_threads() -> usize;
     
@@ -303,14 +352,18 @@ pub trait System {
     ///
     /// # Examples
     ///
-    /// ```ignore
-    /// use osal_rs::os::System;
-    /// 
+    /// ```
+    /// use osal_rs::os::*;
+    ///
     /// let sys_state = System::get_all_thread();
-    /// for thread in &sys_state.threads {
-    ///     println!("Thread: {} Priority: {} State: {:?}",
-    ///         thread.name, thread.priority, thread.state);
+    ///
+    /// for thread in &sys_state.tasks {
+    ///     // Thread name, priority and state are all available here.
+    ///     let _ = (thread.name.as_str(), thread.priority, thread.state);
     /// }
+    ///
+    /// // The calling thread is always in there.
+    /// assert!(!sys_state.tasks.is_empty());
     /// ```
     fn get_all_thread() -> SystemState;
     
@@ -330,13 +383,17 @@ pub trait System {
     ///
     /// # Examples
     ///
-    /// ```ignore
-    /// use osal_rs::os::System;
-    /// 
-    /// loop {
-    ///     System::delay(100);  // Delay for 100 ticks
-    ///     perform_periodic_task();
+    /// ```
+    /// use osal_rs::os::*;
+    ///
+    /// let before = System::get_tick_count();
+    ///
+    /// for _ in 0..3 {
+    ///     System::delay(10);  // Delay for 10 ticks
+    ///     // perform the periodic task here
     /// }
+    ///
+    /// assert!(System::get_tick_count() - before >= 30);
     /// ```
     fn delay(ticks: TickType);
     
@@ -360,15 +417,20 @@ pub trait System {
     ///
     /// # Examples
     ///
-    /// ```ignore
-    /// use osal_rs::os::System;
-    /// 
-    /// let mut last_wake = System::get_tick_count();
-    /// loop {
-    ///     System::delay_until(&mut last_wake, 100);
-    ///     // This runs exactly every 100 ticks regardless of execution time
-    ///     perform_periodic_task();
+    /// ```
+    /// use osal_rs::os::*;
+    ///
+    /// let start = System::get_tick_count();
+    /// let mut last_wake = start;
+    ///
+    /// for _ in 0..3 {
+    ///     System::delay_until(&mut last_wake, 10);
+    ///     // This runs exactly every 10 ticks regardless of execution time
     /// }
+    ///
+    /// // The wake-up times are anchored to the original tick, so they do not
+    /// // drift by however long the work in the loop took.
+    /// assert_eq!(last_wake, start + 30);
     /// ```
     fn delay_until(previous_wake_time: &mut TickType, time_increment: TickType);
     
@@ -389,20 +451,23 @@ pub trait System {
     ///
     /// # Examples
     ///
-    /// ```ignore
+    /// ```
     /// use core::time::Duration;
-    /// use osal_rs::os::System;
-    /// 
+    /// use osal_rs::os::*;
+    /// use osal_rs::utils::OsalRsBool;
+    ///
     /// let start = System::get_current_time();
-    /// let timeout = Duration::from_millis(100);
-    /// 
+    /// let timeout = Duration::from_millis(20);
+    ///
     /// loop {
-    ///     if System::check_timer(&start, &timeout).into() {
-    ///         println!("Timer expired!");
-    ///         break;
+    ///     if System::check_timer(&start, &timeout) == OsalRsBool::True {
+    ///         break; // Timer expired
     ///     }
     ///     // Do other work
+    ///     System::delay(5);
     /// }
+    ///
+    /// assert!(System::get_current_time() - start >= timeout);
     /// ```
     fn check_timer(timestamp: &Duration, time: &Duration) -> OsalRsBool;
     
@@ -418,11 +483,17 @@ pub trait System {
     ///
     /// # Examples
     ///
-    /// ```ignore
-    /// // In ISR handler
-    /// let mut higher_priority_woken = 0;
-    /// // ISR operations that may wake tasks...
+    /// ```
+    /// use osal_rs::os::*;
+    ///
+    /// // In ISR handler: set by the operations that may have woken a task.
+    /// let higher_priority_woken = 1;
+    ///
+    /// // On the way out of the ISR, request the context switch.
     /// System::yield_from_isr(higher_priority_woken);
+    ///
+    /// // A zero flag means no task was woken, so this one is a no-op.
+    /// System::yield_from_isr(0);
     /// ```
     fn yield_from_isr(higher_priority_task_woken: BaseType);
     
@@ -458,13 +529,17 @@ pub trait System {
     ///
     /// # Examples
     ///
-    /// ```ignore
-    /// use osal_rs::os::System;
-    /// 
+    /// ```
+    /// use osal_rs::os::*;
+    ///
+    /// let mut shared_counter = 0;
+    ///
     /// System::critical_section_enter();
     /// // Access shared resource safely
     /// shared_counter += 1;
     /// System::critical_section_exit();
+    ///
+    /// assert_eq!(shared_counter, 1);
     /// ```
     fn critical_section_enter();
 
@@ -480,13 +555,17 @@ pub trait System {
     ///
     /// # Examples
     ///
-    /// ```ignore
-    /// use osal_rs::os::System;
-    /// 
+    /// ```
+    /// use osal_rs::os::*;
+    ///
+    /// let mut shared_data = vec![1, 2, 3];
+    ///
     /// System::critical_section_enter();
     /// // Critical section code
-    /// shared_data.update();
+    /// shared_data.push(4);
     /// System::critical_section_exit();
+    ///
+    /// assert_eq!(shared_data.len(), 4);
     /// ```
     fn critical_section_exit();
 
@@ -507,14 +586,18 @@ pub trait System {
     ///
     /// # Examples
     ///
-    /// ```ignore
-    /// use osal_rs::os::System;
-    /// 
+    /// ```
+    /// use osal_rs::os::*;
+    ///
+    /// let mut shared_isr_data = 0;
+    ///
     /// // In an interrupt handler
     /// let saved_status = System::critical_section_enter_from_isr();
     /// // Critical ISR code - access shared data
-    /// shared_isr_data.update();
+    /// shared_isr_data += 1;
     /// System::critical_section_exit_from_isr(saved_status);
+    ///
+    /// assert_eq!(shared_isr_data, 1);
     /// ```
     fn critical_section_enter_from_isr() -> UBaseType;
 
@@ -534,13 +617,17 @@ pub trait System {
     ///
     /// # Examples
     ///
-    /// ```ignore
-    /// use osal_rs::os::System;
-    /// 
+    /// ```
+    /// use osal_rs::os::*;
+    ///
+    /// let mut shared_buffer = [0u8; 4];
+    ///
     /// let saved = System::critical_section_enter_from_isr();
     /// // Protected ISR operations
-    /// update_shared_buffer();
+    /// shared_buffer[0] = 0x42;
     /// System::critical_section_exit_from_isr(saved);
+    ///
+    /// assert_eq!(shared_buffer[0], 0x42);
     /// ```
     fn critical_section_exit_from_isr(saved_interrupt_status: UBaseType);
 
@@ -561,14 +648,14 @@ pub trait System {
     ///
     /// # Examples
     ///
-    /// ```ignore
-    /// use osal_rs::os::System;
-    /// 
+    /// ```
+    /// use osal_rs::os::*;
+    ///
     /// let free = System::get_free_heap_size();
-    /// println!("Free heap: {} bytes", free);
-    /// 
+    /// assert!(free > 0);
+    ///
     /// if free < 1024 {
-    ///     println!("Warning: Low memory!");
+    ///     // Warning: low memory - back off on allocations here.
     /// }
     /// ```
     fn get_free_heap_size() -> usize;

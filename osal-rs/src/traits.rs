@@ -77,7 +77,7 @@
 //! Traits are re-exported with a `Fn` suffix to avoid naming conflicts with
 //! concrete implementation types:
 //!
-//! ```ignore
+//! ```text
 //! // Trait definition (in this module)
 //! pub trait Thread { ... }
 //!

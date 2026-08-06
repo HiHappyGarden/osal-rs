@@ -56,20 +56,26 @@ use crate::os::types::{EventBits, TickType};
 ///
 /// # Examples
 ///
-/// ```ignore
-/// use osal_rs::os::EventGroup;
-/// use osal_rs::os::types::EventBits;
-/// 
-/// let events = EventGroup::new().unwrap();
+/// ```
+/// use osal_rs::os::*;
+/// use std::sync::Arc;
 ///
-/// // Task 1: Wait for specific bits
+/// let events = Arc::new(EventGroup::new().unwrap());
+/// let producer = events.clone();
+///
+/// // Task 1: set both bits after a short delay
+/// let mut thread = Thread::new("producer", 1024, 1);
+/// let worker = thread.spawn_simple(move || {
+///     System::delay(10);
+///     producer.set(0b0011);
+///     Ok(Arc::new(()))
+/// }).unwrap();
+///
+/// // Task 2: block until both bits are set (or 1000 ticks elapse)
 /// let bits = events.wait(0b0011, true, 1000);
-/// if bits & 0b0011 == 0b0011 {
-///     println!("Both bits 0 and 1 are set");
-/// }
-/// 
-/// // Task 2: Set multiple bits
-/// events.set(0b0011);
+/// assert_eq!(bits & 0b0011, 0b0011);
+///
+/// worker.delete();
 /// ```
 pub trait EventGroup {
     /// Returns `true` if the underlying OS handle is null, i.e. the mutex
@@ -89,17 +95,21 @@ pub trait EventGroup {
     ///
     /// # Returns
     ///
-    /// The event bits value before the bits were set
+    /// The event bits value once the bits have been set
     ///
     /// # Examples
     ///
-    /// ```ignore
+    /// ```
+    /// use osal_rs::os::*;
+    ///
+    /// let events = EventGroup::new().unwrap();
+    ///
     /// // Set bit 0
-    /// let old = events.set(0b0001);
-    /// 
+    /// events.set(0b0001);
+    ///
     /// // Set bit 1 (bit 0 remains set)
     /// events.set(0b0010);
-    /// 
+    ///
     /// // Now bits 0 and 1 are both set
     /// assert_eq!(events.get(), 0b0011);
     /// ```
@@ -120,9 +130,15 @@ pub trait EventGroup {
     ///
     /// # Examples
     ///
-    /// ```ignore
+    /// ```
+    /// use osal_rs::os::*;
+    ///
+    /// let events = EventGroup::new().unwrap();
+    ///
     /// // In an interrupt handler
     /// events.set_from_isr(0b0100).ok();
+    ///
+    /// assert_eq!(events.get(), 0b0100);
     /// ```
     fn set_from_isr(&self, bits: EventBits) -> Result<()>;
 
@@ -134,11 +150,15 @@ pub trait EventGroup {
     ///
     /// # Examples
     ///
-    /// ```ignore
+    /// ```
+    /// use osal_rs::os::*;
+    ///
+    /// let events = EventGroup::new().unwrap();
+    /// events.set(0b0001);
+    ///
     /// let current = events.get();
-    /// if current & 0b0001 != 0 {
-    ///     // Bit 0 is set
-    /// }
+    /// assert!(current & 0b0001 != 0); // bit 0 is set
+    /// assert!(current & 0b0010 == 0); // bit 1 is not
     /// ```
     fn get(&self) -> EventBits;
 
@@ -165,14 +185,18 @@ pub trait EventGroup {
     ///
     /// # Examples
     ///
-    /// ```ignore
+    /// ```
+    /// use osal_rs::os::*;
+    ///
+    /// let events = EventGroup::new().unwrap();
+    ///
     /// // Start with bits 0 and 1 set
     /// events.set(0b0011);
-    /// 
+    ///
     /// // Clear bit 0
     /// let old = events.clear(0b0001);
     /// assert_eq!(old, 0b0011);
-    /// 
+    ///
     /// // Now only bit 1 is set
     /// assert_eq!(events.get(), 0b0010);
     /// ```
@@ -214,20 +238,22 @@ pub trait EventGroup {
     ///
     /// # Examples
     ///
-    /// ```ignore
-    /// // Wait for both bits 0 and 2 with 1000 tick timeout
-    /// let result = events.wait(0b0101, true, 1000);
+    /// ```
+    /// use osal_rs::os::*;
+    /// use osal_rs::os::types::TickType;
     ///
-    /// if result & 0b0101 == 0b0101 {
-    ///     // Success: both bits 0 and 2 are set
-    ///     println!("Condition met!");
-    /// } else {
-    ///     // Timeout: not all bits were set in time
-    ///     println!("Timeout - current bits: {:#b}", result);
-    /// }
+    /// let events = EventGroup::new().unwrap();
+    /// events.set(0b0001);
     ///
-    /// // Wait forever for either bit 0 or bit 1
-    /// let result = events.wait(0b0011, false, TickType::MAX);
+    /// // Wait for both bits 0 and 2, with a 10 tick timeout: only bit 0 is
+    /// // set, so this times out and reports the current bits instead.
+    /// let result = events.wait(0b0101, true, 10);
+    /// assert_ne!(result & 0b0101, 0b0101);
+    ///
+    /// // Waiting for *either* bit 0 or bit 2 is already satisfied, so this
+    /// // returns immediately even with the "wait forever" timeout.
+    /// let result = events.wait(0b0101, false, TickType::MAX);
+    /// assert_eq!(result & 0b0001, 0b0001);
     /// ```
     fn wait(&self, mask: EventBits, wait_for_all_bits: bool, timeout_ticks: TickType) -> EventBits;
 
@@ -240,14 +266,17 @@ pub trait EventGroup {
     ///
     /// # Examples
     ///
-    /// ```ignore
+    /// ```
+    /// use osal_rs::os::*;
+    ///
     /// let mut events = EventGroup::new().unwrap();
-    /// 
+    ///
     /// // Use event group
     /// events.set(0b0001);
-    /// 
+    ///
     /// // Clean up when done
     /// events.delete();
+    /// assert!(events.is_null());
     /// ```
     fn delete(&mut self);
 }

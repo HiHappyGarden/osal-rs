@@ -72,35 +72,46 @@ use super::ToTick;
 ///
 /// ## Binary Semaphore (Signaling)
 ///
-/// ```ignore
-/// use osal_rs::os::Semaphore;
+/// ```
+/// use osal_rs::os::*;
+/// use osal_rs::utils::OsalRsBool;
 /// use core::time::Duration;
-/// 
-/// // Create with count 0 (binary semaphore for signaling)
-/// let sem = Semaphore::new_with_count(0).unwrap();
-/// 
-/// // Task 1: Wait for signal
-/// if sem.wait(Duration::from_secs(1)).into() {
-///     println!("Signal received!");
-/// }
-/// 
+/// use std::sync::Arc;
+///
+/// // Max count 1, initial count 0: a binary semaphore for signaling
+/// let sem = Arc::new(Semaphore::new(1, 0).unwrap());
+/// let producer = sem.clone();
+///
 /// // Task 2: Send signal
-/// sem.signal();
+/// let mut thread = Thread::new("producer", 1024, 1);
+/// let worker = thread.spawn_simple(move || {
+///     System::delay(10);
+///     producer.signal();
+///     Ok(Arc::new(()))
+/// }).unwrap();
+///
+/// // Task 1: Wait for signal
+/// assert_eq!(sem.wait(Duration::from_secs(1)), OsalRsBool::True);
+///
+/// worker.delete();
 /// ```
 ///
 /// ## Counting Semaphore (Resource Pool)
 ///
-/// ```ignore
+/// ```
+/// use osal_rs::os::*;
+/// use osal_rs::utils::OsalRsBool;
+/// use core::time::Duration;
+///
 /// // Pool of 3 resources
 /// let pool = Semaphore::new(3, 3).unwrap();
-/// 
+///
 /// // Acquire resource
-/// if pool.wait(Duration::from_millis(100)).into() {
-///     // Use resource
-///     process_with_resource();
-///     
+/// if pool.wait(Duration::from_millis(100)) == OsalRsBool::True {
+///     // Use resource...
+///
 ///     // Release resource
-///     pool.signal();
+///     assert_eq!(pool.signal(), OsalRsBool::True);
 /// }
 /// ```
 pub trait Semaphore {
@@ -134,23 +145,25 @@ pub trait Semaphore {
     ///
     /// # Examples
     ///
-    /// ```ignore
-    /// use osal_rs::os::Semaphore;
+    /// ```
+    /// use osal_rs::os::*;
+    /// use osal_rs::utils::OsalRsBool;
     /// use core::time::Duration;
-    /// 
-    /// let sem = Semaphore::new_with_count(1).unwrap();
-    /// 
+    ///
+    /// let sem = Semaphore::new(1, 1).unwrap();
+    ///
     /// // Wait with timeout
-    /// if sem.wait(Duration::from_millis(100)).into() {
-    ///     // Semaphore acquired, do work
-    ///     process_critical_section();
+    /// if sem.wait(Duration::from_millis(100)) == OsalRsBool::True {
+    ///     // Semaphore acquired, do work...
     ///     sem.signal();
     /// } else {
-    ///     println!("Timeout waiting for semaphore");
+    ///     panic!("timeout waiting for semaphore");
     /// }
-    /// 
-    /// // Wait forever
-    /// sem.wait(Duration::MAX);
+    ///
+    /// // Take the single unit and keep it: the next wait finds the count at
+    /// // 0 and gives up once the timeout expires.
+    /// assert_eq!(sem.wait(Duration::from_millis(100)), OsalRsBool::True);
+    /// assert_eq!(sem.wait(Duration::from_millis(10)), OsalRsBool::False);
     /// ```
     fn wait(&self, ticks_to_wait: impl ToTick) -> OsalRsBool;
 
@@ -170,15 +183,24 @@ pub trait Semaphore {
     ///
     /// # Examples
     ///
-    /// ```ignore
+    /// ```
+    /// use osal_rs::os::*;
+    /// use osal_rs::utils::OsalRsBool;
+    ///
+    /// let sem = Semaphore::new(1, 1).unwrap();
+    /// let mut missed_event_count = 0;
+    ///
     /// // In interrupt handler
-    /// if sem.wait_from_isr().into() {
+    /// if sem.wait_from_isr() == OsalRsBool::True {
     ///     // Semaphore acquired, process event quickly
-    ///     handle_event();
     /// } else {
     ///     // Semaphore unavailable, skip or set flag
     ///     missed_event_count += 1;
     /// }
+    ///
+    /// // The count is 0 now, so this attempt is the one that gives up.
+    /// assert_eq!(sem.wait_from_isr(), OsalRsBool::False);
+    /// assert_eq!(missed_event_count, 0);
     /// ```
     fn wait_from_isr(&self) -> OsalRsBool;
 
@@ -201,20 +223,27 @@ pub trait Semaphore {
     ///
     /// # Examples
     ///
-    /// ```ignore
-    /// use osal_rs::os::Semaphore;
-    /// 
+    /// ```
+    /// use osal_rs::os::*;
+    /// use osal_rs::utils::OsalRsBool;
+    /// use core::time::Duration;
+    ///
     /// // Binary semaphore for signaling
-    /// let sem = Semaphore::new_with_count(0).unwrap();
-    /// 
-    /// // Task 1 is waiting on sem.wait()
-    /// // Task 2 signals to unblock Task 1
-    /// sem.signal();  // Unblocks Task 1
-    /// 
+    /// let sem = Semaphore::new(1, 0).unwrap();
+    ///
+    /// // Task 2 signals to unblock Task 1, which is waiting in `wait()`
+    /// assert_eq!(sem.signal(), OsalRsBool::True);
+    ///
+    /// // Already at max_count: signalling again fails.
+    /// assert_eq!(sem.signal(), OsalRsBool::False);
+    ///
     /// // Counting semaphore for resource pool
     /// let pool = Semaphore::new(3, 3).unwrap();
     /// pool.wait(Duration::ZERO);  // Count: 3 -> 2
     /// pool.signal();              // Count: 2 -> 3
+    ///
+    /// // Back at max_count, so no unit can be handed back.
+    /// assert_eq!(pool.signal(), OsalRsBool::False);
     /// ```
     fn signal(&self) -> OsalRsBool;
     
@@ -239,19 +268,20 @@ pub trait Semaphore {
     ///
     /// # Examples
     ///
-    /// ```ignore
+    /// ```
+    /// use osal_rs::os::*;
+    /// use osal_rs::utils::OsalRsBool;
+    /// use core::time::Duration;
+    ///
+    /// let sem = Semaphore::new(1, 0).unwrap();
+    ///
     /// // In interrupt handler - signal event occurred
-    /// if sem.signal_from_isr().into() {
+    /// if sem.signal_from_isr() == OsalRsBool::True {
     ///     // Signal sent successfully
     /// }
-    /// 
+    ///
     /// // In task context - wait for events
-    /// loop {
-    ///     if sem.wait(Duration::MAX).into() {
-    ///         // Event received from ISR, process it
-    ///         handle_isr_event();
-    ///     }
-    /// }
+    /// assert_eq!(sem.wait(Duration::from_millis(100)), OsalRsBool::True);
     /// ```
     fn signal_from_isr(&self) -> OsalRsBool;
     
@@ -264,15 +294,19 @@ pub trait Semaphore {
     ///
     /// # Examples
     ///
-    /// ```ignore
-    /// let mut sem = Semaphore::new_with_count(1).unwrap();
-    /// 
+    /// ```
+    /// use osal_rs::os::*;
+    /// use core::time::Duration;
+    ///
+    /// let mut sem = Semaphore::new(1, 1).unwrap();
+    ///
     /// // Use semaphore
     /// sem.wait(Duration::from_millis(100));
     /// sem.signal();
-    /// 
+    ///
     /// // Clean up when done
     /// sem.delete();
+    /// assert!(sem.is_null());
     /// ```
     fn delete(&mut self);
 

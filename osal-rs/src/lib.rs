@@ -350,18 +350,21 @@ use crate::posix as osal;
 ///
 /// # Examples
 ///
-/// ```ignore
+/// ```
 /// use osal_rs::os::*;
+/// use std::sync::Arc;
 ///
-/// fn main() {
-///     // Create and start a thread
-///     let thread = Thread::new("worker", 4096, 5, || {
-///         println!("Worker thread running");
-///     }).unwrap();
-///     
-///     thread.start().unwrap();
-///     System::start();
-/// }
+/// // Create and start a thread
+/// let mut thread = Thread::new("worker", 4096, 5);
+/// let worker = thread.spawn_simple(|| {
+///     println!("Worker thread running");
+///     System::stop(); // asks `System::start()` below to hand control back
+///     Ok(Arc::new(()))
+/// }).unwrap();
+///
+/// System::start();
+///
+/// worker.delete();
 /// ```
 pub mod os {
 

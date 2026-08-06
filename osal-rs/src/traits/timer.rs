@@ -110,17 +110,19 @@ use crate::utils::{OsalRsBool, Result};
 ///
 /// # Examples
 ///
-/// ```ignore
+/// ```
+/// use osal_rs::os::*;
 /// use std::sync::Arc;
-/// use osal_rs::traits::TimerParam;
 ///
 /// // Create a parameter
-/// let count: TimerParam = Arc::new(0u32);
+/// let param: TimerParam = Arc::new(7u32);
 ///
-/// // In timer callback, downcast to access
-/// if let Some(value) = param.downcast_ref::<u32>() {
-///     println!("Count: {}", value);
-/// }
+/// // In the timer callback, downcast to access it
+/// let count = param.downcast_ref::<u32>().copied();
+/// assert_eq!(count, Some(7));
+///
+/// // A downcast to the wrong type simply reports `None`.
+/// assert!(param.downcast_ref::<i8>().is_none());
 /// ```
 pub type TimerParam = Arc<dyn Any + Send + Sync>;
 
@@ -150,19 +152,26 @@ pub type TimerParam = Arc<dyn Any + Send + Sync>;
 ///
 /// # Examples
 ///
-/// ```ignore
-/// use osal_rs::traits::{Timer, TimerParam};
+/// ```
+/// use osal_rs::os::*;
 /// use std::sync::Arc;
 ///
-/// let callback: Box<TimerFnPtr> = Box::new(|timer, param| {
+/// let callback: Box<TimerFnPtr> = Box::new(|_timer, param| {
 ///     if let Some(p) = param {
 ///         if let Some(count) = p.downcast_ref::<u32>() {
-///             println!("Timer expired, count: {}", count);
+///             // Timer expired: hand the next invocation an updated count.
 ///             return Ok(Arc::new(*count + 1));
 ///         }
 ///     }
 ///     Ok(Arc::new(0u32))
 /// });
+///
+/// // This is what the timer service does on every expiration: it passes the
+/// // expired timer and the current parameter, and keeps whatever comes back.
+/// let timer = Timer::new("counter", 50, true, None, |_t, _p| Ok(Arc::new(()))).unwrap();
+/// let updated = callback(Box::new(timer), Some(Arc::new(41u32))).unwrap();
+///
+/// assert_eq!(updated.downcast_ref::<u32>(), Some(&42));
 /// ```
 pub type TimerFnPtr = dyn Fn(Box<dyn Timer>, Option<TimerParam>) -> Result<TimerParam> + Send + Sync + 'static;
 
@@ -197,50 +206,65 @@ pub type TimerFnPtr = dyn Fn(Box<dyn Timer>, Option<TimerParam>) -> Result<Timer
 ///
 /// ## One-shot Timer
 ///
-/// ```ignore
-/// use osal_rs::os::Timer;
+/// ```
+/// use osal_rs::os::*;
+/// use std::sync::Arc;
+/// use std::sync::atomic::{AtomicU32, Ordering};
 /// use core::time::Duration;
-/// 
-/// let timer = Timer::new(
+///
+/// static ALARMS: AtomicU32 = AtomicU32::new(0);
+///
+/// let timer = Timer::new_with_to_tick(
 ///     "alarm",
-///     Duration::from_secs(5),
+///     Duration::from_millis(20),
 ///     false,  // One-shot
 ///     None,
 ///     |_timer, _param| {
-///         println!("Alarm!");
-///         trigger_alarm();
-///         Ok(None)
+///         ALARMS.fetch_add(1, Ordering::SeqCst);
+///         Ok(Arc::new(()))
 ///     }
 /// ).unwrap();
-/// 
+///
 /// timer.start(0);
-/// // Expires once after 5 seconds
+///
+/// // Expires once, then stays quiet however long we wait.
+/// System::delay(120);
+/// assert_eq!(ALARMS.load(Ordering::SeqCst), 1);
 /// ```
 ///
 /// ## Periodic Timer
 ///
-/// ```ignore
+/// ```
+/// use osal_rs::os::*;
 /// use std::sync::Arc;
+/// use std::sync::atomic::{AtomicU32, Ordering};
+/// use core::time::Duration;
 ///
-/// let counter = Arc::new(0u32);
-/// let periodic = Timer::new(
+/// // The parameter is handed to each invocation and replaced by whatever
+/// // that invocation returns, so the count carries across expirations.
+/// let counter: TimerParam = Arc::new(AtomicU32::new(0));
+///
+/// let periodic = Timer::new_with_to_tick(
 ///     "counter",
-///     Duration::from_millis(100),
+///     Duration::from_millis(10),
 ///     true,  // Auto-reload
 ///     Some(counter.clone()),
 ///     |_timer, param| {
-///         if let Some(p) = param {
-///             if let Some(count) = p.downcast_ref::<u32>() {
-///                 println!("Count: {}", count);
-///                 return Ok(Arc::new(*count + 1));
-///             }
+///         let param = param.unwrap();
+///         if let Some(count) = param.downcast_ref::<AtomicU32>() {
+///             count.fetch_add(1, Ordering::SeqCst);
 ///         }
-///         Ok(Arc::new(0u32))
+///         Ok(param)
 ///     }
 /// ).unwrap();
-/// 
+///
 /// periodic.start(0);
-/// // Runs every 100ms until stopped
+///
+/// // Runs every 10ms until stopped
+/// System::delay(120);
+/// periodic.stop(0);
+///
+/// assert!(counter.downcast_ref::<AtomicU32>().unwrap().load(Ordering::SeqCst) > 1);
 /// ```
 pub trait Timer {
 
@@ -274,16 +298,27 @@ pub trait Timer {
     ///
     /// # Examples
     ///
-    /// ```ignore
-    /// use osal_rs::os::Timer;
+    /// ```
+    /// use osal_rs::os::*;
+    /// use osal_rs::utils::OsalRsBool;
+    /// use std::sync::Arc;
+    /// use std::sync::atomic::{AtomicBool, Ordering};
+    ///
+    /// static FIRED: AtomicBool = AtomicBool::new(false);
+    ///
+    /// let timer = Timer::new("alarm", 20, false, None, |_timer, _param| {
+    ///     FIRED.store(true, Ordering::SeqCst);
+    ///     Ok(Arc::new(()))
+    /// }).unwrap();
     ///
     /// // Start immediately, don't wait
-    /// if timer.start(0).into() {
-    ///     println!("Timer started");
-    /// }
+    /// assert_eq!(timer.start(0), OsalRsBool::True);
     ///
-    /// // Wait up to 100 ticks for command queue
-    /// timer.start(100);
+    /// // Restarting it resets the countdown to the full period
+    /// timer.start(100); // wait up to 100 ticks for the command queue
+    ///
+    /// System::delay(120);
+    /// assert!(FIRED.load(Ordering::SeqCst));
     /// ```
     fn start(&self, ticks_to_wait: TickType) -> OsalRsBool;
     
@@ -311,16 +346,33 @@ pub trait Timer {
     ///
     /// # Examples
     ///
-    /// ```ignore
-    /// use osal_rs::os::Timer;
+    /// ```
+    /// use osal_rs::os::*;
+    /// use osal_rs::utils::OsalRsBool;
+    /// use std::sync::Arc;
+    /// use std::sync::atomic::{AtomicU32, Ordering};
+    ///
+    /// static FIRINGS: AtomicU32 = AtomicU32::new(0);
+    ///
+    /// let timer = Timer::new("heartbeat", 20, true, None, |_timer, _param| {
+    ///     FIRINGS.fetch_add(1, Ordering::SeqCst);
+    ///     Ok(Arc::new(()))
+    /// }).unwrap();
+    ///
+    /// timer.start(0);
     ///
     /// // Stop the timer, wait up to 100 ticks
-    /// if timer.stop(100).into() {
-    ///     println!("Timer stopped");
-    /// }
+    /// assert_eq!(timer.stop(100), OsalRsBool::True);
+    ///
+    /// // Nothing fires while it is stopped.
+    /// let stopped_at = FIRINGS.load(Ordering::SeqCst);
+    /// System::delay(60);
+    /// assert_eq!(FIRINGS.load(Ordering::SeqCst), stopped_at);
     ///
     /// // Later, restart it
     /// timer.start(100);
+    /// System::delay(60);
+    /// assert!(FIRINGS.load(Ordering::SeqCst) > stopped_at);
     /// ```
     fn stop(&self, ticks_to_wait: TickType)  -> OsalRsBool;
     
@@ -350,30 +402,40 @@ pub trait Timer {
     ///
     /// # Examples
     ///
-    /// ```ignore
-    /// use osal_rs::os::Timer;
+    /// ```
+    /// use osal_rs::os::*;
+    /// use std::sync::Arc;
+    /// use std::sync::atomic::{AtomicBool, Ordering};
     /// use core::time::Duration;
     ///
+    /// static TIMED_OUT: AtomicBool = AtomicBool::new(false);
+    ///
     /// // Watchdog timer pattern
-    /// let watchdog = Timer::new(
+    /// let watchdog = Timer::new_with_to_tick(
     ///     "watchdog",
-    ///     Duration::from_secs(10),
+    ///     Duration::from_millis(50),
     ///     false,
     ///     None,
     ///     |_timer, _param| {
-    ///         println!("WATCHDOG TIMEOUT!");
-    ///         system_reset();
-    ///         Ok(None)
+    ///         TIMED_OUT.store(true, Ordering::SeqCst);
+    ///         Ok(Arc::new(()))
     ///     }
     /// ).unwrap();
     ///
     /// watchdog.start(0);
     ///
     /// // In main loop: reset watchdog to prevent timeout
-    /// loop {
-    ///     do_work();
-    ///     watchdog.reset(0);  // "Feed" the watchdog
+    /// for _ in 0..5 {
+    ///     System::delay(20); // do work
+    ///     watchdog.reset(0); // "Feed" the watchdog
     /// }
+    ///
+    /// // Fed often enough, it never expired.
+    /// assert!(!TIMED_OUT.load(Ordering::SeqCst));
+    ///
+    /// // Stop feeding it and it fires.
+    /// System::delay(120);
+    /// assert!(TIMED_OUT.load(Ordering::SeqCst));
     /// ```
     fn reset(&self, ticks_to_wait: TickType) -> OsalRsBool;
     
@@ -405,28 +467,38 @@ pub trait Timer {
     ///
     /// # Examples
     ///
-    /// ```ignore
-    /// use osal_rs::os::Timer;
+    /// ```
+    /// use osal_rs::os::*;
+    /// use std::sync::Arc;
+    /// use std::sync::atomic::{AtomicBool, Ordering};
     /// use core::time::Duration;
     ///
-    /// let timer = Timer::new(
+    /// static FIRED: AtomicBool = AtomicBool::new(false);
+    ///
+    /// let timer = Timer::new_with_to_tick(
     ///     "adaptive",
-    ///     Duration::from_millis(100),
+    ///     Duration::from_secs(10),
     ///     true,
     ///     None,
-    ///     |_timer, _param| Ok(None)
+    ///     |_timer, _param| {
+    ///         FIRED.store(true, Ordering::SeqCst);
+    ///         Ok(Arc::new(()))
+    ///     }
     /// ).unwrap();
     ///
     /// timer.start(0);
     ///
-    /// // Later, adjust the period based on system load
-    /// if system_busy() {
-    ///     // Slow down to 500ms
-    ///     timer.change_period(500, 100);
+    /// // Later, adjust the period based on system load. The new period takes
+    /// // effect immediately: the original 10s would never elapse in time here.
+    /// let system_busy = false;
+    /// if system_busy {
+    ///     timer.change_period(500, 100); // slow down to 500ms
     /// } else {
-    ///     // Speed up to 100ms
-    ///     timer.change_period(100, 100);
+    ///     timer.change_period(10, 100);  // speed up to 10ms
     /// }
+    ///
+    /// System::delay(60);
+    /// assert!(FIRED.load(Ordering::SeqCst));
     /// ```
     fn change_period(&self, new_period_in_ticks: TickType, ticks_to_wait: TickType) -> OsalRsBool;
     
@@ -457,23 +529,28 @@ pub trait Timer {
     ///
     /// Stop the timer before deleting it to ensure clean shutdown:
     ///
-    /// ```ignore
+    /// ```
+    /// # use osal_rs::os::*;
+    /// # use std::sync::Arc;
+    /// # let mut timer = Timer::new("temporary", 50, false, None, |_t, _p| Ok(Arc::new(()))).unwrap();
     /// timer.stop(100);
     /// timer.delete(100);
     /// ```
     ///
     /// # Examples
     ///
-    /// ```ignore
-    /// use osal_rs::os::Timer;
+    /// ```
+    /// use osal_rs::os::*;
+    /// use osal_rs::utils::OsalRsBool;
+    /// use std::sync::Arc;
     /// use core::time::Duration;
     ///
-    /// let mut timer = Timer::new(
+    /// let mut timer = Timer::new_with_to_tick(
     ///     "temporary",
     ///     Duration::from_secs(1),
     ///     false,
     ///     None,
-    ///     |_timer, _param| Ok(None)
+    ///     |_timer, _param| Ok(Arc::new(()))
     /// ).unwrap();
     ///
     /// timer.start(0);
@@ -481,9 +558,8 @@ pub trait Timer {
     ///
     /// // Clean shutdown
     /// timer.stop(100);
-    /// if timer.delete(100).into() {
-    ///     println!("Timer deleted");
-    /// }
+    /// assert_eq!(timer.delete(100), OsalRsBool::True);
+    /// assert!(timer.is_null());
     /// ```
     fn delete(&mut self, ticks_to_wait: TickType) -> OsalRsBool;
 }

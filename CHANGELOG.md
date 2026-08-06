@@ -9,6 +9,25 @@ All crates in the workspace (`osal-rs`, `osal-rs-serde`, `osal-rs-serde-derive`,
 `osal-rs-build`, `osal-rs-tests`) share a single version number and are released
 together.
 
+## [Unreleased]
+
+### Documentation
+
+- The trait-level doc examples are compiled and run as doctests instead of being
+  marked `ignore`. They were stale pseudo-code calling APIs that no longer exist
+  (`Semaphore::new_with_count`, `Thread::current()`, the four-argument
+  `Thread::new`), and several would not have compiled. `--features posix` now
+  runs 283 doctests instead of 195.
+- `QueueStreamed`'s examples are skipped under the `serde` feature, which
+  replaces the `Serialize`/`Deserialize` traits they implement by hand.
+
+### Fixed
+
+- `EventGroupFn::set` is documented as returning the bits *after* the update.
+  Both backends return the new value (POSIX reads the mask after the OR,
+  FreeRTOS returns `xEventGroupSetBits`'s result); the trait documented the
+  value from before the call.
+
 ## [1.2.0] - 2026-08-05
 
 Timer ownership and thread joining now behave the same on both backends. See
@@ -211,6 +230,7 @@ hardware.
   components.
 - README rewritten around backend selection, feature flags and POSIX support.
 
+[Unreleased]: https://github.com/HiHappyGarden/osal-rs/compare/1.2.0...HEAD
 [1.2.0]: https://github.com/HiHappyGarden/osal-rs/compare/1.1.0...1.2.0
 [1.1.0]: https://github.com/HiHappyGarden/osal-rs/compare/1.0.4...1.1.0
 [1.0.4]: https://github.com/HiHappyGarden/osal-rs/compare/1.0.3...1.0.4

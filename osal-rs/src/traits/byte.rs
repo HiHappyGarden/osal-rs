@@ -35,12 +35,23 @@ use crate::utils::Result;
 ///
 /// # Examples
 ///
-/// ```ignore
-/// use osal_rs::traits::BytesHasLen;
-/// 
-/// let data: [u8; 4] = [1, 2, 3, 4];
-/// assert_eq!(data.len(), 4);
-/// assert!(!data.is_empty());
+/// ```
+/// use osal_rs::os::*;
+///
+/// struct Reading {
+///     temperature: i16,
+///     humidity: u8,
+/// }
+///
+/// impl BytesHasLen for Reading {
+///     fn len(&self) -> usize {
+///         core::mem::size_of::<i16>() + core::mem::size_of::<u8>()
+///     }
+/// }
+///
+/// let reading = Reading { temperature: 235, humidity: 65 };
+/// assert_eq!(reading.len(), 3);
+/// assert!(!reading.is_empty());
 /// ```
 pub trait BytesHasLen {
     /// Returns the length in bytes.
@@ -85,18 +96,21 @@ where
 ///
 /// # Examples
 ///
-/// ```ignore
-/// use osal_rs::traits::Serialize;
-/// 
+/// ```
+/// use osal_rs::os::*;
+///
+/// // `repr(C)` pins the field order, so the bytes handed out below are a
+/// // stable representation rather than whatever layout the compiler picks.
+/// #[repr(C)]
 /// struct SensorData {
 ///     temperature: i16,
 ///     humidity: u8,
 /// }
-/// 
+///
 /// impl Serialize for SensorData {
 ///     fn to_bytes(&self) -> &[u8] {
-///         // Convert struct to bytes
-///         // Safety: ensure proper memory layout
+///         // Safety: the slice borrows `self`, so it cannot outlive it, and
+///         // `size_of::<Self>()` bytes starting at `self` are always readable.
 ///         unsafe {
 ///             core::slice::from_raw_parts(
 ///                 self as *const Self as *const u8,
@@ -105,6 +119,13 @@ where
 ///         }
 ///     }
 /// }
+///
+/// let data = SensorData { temperature: 235, humidity: 65 };
+/// let bytes = data.to_bytes();
+///
+/// assert_eq!(bytes.len(), core::mem::size_of::<SensorData>());
+/// assert_eq!(&bytes[..2], &235i16.to_ne_bytes());
+/// assert_eq!(bytes[2], 65);
 /// ```
 #[cfg(not(feature = "serde"))]
 pub trait Serialize {
@@ -130,19 +151,20 @@ pub trait Serialize {
 ///
 /// # Examples
 ///
-/// ```ignore
-/// use osal_rs::traits::Deserialize;
-/// use osal_rs::utils::Result;
-/// 
+/// ```
+/// use osal_rs::os::*;
+/// use osal_rs::utils::{Error, Result};
+///
+/// #[derive(Debug, PartialEq)]
 /// struct SensorData {
 ///     temperature: i16,
 ///     humidity: u8,
 /// }
-/// 
+///
 /// impl Deserialize for SensorData {
 ///     fn from_bytes(bytes: &[u8]) -> Result<Self> {
 ///         if bytes.len() < 3 {
-///             return Err(Error::InvalidParameter);
+///             return Err(Error::OutOfIndex);
 ///         }
 ///         Ok(SensorData {
 ///             temperature: i16::from_le_bytes([bytes[0], bytes[1]]),
@@ -150,6 +172,12 @@ pub trait Serialize {
 ///         })
 ///     }
 /// }
+///
+/// let data = SensorData::from_bytes(&[0xEB, 0x00, 65]).unwrap();
+/// assert_eq!(data, SensorData { temperature: 235, humidity: 65 });
+///
+/// // Too short to hold both fields.
+/// assert!(SensorData::from_bytes(&[0xEB, 0x00]).is_err());
 /// ```
 #[cfg(not(feature = "serde"))]
 pub trait Deserialize: Sized

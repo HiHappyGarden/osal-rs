@@ -76,13 +76,16 @@ use crate::utils::{OsalRsBool, Result};
 ///
 /// # Examples
 ///
-/// ```ignore
-/// use osal_rs::traits::RawMutex;
+/// ```
+/// use osal_rs::os::*;
+/// use osal_rs::utils::OsalRsBool;
+///
+/// let raw_mutex = RawMutex::new().unwrap();
 ///
 /// // Acquire and release lock
-/// if raw_mutex.lock() {
+/// if raw_mutex.lock() == OsalRsBool::True {
 ///     // Critical section
-///     raw_mutex.unlock();
+///     assert_eq!(raw_mutex.unlock(), OsalRsBool::True);
 /// }
 /// ```
 pub trait RawMutex
@@ -105,8 +108,13 @@ where
     ///
     /// # Examples
     ///
-    /// ```ignore
-    /// if raw_mutex.lock() {
+    /// ```
+    /// use osal_rs::os::*;
+    /// use osal_rs::utils::OsalRsBool;
+    ///
+    /// let raw_mutex = RawMutex::new().unwrap();
+    ///
+    /// if raw_mutex.lock() == OsalRsBool::True {
     ///     // Protected code here
     ///     raw_mutex.unlock();
     /// }
@@ -129,9 +137,14 @@ where
     ///
     /// # Examples
     ///
-    /// ```ignore
+    /// ```
+    /// use osal_rs::os::*;
+    /// use osal_rs::utils::OsalRsBool;
+    ///
+    /// let raw_mutex = RawMutex::new().unwrap();
+    ///
     /// // In ISR handler
-    /// if raw_mutex.lock_from_isr() {
+    /// if raw_mutex.lock_from_isr() == OsalRsBool::True {
     ///     // Quick critical operation
     ///     raw_mutex.unlock_from_isr();
     /// }
@@ -174,10 +187,17 @@ where
     ///
     /// # Examples
     ///
-    /// ```ignore
-    /// let mut raw_mutex = create_raw_mutex();
+    /// ```
+    /// use osal_rs::os::*;
+    ///
+    /// let mut raw_mutex = RawMutex::new().unwrap();
+    ///
     /// // Use mutex...
+    /// raw_mutex.lock();
+    /// raw_mutex.unlock();
+    ///
     /// raw_mutex.delete();
+    /// assert!(raw_mutex.is_null());
     /// ```
     fn delete(&mut self);
 }
@@ -211,18 +231,20 @@ pub trait MutexGuard<'a, T: ?Sized + 'a> {
     ///
     /// # Examples
     ///
-    /// ```ignore
-    /// use osal_rs::os::Mutex;
-    /// use osal_rs::traits::MutexGuard;
-    /// 
+    /// ```
+    /// use osal_rs::os::*;
+    ///
     /// let mutex = Mutex::new(0);
-    /// let mut guard = mutex.lock().unwrap();
-    /// 
-    /// // Update with new value
-    /// guard.update(&42);
-    /// assert_eq!(*guard, 42);
-    /// 
-    /// // Lock is automatically released when guard drops
+    ///
+    /// {
+    ///     let mut guard = mutex.lock().unwrap();
+    ///
+    ///     // Update with new value
+    ///     guard.update(&42);
+    ///     assert_eq!(*guard, 42);
+    /// } // Lock is automatically released when guard drops
+    ///
+    /// assert_eq!(*mutex.lock().unwrap(), 42);
     /// ```
     fn update(&mut self, t: &T)
     where
@@ -243,22 +265,28 @@ pub trait MutexGuard<'a, T: ?Sized + 'a> {
 ///
 /// # Examples
 ///
-/// ```ignore
-/// use osal_rs::os::Mutex;
+/// ```
+/// use osal_rs::os::*;
+/// use std::sync::Arc;
 ///
-/// let counter = Mutex::new(0);
+/// let counter = Arc::new(Mutex::new(0));
+/// let shared = counter.clone();
 ///
 /// // Task 1
-/// {
-///     let mut guard = counter.lock().unwrap();
+/// let mut thread = Thread::new("incrementer", 1024, 1);
+/// let worker = thread.spawn_simple(move || {
+///     let mut guard = shared.lock().unwrap();
 ///     *guard += 1;
-/// } // Lock released here
+///     Ok(Arc::new(()))
+/// }).unwrap();
+///
+/// worker.delete(); // waits for task 1 to finish
 ///
 /// // Task 2
 /// {
 ///     let guard = counter.lock().unwrap();
-///     println!("Counter: {}", *guard);
-/// }
+///     assert_eq!(*guard, 1);
+/// } // Lock released here
 /// ```
 pub trait Mutex<T: ?Sized> {
     /// The guard type for normal mutex locks
@@ -283,12 +311,17 @@ pub trait Mutex<T: ?Sized> {
     ///
     /// # Examples
     ///
-    /// ```ignore
+    /// ```
+    /// use osal_rs::os::*;
+    ///
     /// let mutex = Mutex::new(vec![1, 2, 3]);
     ///
-    /// let mut guard = mutex.lock().unwrap();
-    /// guard.push(4);
-    /// // Lock automatically released when guard goes out of scope
+    /// {
+    ///     let mut guard = mutex.lock().unwrap();
+    ///     guard.push(4);
+    /// } // Lock automatically released when guard goes out of scope
+    ///
+    /// assert_eq!(*mutex.lock().unwrap(), vec![1, 2, 3, 4]);
     /// ```
     fn lock(&self) -> Result<Self::Guard<'_>>;
     
@@ -305,7 +338,11 @@ pub trait Mutex<T: ?Sized> {
     ///
     /// # Examples
     ///
-    /// ```ignore
+    /// ```
+    /// use osal_rs::os::*;
+    ///
+    /// let mutex = Mutex::new(0);
+    ///
     /// // In interrupt handler
     /// match mutex.lock_from_isr() {
     ///     Ok(mut guard) => {
@@ -316,6 +353,8 @@ pub trait Mutex<T: ?Sized> {
     ///         // Lock unavailable, skip or retry later
     ///     }
     /// }
+    ///
+    /// assert_eq!(*mutex.lock().unwrap(), 1);
     /// ```
     fn lock_from_isr(&self) -> Result<Self::GuardFromIsr<'_>>;
 
@@ -331,7 +370,9 @@ pub trait Mutex<T: ?Sized> {
     ///
     /// # Examples
     ///
-    /// ```ignore
+    /// ```
+    /// use osal_rs::os::*;
+    ///
     /// let mutex = Mutex::new(vec![1, 2, 3]);
     ///
     /// let data = mutex.into_inner().unwrap();
@@ -354,11 +395,15 @@ pub trait Mutex<T: ?Sized> {
     ///
     /// # Examples
     ///
-    /// ```ignore
+    /// ```
+    /// use osal_rs::os::*;
+    ///
     /// let mut mutex = Mutex::new(0);
     ///
     /// // No lock needed - we have exclusive access
     /// *mutex.get_mut() = 42;
+    ///
+    /// assert_eq!(*mutex.lock().unwrap(), 42);
     /// ```
     fn get_mut(&mut self) -> &mut T;
 }
@@ -373,9 +418,9 @@ pub trait Mutex<T: ?Sized> {
 ///
 /// # Examples
 ///
-/// ```ignore
-/// use osal_rs::traits::RawMutexGuard;
-/// use osal_rs::{access_static_option, os::RawMutex};
+/// ```
+/// use osal_rs::access_static_option;
+/// use osal_rs::os::*;
 ///
 /// static mut MUTEX: Option<RawMutex> = None;
 ///
@@ -383,6 +428,12 @@ pub trait Mutex<T: ?Sized> {
 ///     let _lock = RawMutexGuard::acquire(access_static_option!(MUTEX));
 ///     // protected code here, lock released when `_lock` drops
 /// }
+///
+/// // Initialization phase: create the mutex before anyone locks it.
+/// unsafe { MUTEX = Some(RawMutex::new().unwrap()) };
+///
+/// critical_section();
+/// critical_section(); // the previous lock was released on drop
 /// ```
 pub struct RawMutexGuard<M: RawMutex + 'static>(&'static M, bool);
 

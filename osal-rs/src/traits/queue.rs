@@ -93,16 +93,17 @@ use crate::utils::Result;
 ///
 /// # Examples
 ///
-/// ```ignore
-/// use osal_rs::os::Queue;
-/// 
+/// ```
+/// use osal_rs::os::*;
+///
 /// // Create queue: 10 slots, 32 bytes per message
 /// let queue = Queue::new(10, 32).unwrap();
-/// 
-/// // Producer sends data
-/// let data = [1, 2, 3, 4];
+///
+/// // Producer sends data - a whole message-sized slot at a time
+/// let mut data = [0u8; 32];
+/// data[..4].copy_from_slice(&[1, 2, 3, 4]);
 /// queue.post(&data, 100).unwrap();
-/// 
+///
 /// // Consumer receives data
 /// let mut buffer = [0u8; 32];
 /// queue.fetch(&mut buffer, 100).unwrap();
@@ -135,14 +136,22 @@ pub trait Queue {
     ///
     /// # Examples
     ///
-    /// ```ignore
+    /// ```
+    /// use osal_rs::os::*;
+    ///
+    /// let queue = Queue::new(4, 16).unwrap();
+    /// queue.post(&[0xAAu8; 16], 100).unwrap();
+    ///
     /// let mut buffer = [0u8; 16];
-    /// 
+    ///
     /// // Wait up to 1000 ticks
     /// match queue.fetch(&mut buffer, 1000) {
-    ///     Ok(()) => println!("Received: {:?}", buffer),
-    ///     Err(_) => println!("Timeout - no message available"),
+    ///     Ok(()) => assert_eq!(buffer, [0xAAu8; 16]),
+    ///     Err(_) => panic!("timeout - no message available"),
     /// }
+    ///
+    /// // The queue is empty again, so this one does time out.
+    /// assert!(queue.fetch(&mut buffer, 10).is_err());
     /// ```
     fn fetch(&self, buffer: &mut [u8], time: TickType) -> Result<()>;
 
@@ -162,12 +171,21 @@ pub trait Queue {
     ///
     /// # Examples
     ///
-    /// ```ignore
+    /// ```
+    /// use osal_rs::os::*;
+    ///
+    /// let queue = Queue::new(4, 16).unwrap();
+    /// queue.post(&[7u8; 16], 100).unwrap();
+    ///
     /// // In interrupt handler
     /// let mut buffer = [0u8; 16];
     /// if queue.fetch_from_isr(&mut buffer).is_ok() {
     ///     // Process message quickly
+    ///     assert_eq!(buffer, [7u8; 16]);
     /// }
+    ///
+    /// // Nothing left: reported immediately instead of blocking the "ISR".
+    /// assert!(queue.fetch_from_isr(&mut buffer).is_err());
     /// ```
     fn fetch_from_isr(&self, buffer: &mut [u8]) -> Result<()>;
     
@@ -192,14 +210,21 @@ pub trait Queue {
     ///
     /// # Examples
     ///
-    /// ```ignore
-    /// let data = [1, 2, 3, 4];
-    /// 
+    /// ```
+    /// use osal_rs::os::*;
+    ///
+    /// // Room for a single 4-byte message.
+    /// let queue = Queue::new(1, 4).unwrap();
+    /// let data = [1u8, 2, 3, 4];
+    ///
     /// // Try to send, wait up to 1000 ticks if full
     /// match queue.post(&data, 1000) {
-    ///     Ok(()) => println!("Sent successfully"),
-    ///     Err(_) => println!("Queue full, couldn't send"),
+    ///     Ok(()) => (), // sent successfully
+    ///     Err(_) => panic!("queue full, couldn't send"),
     /// }
+    ///
+    /// // The only slot is taken and nobody is fetching: this one times out.
+    /// assert!(queue.post(&data, 10).is_err());
     /// ```
     fn post(&self, item: &[u8], time: TickType) -> Result<()>;
     
@@ -219,12 +244,19 @@ pub trait Queue {
     ///
     /// # Examples
     ///
-    /// ```ignore
+    /// ```
+    /// use osal_rs::os::*;
+    ///
+    /// let queue = Queue::new(1, 2).unwrap();
+    ///
     /// // In interrupt handler
-    /// let data = [0x42, 0x13];
+    /// let data = [0x42u8, 0x13];
     /// if queue.post_from_isr(&data).is_err() {
     ///     // Queue full, message dropped
     /// }
+    ///
+    /// // The single slot is now taken, so the next one really is dropped.
+    /// assert!(queue.post_from_isr(&data).is_err());
     /// ```
     fn post_from_isr(&self, item: &[u8]) -> Result<()>;
 
@@ -237,10 +269,13 @@ pub trait Queue {
     ///
     /// # Examples
     ///
-    /// ```ignore
+    /// ```
+    /// use osal_rs::os::*;
+    ///
     /// let mut queue = Queue::new(10, 16).unwrap();
     /// // Use queue...
     /// queue.delete();
+    /// assert!(queue.is_null());
     /// ```
     fn delete(&mut self);
 }
@@ -267,33 +302,63 @@ pub trait Queue {
 ///
 /// # Examples
 ///
-/// ```ignore
-/// use osal_rs::os::QueueStreamed;
-/// use osal_rs::traits::Deserialize;
-/// 
-/// #[derive(Clone, Copy)]
-/// struct SensorData {
-///     id: u32,
-///     temperature: i16,
-///     humidity: u8,
-/// }
-/// 
-/// impl Deserialize for SensorData {
-///     fn from_bytes(bytes: &[u8]) -> Result<Self> {
-///         // Deserialization logic
+#[cfg_attr(not(feature = "serde"), doc = "```")]
+#[cfg_attr(feature = "serde", doc = "```ignore")]
+/// use osal_rs::os::*;
+/// use osal_rs::utils::{Error, Result};
+///
+/// // Wire format: 4 bytes of `id`, 2 of `temperature`, 1 of `humidity`,
+/// // little-endian. Keeping the message in its encoded form is what lets
+/// // `to_bytes` hand out a borrowed slice.
+/// const SENSOR_DATA_LEN: usize = 7;
+///
+/// #[derive(Clone, Copy, Debug, PartialEq)]
+/// struct SensorData([u8; SENSOR_DATA_LEN]);
+///
+/// impl SensorData {
+///     fn new(id: u32, temperature: i16, humidity: u8) -> Self {
+///         let mut raw = [0u8; SENSOR_DATA_LEN];
+///         raw[..4].copy_from_slice(&id.to_le_bytes());
+///         raw[4..6].copy_from_slice(&temperature.to_le_bytes());
+///         raw[6] = humidity;
+///         Self(raw)
+///     }
+///
+///     fn id(&self) -> u32 {
+///         u32::from_le_bytes(self.0[..4].try_into().unwrap())
 ///     }
 /// }
-/// 
-/// let queue = QueueStreamed::<SensorData>::new(10, size_of::<SensorData>()).unwrap();
-/// 
+///
+/// impl BytesHasLen for SensorData {
+///     fn len(&self) -> usize { SENSOR_DATA_LEN }
+/// }
+///
+/// impl Serialize for SensorData {
+///     fn to_bytes(&self) -> &[u8] { &self.0 }
+/// }
+///
+/// impl Deserialize for SensorData {
+///     fn from_bytes(bytes: &[u8]) -> Result<Self> {
+///         if bytes.len() < SENSOR_DATA_LEN {
+///             return Err(Error::OutOfIndex);
+///         }
+///         let mut raw = [0u8; SENSOR_DATA_LEN];
+///         raw.copy_from_slice(&bytes[..SENSOR_DATA_LEN]);
+///         Ok(Self(raw))
+///     }
+/// }
+///
+/// let queue = QueueStreamed::<SensorData>::new(10, SENSOR_DATA_LEN as _).unwrap();
+///
 /// // Producer
-/// let data = SensorData { id: 1, temperature: 235, humidity: 65 };
+/// let data = SensorData::new(1, 235, 65);
 /// queue.post(&data, 100).unwrap();
-/// 
+///
 /// // Consumer
-/// let mut received = SensorData { id: 0, temperature: 0, humidity: 0 };
+/// let mut received = SensorData::new(0, 0, 0);
 /// queue.fetch(&mut received, 100).unwrap();
-/// assert_eq!(received.id, 1);
+/// assert_eq!(received.id(), 1);
+/// assert_eq!(received, data);
 /// ```
 
 pub trait QueueStreamed<T> 
@@ -321,12 +386,32 @@ where
     ///
     /// # Examples
     ///
-    /// ```ignore
+    #[cfg_attr(not(feature = "serde"), doc = "```")]
+    #[cfg_attr(feature = "serde", doc = "```ignore")]
+    /// use osal_rs::os::*;
+    /// # use osal_rs::utils::{Error, Result};
+    /// # #[derive(Clone, Copy, Debug, Default, PartialEq)]
+    /// # struct Message([u8; 4]);
+    /// # impl Message {
+    /// #     fn new(id: u32) -> Self { Self(id.to_le_bytes()) }
+    /// #     fn id(&self) -> u32 { u32::from_le_bytes(self.0) }
+    /// # }
+    /// # impl BytesHasLen for Message { fn len(&self) -> usize { 4 } }
+    /// # impl Serialize for Message { fn to_bytes(&self) -> &[u8] { &self.0 } }
+    /// # impl Deserialize for Message {
+    /// #     fn from_bytes(bytes: &[u8]) -> Result<Self> {
+    /// #         if bytes.len() < 4 { return Err(Error::OutOfIndex); }
+    /// #         Ok(Self(bytes[..4].try_into().unwrap()))
+    /// #     }
+    /// # }
+    /// let queue = QueueStreamed::<Message>::new(4, 4).unwrap();
+    /// queue.post(&Message::new(42), 100).unwrap();
+    ///
     /// let mut msg = Message::default();
-    /// 
+    ///
     /// match queue.fetch(&mut msg, 1000) {
-    ///     Ok(()) => println!("Received message: {:?}", msg),
-    ///     Err(_) => println!("No message available"),
+    ///     Ok(()) => assert_eq!(msg.id(), 42),
+    ///     Err(_) => panic!("no message available"),
     /// }
     /// ```
     fn fetch(&self, buffer: &mut T, time: TickType) -> Result<()>;
@@ -347,12 +432,36 @@ where
     ///
     /// # Examples
     ///
-    /// ```ignore
+    #[cfg_attr(not(feature = "serde"), doc = "```")]
+    #[cfg_attr(feature = "serde", doc = "```ignore")]
+    /// use osal_rs::os::*;
+    /// # use osal_rs::utils::{Error, Result};
+    /// # #[derive(Clone, Copy, Debug, Default, PartialEq)]
+    /// # struct Message([u8; 4]);
+    /// # impl Message {
+    /// #     fn new(id: u32) -> Self { Self(id.to_le_bytes()) }
+    /// #     fn id(&self) -> u32 { u32::from_le_bytes(self.0) }
+    /// # }
+    /// # impl BytesHasLen for Message { fn len(&self) -> usize { 4 } }
+    /// # impl Serialize for Message { fn to_bytes(&self) -> &[u8] { &self.0 } }
+    /// # impl Deserialize for Message {
+    /// #     fn from_bytes(bytes: &[u8]) -> Result<Self> {
+    /// #         if bytes.len() < 4 { return Err(Error::OutOfIndex); }
+    /// #         Ok(Self(bytes[..4].try_into().unwrap()))
+    /// #     }
+    /// # }
+    /// let queue = QueueStreamed::<Message>::new(4, 4).unwrap();
+    /// queue.post(&Message::new(7), 100).unwrap();
+    ///
     /// // In interrupt handler
     /// let mut msg = Message::default();
     /// if queue.fetch_from_isr(&mut msg).is_ok() {
     ///     // Process message
+    ///     assert_eq!(msg.id(), 7);
     /// }
+    ///
+    /// // Queue empty: reported immediately instead of blocking the "ISR".
+    /// assert!(queue.fetch_from_isr(&mut msg).is_err());
     /// ```
     fn fetch_from_isr(&self, buffer: &mut T) -> Result<()>;
     
@@ -377,13 +486,35 @@ where
     ///
     /// # Examples
     ///
-    /// ```ignore
-    /// let msg = Message { id: 42, value: 100 };
-    /// 
+    #[cfg_attr(not(feature = "serde"), doc = "```")]
+    #[cfg_attr(feature = "serde", doc = "```ignore")]
+    /// use osal_rs::os::*;
+    /// # use osal_rs::utils::{Error, Result};
+    /// # #[derive(Clone, Copy, Debug, Default, PartialEq)]
+    /// # struct Message([u8; 4]);
+    /// # impl Message {
+    /// #     fn new(id: u32) -> Self { Self(id.to_le_bytes()) }
+    /// #     fn id(&self) -> u32 { u32::from_le_bytes(self.0) }
+    /// # }
+    /// # impl BytesHasLen for Message { fn len(&self) -> usize { 4 } }
+    /// # impl Serialize for Message { fn to_bytes(&self) -> &[u8] { &self.0 } }
+    /// # impl Deserialize for Message {
+    /// #     fn from_bytes(bytes: &[u8]) -> Result<Self> {
+    /// #         if bytes.len() < 4 { return Err(Error::OutOfIndex); }
+    /// #         Ok(Self(bytes[..4].try_into().unwrap()))
+    /// #     }
+    /// # }
+    /// // Room for a single message.
+    /// let queue = QueueStreamed::<Message>::new(1, 4).unwrap();
+    /// let msg = Message::new(42);
+    ///
     /// match queue.post(&msg, 1000) {
-    ///     Ok(()) => println!("Sent successfully"),
-    ///     Err(_) => println!("Failed to send"),
+    ///     Ok(()) => (), // sent successfully
+    ///     Err(_) => panic!("failed to send"),
     /// }
+    ///
+    /// // The only slot is taken and nobody is fetching: this one times out.
+    /// assert!(queue.post(&msg, 10).is_err());
     /// ```
     fn post(&self, item: &T, time: TickType) -> Result<()>;
 
@@ -403,12 +534,34 @@ where
     ///
     /// # Examples
     ///
-    /// ```ignore
+    #[cfg_attr(not(feature = "serde"), doc = "```")]
+    #[cfg_attr(feature = "serde", doc = "```ignore")]
+    /// use osal_rs::os::*;
+    /// # use osal_rs::utils::{Error, Result};
+    /// # #[derive(Clone, Copy, Debug, Default, PartialEq)]
+    /// # struct Message([u8; 4]);
+    /// # impl Message {
+    /// #     fn new(id: u32) -> Self { Self(id.to_le_bytes()) }
+    /// #     fn id(&self) -> u32 { u32::from_le_bytes(self.0) }
+    /// # }
+    /// # impl BytesHasLen for Message { fn len(&self) -> usize { 4 } }
+    /// # impl Serialize for Message { fn to_bytes(&self) -> &[u8] { &self.0 } }
+    /// # impl Deserialize for Message {
+    /// #     fn from_bytes(bytes: &[u8]) -> Result<Self> {
+    /// #         if bytes.len() < 4 { return Err(Error::OutOfIndex); }
+    /// #         Ok(Self(bytes[..4].try_into().unwrap()))
+    /// #     }
+    /// # }
+    /// let queue = QueueStreamed::<Message>::new(1, 4).unwrap();
+    ///
     /// // In interrupt handler
-    /// let msg = Message { id: 1, value: 42 };
+    /// let msg = Message::new(1);
     /// if queue.post_from_isr(&msg).is_err() {
     ///     // Queue full, message dropped
     /// }
+    ///
+    /// // The single slot is now taken, so the next one really is dropped.
+    /// assert!(queue.post_from_isr(&msg).is_err());
     /// ```
     fn post_from_isr(&self, item: &T) -> Result<()>;
 
@@ -421,9 +574,29 @@ where
     ///
     /// # Examples
     ///
-    /// ```ignore
-    /// let mut queue = QueueStreamed::<Message>::new(10, size_of::<Message>()).unwrap();
+    #[cfg_attr(not(feature = "serde"), doc = "```")]
+    #[cfg_attr(feature = "serde", doc = "```ignore")]
+    /// use osal_rs::os::*;
+    /// # use osal_rs::utils::{Error, Result};
+    /// # #[derive(Clone, Copy, Debug, Default, PartialEq)]
+    /// # struct Message([u8; 4]);
+    /// # impl Message {
+    /// #     fn new(id: u32) -> Self { Self(id.to_le_bytes()) }
+    /// #     fn id(&self) -> u32 { u32::from_le_bytes(self.0) }
+    /// # }
+    /// # impl BytesHasLen for Message { fn len(&self) -> usize { 4 } }
+    /// # impl Serialize for Message { fn to_bytes(&self) -> &[u8] { &self.0 } }
+    /// # impl Deserialize for Message {
+    /// #     fn from_bytes(bytes: &[u8]) -> Result<Self> {
+    /// #         if bytes.len() < 4 { return Err(Error::OutOfIndex); }
+    /// #         Ok(Self(bytes[..4].try_into().unwrap()))
+    /// #     }
+    /// # }
+    /// let mut queue = QueueStreamed::<Message>::new(10, core::mem::size_of::<Message>() as _).unwrap();
+    ///
     /// // Use queue...
+    /// queue.post(&Message::new(1), 100).unwrap();
+    ///
     /// queue.delete();
     /// ```
     fn delete(&mut self);

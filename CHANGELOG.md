@@ -11,6 +11,16 @@ together.
 
 ## [Unreleased]
 
+### Added
+
+- `Bytes::into_vec` and `From<Bytes<SIZE>> for Vec<u8>`, copying the buffer
+  content up to the first null byte (all `SIZE` bytes when the buffer is full).
+  They are the owning counterpart of `Bytes::as_raw_bytes` — note that the
+  `to_vec()` reached through `Deref` on `[u8; SIZE]` copies the whole array,
+  zero padding included. `bytes.into_vec()` needs no type annotation, while the
+  conversion is available as both `Vec::from(bytes)` and
+  `let vec: Vec<u8> = bytes.into()`.
+
 ### Documentation
 
 - The trait-level doc examples are compiled and run as doctests instead of being

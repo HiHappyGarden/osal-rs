@@ -340,6 +340,64 @@ fn test_bytes_trait_conversions() -> Result<()> {
 }
 
 #[test]
+fn test_bytes_into_vec() -> Result<()> {
+    log_info!(TAG, "Starting test_bytes_into_vec");
+
+    // The zero padding is stripped at the first null terminator.
+    let padded: Bytes<16> = "Hello".into();
+    let vec: Vec<u8> = padded.into();
+    assert_eq!(vec.as_slice(), b"Hello");
+    assert_eq!(vec.len(), 5);
+
+    // `From` and the blanket `Into` must agree, and since `Bytes` is `Copy`
+    // the source buffer is still usable afterwards.
+    let from_vec = Vec::from(padded);
+    let into_vec: Vec<u8> = padded.into();
+    assert_eq!(from_vec, into_vec);
+    assert_eq!(padded.as_str(), "Hello");
+
+    // The inherent `into_vec` yields the same vector without any type
+    // annotation, while the `to_vec()` reached through `Deref` on `[u8; SIZE]`
+    // copies the whole padded array instead.
+    assert_eq!(padded.into_vec(), from_vec);
+    assert_eq!(padded.to_vec().len(), 16);
+    assert_eq!(padded.to_vec()[5], 0);
+
+    // The owning conversion sees exactly the borrowed `as_raw_bytes` view.
+    assert_eq!(into_vec.as_slice(), padded.as_raw_bytes());
+    assert_eq!(into_vec.len(), padded.len());
+
+    // A completely filled buffer has no terminator: every byte is kept.
+    let full = Bytes::<5>::from_str("Hello");
+    let full_vec: Vec<u8> = full.into();
+    assert_eq!(full_vec.len(), 5);
+    assert_eq!(full_vec.as_slice(), b"Hello");
+
+    // Truncating construction: only the first `SIZE` bytes survive, and none
+    // of them is zero, so the whole buffer is converted.
+    let truncated: Vec<u8> = Bytes::<3>::from_str("Hello").into();
+    assert_eq!(truncated.as_slice(), b"Hel");
+
+    // An empty buffer yields an empty vector.
+    let empty: Vec<u8> = Bytes::<8>::new().into();
+    assert!(empty.is_empty());
+
+    // Binary payloads stop at the first embedded zero, so bytes after it are
+    // not reachable through this conversion.
+    let binary = Bytes::<8>::from_bytes(&[0xDE, 0xAD, 0x00, 0xBE, 0xEF]).into_vec();
+    assert_eq!(binary.as_slice(), &[0xDEu8, 0xAD]);
+
+    // Invalid UTF-8 is preserved byte for byte: no string round-trip happens.
+    let invalid = Bytes::<2>::from_bytes(&[0xFF, 0xFE]).into_vec();
+    assert_eq!(invalid.as_slice(), &[0xFFu8, 0xFE]);
+
+    log_debug!(TAG, "converted {} bytes out of {}", into_vec.len(), padded.size());
+
+    log_info!(TAG, "test_bytes_into_vec PASSED");
+    Ok(())
+}
+
+#[test]
 fn test_as_sync_str_trait_object() -> Result<()> {
     log_info!(TAG, "Starting test_as_sync_str_trait_object");
 

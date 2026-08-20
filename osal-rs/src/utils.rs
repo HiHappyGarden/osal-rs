@@ -876,6 +876,112 @@ impl<const SIZE: usize> Default for Bytes<SIZE> {
     }
 }
 
+/// Conversion from a fixed-size [`Bytes`] buffer into a heap-allocated `Vec<u8>`.
+///
+/// The conversion follows the same C string semantics used by the rest of the
+/// [`Bytes`] API: the buffer is considered logically terminated by the first `0`
+/// byte, so only the bytes *before* that terminator are copied into the vector.
+/// When no `0` byte is present, the whole buffer (all `SIZE` bytes) is copied.
+///
+/// This is the owning counterpart of [`Bytes::as_raw_bytes`], which returns the
+/// same content as a borrowed slice without allocating. To get the full padded
+/// array instead, use [`Bytes::to_bytes`] or the [`Deref`] to `&[u8; SIZE]`.
+///
+/// Thanks to the blanket `Into` implementation of the standard library, both
+/// call styles are available; and since [`Bytes`] is `Copy`, the source buffer
+/// stays usable after the conversion. When the target type is not already known
+/// from the context, [`Bytes::into_vec`] avoids the type annotation altogether:
+///
+/// ```
+/// use osal_rs::utils::Bytes;
+///
+/// let bytes: Bytes<16> = "Hello".into();
+///
+/// let from_vec = Vec::from(bytes);
+/// let into_vec: Vec<u8> = bytes.into();
+/// let inherent = bytes.into_vec(); // no annotation needed
+///
+/// assert_eq!(from_vec, into_vec);
+/// assert_eq!(from_vec, inherent);
+/// assert_eq!(bytes.as_str(), "Hello"); // `bytes` was copied, not moved
+/// ```
+impl<const SIZE: usize> From<Bytes<SIZE>> for Vec<u8> {
+    /// Consumes the buffer and returns its meaningful bytes as a `Vec<u8>`.
+    ///
+    /// # Parameters
+    ///
+    /// * `bytes` - The buffer to convert; it is consumed by the conversion
+    ///
+    /// # Returns
+    ///
+    /// A newly allocated vector holding the bytes up to (but excluding) the first
+    /// `0` byte, or all `SIZE` bytes when the buffer is not null-terminated.
+    ///
+    /// # Examples
+    ///
+    /// Trailing padding is dropped at the null terminator:
+    ///
+    /// ```
+    /// use osal_rs::utils::Bytes;
+    ///
+    /// let bytes: Bytes<16> = "Hello".into();
+    /// let vec: Vec<u8> = bytes.into();
+    ///
+    /// assert_eq!(vec, b"Hello".to_vec());
+    /// assert_eq!(vec.len(), 5); // not 16: the zero padding is stripped
+    /// ```
+    ///
+    /// A completely filled buffer has no terminator, so every byte is kept:
+    ///
+    /// ```
+    /// use osal_rs::utils::Bytes;
+    ///
+    /// let bytes = Bytes::<5>::from_str("Hello");
+    /// let vec = Vec::from(bytes);
+    ///
+    /// assert_eq!(vec, vec![b'H', b'e', b'l', b'l', b'o']);
+    /// assert_eq!(vec.len(), 5);
+    /// ```
+    ///
+    /// An empty buffer yields an empty vector:
+    ///
+    /// ```
+    /// use osal_rs::utils::Bytes;
+    ///
+    /// let bytes = Bytes::<8>::new();
+    /// let vec: Vec<u8> = bytes.into();
+    ///
+    /// assert!(vec.is_empty());
+    /// ```
+    ///
+    /// Binary payloads stop at the first embedded `0`, which makes this
+    /// conversion unsuitable for data containing zero bytes:
+    ///
+    /// ```
+    /// use osal_rs::utils::Bytes;
+    ///
+    /// let bytes = Bytes::<8>::from_bytes(&[0xDE, 0xAD, 0x00, 0xBE, 0xEF]);
+    /// let vec: Vec<u8> = bytes.into();
+    ///
+    /// assert_eq!(vec, vec![0xDE, 0xAD]); // 0xBE and 0xEF are not reachable
+    /// ```
+    ///
+    /// Typical use case: handing an owned buffer to an API expecting `Vec<u8>`:
+    ///
+    /// ```
+    /// use osal_rs::utils::Bytes;
+    ///
+    /// fn send(payload: Vec<u8>) -> usize { payload.len() }
+    ///
+    /// let name: Bytes<32> = "device-01".into();
+    /// assert_eq!(send(name.into()), 9);
+    /// ```
+    #[inline]
+    fn from(bytes: Bytes<SIZE>) -> Self {
+        bytes.into_vec()
+    }
+}
+
 impl<const SIZE: usize> Bytes<SIZE> {
     /// Creates a new `Bytes` instance filled with zeros.
     ///
@@ -1651,6 +1757,63 @@ impl<const SIZE: usize> Bytes<SIZE> {
     #[inline]
     pub fn as_raw_bytes(&self) -> &[u8] {
         &self.0[..self.len()]
+    }
+
+    /// Copies the content of the buffer into a heap-allocated `Vec<u8>`.
+    ///
+    /// This is the owning counterpart of [`as_raw_bytes`](Self::as_raw_bytes):
+    /// the bytes up to the first null terminator are copied, and the trailing
+    /// zero padding is dropped. If the buffer is completely filled there is no
+    /// terminator, so all `SIZE` bytes are copied.
+    ///
+    /// It does the same work as the [`From<Bytes<SIZE>>`](Vec) conversion, but
+    /// without needing a type annotation: prefer `bytes.into_vec()` over
+    /// `let vec: Vec<u8> = bytes.into();`.
+    ///
+    /// # Returns
+    ///
+    /// A newly allocated vector holding the content of the buffer.
+    ///
+    /// # Note
+    ///
+    /// Do not confuse this with `to_vec()`, which is reached through [`Deref`]
+    /// on `[u8; SIZE]` and copies the *whole* array, zero padding included.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use osal_rs::utils::Bytes;
+    ///
+    /// let bytes = Bytes::<16>::from_str("Hello");
+    ///
+    /// // No type annotation needed.
+    /// let vec = bytes.into_vec();
+    /// assert_eq!(vec, b"Hello".to_vec());
+    /// assert_eq!(vec.len(), 5);
+    ///
+    /// // The `Deref`-provided `to_vec()` keeps the padding instead.
+    /// assert_eq!(bytes.to_vec().len(), 16);
+    ///
+    /// // Same result as the `From`/`Into` conversion.
+    /// let converted: Vec<u8> = bytes.into();
+    /// assert_eq!(vec, converted);
+    /// ```
+    ///
+    /// A completely filled buffer keeps every byte, an empty one yields an
+    /// empty vector:
+    ///
+    /// ```
+    /// use osal_rs::utils::Bytes;
+    ///
+    /// assert_eq!(Bytes::<5>::from_str("Hello").into_vec().len(), 5);
+    /// assert!(Bytes::<8>::new().into_vec().is_empty());
+    /// ```
+    #[inline]
+    pub fn into_vec(self) -> Vec<u8> {
+        // The first zero byte marks the logical end of the buffer; if there is
+        // none, the buffer is full and every byte is meaningful.
+        let len = self.0.iter().position(|&b| b == 0).unwrap_or(SIZE);
+        self.0[..len].to_vec()
     }
 
     /// Returns the fixed size of the buffer.

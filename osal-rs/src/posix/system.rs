@@ -45,6 +45,7 @@
 //! ```
 
 use core::ffi::c_long;
+use core::ffi::c_int;
 use core::ops::Deref;
 use core::time::Duration;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -53,7 +54,7 @@ use alloc::vec::Vec;
 
 use crate::os::ThreadFn;
 use crate::posix::ffi::{
-    CLOCK_MONOTONIC, PTHREAD_ONCE_INIT, _SC_AVPHYS_PAGES, _SC_PAGESIZE, clock_gettime, nanosleep, pthread_once, pthread_once_t, pthread_self, sched_yield, sysconf, timespec,
+    self, _SC_AVPHYS_PAGES, _SC_PAGESIZE, CLOCK_MONOTONIC, PTHREAD_ONCE_INIT, clock_gettime, nanosleep, pthread_once, pthread_once_t, pthread_self, sched_yield, sysconf, timespec,
 };
 use crate::posix::thread::{Thread, all_registered_threads, registered_thread_count};
 use crate::posix::types::{BaseType, TickType, UBaseType};
@@ -61,6 +62,11 @@ use crate::traits::{SystemFn, ThreadMetadata, ThreadState, ToTick};
 use crate::utils::OsalRsBool;
 
 static RUN: AtomicBool = AtomicBool::new(true);
+
+// Only an atomic store happens here, so it is safe to call from a signal handler.
+extern "C" fn on_terminate(_signum: c_int) {
+    System::stop();
+}
 
 /// Snapshot returned by [`System::get_all_thread`]: every thread spawned
 /// through this crate's [`crate::os::Thread`] API (plus the calling thread
@@ -198,6 +204,12 @@ impl SystemFn for System {
     /// System::start(); // blocks here until `stop()` runs above
     /// ```
     fn start() {
+
+        unsafe {
+            ffi::signal(ffi::SIGINT, on_terminate as *const () as usize);
+            ffi::signal(ffi::SIGTERM, on_terminate as *const () as usize);
+        }
+
         loop {
             if !RUN.load(Ordering::Acquire) {
                 break;
@@ -257,6 +269,7 @@ impl SystemFn for System {
 
     /// Signals [`System::start`]'s spin loop to return. See
     /// [`System::start`] for a complete example.
+    #[inline(always)]
     fn stop() {
         RUN.store(false, Ordering::Release);
     }

@@ -456,6 +456,16 @@ pub(super) const SIGALRM: c_int = 14;
 /// `asm-generic/signal.h`, not an arch-specific ABI detail).
 pub(super) const SIG_BLOCK: c_int = 0;
 
+/// Interrupt signal (`SIGINT`, `bits/signum-generic.h`). Value 2 is part
+/// of Linux's base (non-real-time) signal numbering, stable across every
+/// architecture this crate supports.
+pub(super) const SIGINT: c_int = 2;
+
+/// Termination signal (`SIGTERM`, `bits/signum-generic.h`). Value 15 is part
+/// of Linux's base (non-real-time) signal numbering, stable across every
+/// architecture this crate supports.
+pub(super) const SIGTERM: c_int = 15;
+
 /// Mutex type: the owning thread may lock it again without deadlocking,
 /// as long as it unlocks it the same number of times (`<pthread.h>`,
 /// `pthread_mutexattr_settype(3)`). Value is glibc's generic namespace,

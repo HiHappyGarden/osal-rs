@@ -11,8 +11,16 @@ together.
 
 ## [Unreleased]
 
+## [1.2.1] - 2026-09-12
+
 ### Added
 
+- `Error<'a>` implements `core::error::Error`, so it can be boxed into
+  `Box<dyn Error>` and propagated with `?` from functions returning a
+  `dyn Error`. It has no underlying cause: `source()` returns `None`.
+- `From<std::io::Error> for Error<'static>` (`posix` feature only): a
+  `std::io::Error` propagated with `?` becomes `Error::UnhandledOwned` with the
+  message prefixed by `io error: `.
 - `Bytes::into_vec` and `From<Bytes<SIZE>> for Vec<u8>`, copying the buffer
   content up to the first null byte (all `SIZE` bytes when the buffer is full).
   They are the owning counterpart of `Bytes::as_raw_bytes` — note that the
@@ -20,6 +28,14 @@ together.
   zero padding included. `bytes.into_vec()` needs no type annotation, while the
   conversion is available as both `Vec::from(bytes)` and
   `let vec: Vec<u8> = bytes.into()`.
+
+### Changed
+
+- POSIX `System::start` installs handlers for `SIGINT` and `SIGTERM` that call
+  `System::stop`, so `Ctrl-C` or `kill` make `start()` return instead of
+  terminating the process outright, letting the caller shut down gracefully.
+  The handler only performs an atomic store and is async-signal-safe.
+  `System::stop` is now `#[inline(always)]`.
 
 ### Documentation
 
@@ -240,7 +256,8 @@ hardware.
   components.
 - README rewritten around backend selection, feature flags and POSIX support.
 
-[Unreleased]: https://github.com/HiHappyGarden/osal-rs/compare/1.2.0...HEAD
+[Unreleased]: https://github.com/HiHappyGarden/osal-rs/compare/1.2.1...HEAD
+[1.2.1]: https://github.com/HiHappyGarden/osal-rs/compare/1.2.0...1.2.1
 [1.2.0]: https://github.com/HiHappyGarden/osal-rs/compare/1.1.0...1.2.0
 [1.1.0]: https://github.com/HiHappyGarden/osal-rs/compare/1.0.4...1.1.0
 [1.0.4]: https://github.com/HiHappyGarden/osal-rs/compare/1.0.3...1.0.4

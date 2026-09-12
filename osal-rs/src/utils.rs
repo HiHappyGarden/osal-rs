@@ -225,6 +225,106 @@ impl<'a> Display for Error<'a> {
     }
 }
 
+/// Implements the standard `Error` trait for `Error<'a>`. This allows
+/// `Error<'a>` to be used with Rust's error handling ecosystem, including
+/// `Result` and `?` operator.
+///
+/// # Examples
+///
+/// ## Using `?` with the crate's [`Result`] alias
+///
+/// ```
+/// use osal_rs::utils::{Error, Result};
+///
+/// fn parse_level(input: &str) -> Result<u8> {
+///     input.parse::<u8>().map_err(|_| Error::StringConversionError)
+/// }
+///
+/// fn set_level(input: &str) -> Result<()> {
+///     // `?` propagates `Error` because it implements `core::error::Error`
+///     let level = parse_level(input)?;
+///     assert!(level <= 255);
+///     Ok(())
+/// }
+///
+/// assert!(set_level("42").is_ok());
+/// assert_eq!(set_level("abc"), Err(Error::StringConversionError));
+/// ```
+///
+/// ## Boxing into a `dyn Error`
+///
+/// ```
+/// extern crate alloc;
+/// use alloc::boxed::Box;
+/// use osal_rs::utils::Error;
+///
+/// fn fallible() -> core::result::Result<(), Box<dyn core::error::Error>> {
+///     // `Error<'static>` converts into `Box<dyn Error>` automatically
+///     Err(Error::Timeout)?;
+///     Ok(())
+/// }
+///
+/// let err = fallible().unwrap_err();
+/// assert_eq!(err.to_string(), "Operation timeout");
+/// ```
+///
+/// ## Inspecting the error source chain
+///
+/// ```
+/// use core::error::Error as _;
+/// use osal_rs::utils::Error;
+///
+/// let err = Error::Unhandled("sensor offline");
+/// // `Error` has no underlying cause, so `source()` is `None`
+/// assert!(err.source().is_none());
+/// assert_eq!(err.to_string(), "Unhandled error: sensor offline");
+/// ```
+impl<'a> core::error::Error for Error<'a> {}
+
+#[cfg(feature = "posix")]
+/// Converts a `std::io::Error` into an `Error<'static>`. This is useful for
+/// integrating standard I/O errors with the crate's error handling system.
+///
+/// The resulting variant is always [`Error::UnhandledOwned`], with the
+/// message prefixed by `io error: `.
+///
+/// # Examples
+///
+/// ## Propagating I/O errors with `?`
+///
+/// ```
+/// use osal_rs::utils::Result;
+///
+/// fn read_config(path: &str) -> Result<String> {
+///     // `std::io::Error` is converted into `Error<'static>` by `?`
+///     let content = std::fs::read_to_string(path)?;
+///     Ok(content)
+/// }
+///
+/// let err = read_config("/this/path/does/not/exist").unwrap_err();
+/// assert!(err.to_string().starts_with("Unhandled error owned: io error: "));
+/// ```
+///
+/// ## Explicit conversion and pattern matching
+///
+/// ```
+/// use std::io;
+/// use osal_rs::utils::Error;
+///
+/// let io_err = io::Error::new(io::ErrorKind::PermissionDenied, "access denied");
+/// let err: Error = io_err.into();
+///
+/// match err {
+///     Error::UnhandledOwned(msg) => assert_eq!(msg, "io error: access denied"),
+///     other => panic!("unexpected variant: {other:?}"),
+/// }
+/// ```
+impl From<std::io::Error> for Error<'static> {
+    fn from(e: std::io::Error) -> Self {
+        Error::UnhandledOwned(alloc::format!("io error: {e}"))
+    }
+}
+
 
 /// CPU register size enumeration.
 ///

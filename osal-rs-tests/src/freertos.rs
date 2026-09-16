@@ -35,15 +35,15 @@ pub mod log_tests;
 pub mod utils_tests;
 
 use osal_rs::utils::Result;
-use osal_rs::log_info;
-
-const TAG: &str = "FreeRTOSTests";
+use osal_rs::println;
 
 /// Run all available FreeRTOS tests
 pub fn run_all_tests() -> Result<()> {
-    log_info!(TAG, "========================================");
-    log_info!(TAG, "   Starting FreeRTOS Test Suite");
-    log_info!(TAG, "========================================\n");
+    println!(""); // Add an empty line for better readability
+    println!("========================================");
+    println!("   Starting FreeRTOS Test Suite");
+    println!("========================================");
+    println!(""); // Add an empty line for better readability
 
     duration_tests::run_all_tests()?;
     event_group_tests::run_all_tests()?;
@@ -60,8 +60,9 @@ pub fn run_all_tests() -> Result<()> {
     log_tests::run_all_tests()?;
     utils_tests::run_all_tests()?;
 
-    log_info!(TAG, "\n========================================");
-    log_info!(TAG, "   All FreeRTOS Tests PASSED!");
-    log_info!(TAG, "========================================\n");
+    println!(""); // Add an empty line for better readability
+    println!("========================================");
+    println!("   All FreeRTOS Tests PASSED!");
+    println!("========================================");
     Ok(())
 }

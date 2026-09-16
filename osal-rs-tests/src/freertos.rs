@@ -41,7 +41,7 @@ const TAG: &str = "FreeRTOSTests";
 
 /// Run all available FreeRTOS tests
 pub fn run_all_tests() -> Result<()> {
-    log_info!(TAG, "\n\n========================================");
+    log_info!(TAG, "========================================");
     log_info!(TAG, "   Starting FreeRTOS Test Suite");
     log_info!(TAG, "========================================\n");
 

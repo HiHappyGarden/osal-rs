@@ -48,10 +48,19 @@ use super::types::TickType;
 impl ToTick for Duration {
     #[inline]
     fn to_ticks(&self) -> TickType {
-        let millis = self.as_millis() as TickType;
-        
-        // Check for potential overflow and saturate at max value
-        millis.saturating_mul(tick_rate_hz!() as TickType) / 1000
+        // Do the arithmetic in u128 - the type `as_millis` already returns -
+        // and only narrow at the very end. Truncating to `TickType` up front
+        // would wrap a long duration into a short one, and saturating before
+        // the division would be undone by it: `MAX_DELAY` used to saturate to
+        // `TickType::MAX` and then divide down to `TickType::MAX / 1000`,
+        // losing the "wait forever" sentinel.
+        let ticks = self.as_millis() * tick_rate_hz!() as u128 / 1000;
+
+        if ticks > TickType::MAX as u128 {
+            TickType::MAX
+        } else {
+            ticks as TickType
+        }
     }
 }
 
@@ -74,7 +83,10 @@ impl ToTick for Duration {
 impl FromTick for Duration {
     #[inline]
     fn ticks(&mut self, tick: TickType) {
-        let millis = tick.saturating_mul(1000) / tick_rate_hz!() as TickType;
-        *self = Duration::from_millis(millis as u64);
+        // Widen before multiplying: `saturating_mul` on `TickType` would clamp
+        // a large tick count to `TickType::MAX` and the division would then
+        // silently scale that clamp down, so a long delay came back short.
+        let millis = tick as u64 * 1000 / tick_rate_hz!() as u64;
+        *self = Duration::from_millis(millis);
     }
 }

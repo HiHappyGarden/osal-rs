@@ -763,11 +763,12 @@ impl ThreadFn for Thread {
     /// println!("Running thread: {}", meta.name);
     /// ```
     fn get_metadata(&self) -> ThreadMetadata {
-        let mut status = TaskStatus::default();
-        unsafe {
-            vTaskGetInfo(self.handle, &mut status, pdTRUE, INVALID);
-        }
-        ThreadMetadata::from((self.handle, status))
+        // Delegate to the inherent method: it reports what was passed to
+        // `new()` for a thread that has not been spawned yet. Calling
+        // `vTaskGetInfo` directly would be wrong there, because FreeRTOS
+        // resolves a NULL handle to `pxCurrentTCB` and would hand back the
+        // *calling* task's metadata. Mirrors `posix::Thread::get_metadata`.
+        Thread::get_metadata(self)
     }
 
     /// Returns a Thread object representing the currently executing thread.

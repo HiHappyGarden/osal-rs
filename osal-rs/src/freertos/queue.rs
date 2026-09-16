@@ -28,7 +28,7 @@ use core::fmt::{Debug, Display};
 use core::marker::PhantomData;
 use core::ops::Deref;
 
-use alloc::vec::Vec;
+use alloc::vec;
 
 use super::ffi::{QueueHandle, pdFALSE, vQueueDelete, xQueueGenericCreate, xQueueReceive, xQueueReceiveFromISR};
 use super::types::{BaseType, UBaseType, TickType};
@@ -38,7 +38,7 @@ use crate::traits::{ToTick, QueueFn, SystemFn, QueueStreamedFn, BytesHasLen};
 use crate::traits::{Serialize, Deserialize};
 
 #[cfg(feature = "serde")]
-use osal_rs_serde::{Serialize, Deserialize, to_bytes};
+use osal_rs_serde::{Serialize, Deserialize, to_bytes, from_bytes};
 
 /// Marker trait bundling the bounds required to send a type through a typed
 /// queue instead of a raw byte queue: it must be serializable to bytes,
@@ -716,7 +716,7 @@ where
     /// * `Err(Error::Timeout)` - Queue empty or timeout
     /// * `Err(Error)` - Deserialization error
     fn fetch(&self, buffer: &mut T, time: TickType) -> Result<()> {
-        let mut buf_bytes = Vec::with_capacity(buffer.len());         
+        let mut buf_bytes = vec![0u8; buffer.len()];         
 
         if let Ok(()) = self.0.fetch(&mut buf_bytes, time) {
             *buffer = T::from_bytes(&buf_bytes)?;
@@ -744,7 +744,7 @@ where
     /// 
     /// Must only be called from ISR context.
     fn fetch_from_isr(&self, buffer: &mut T) -> Result<()> {
-        let mut buf_bytes = Vec::with_capacity(buffer.len());      
+        let mut buf_bytes = vec![0u8; buffer.len()];      
 
         if let Ok(()) = self.0.fetch_from_isr(&mut buf_bytes) {
             *buffer = T::from_bytes(&buf_bytes)?;
@@ -824,11 +824,11 @@ where
     /// * `Err(Error::Timeout)` - Queue empty or timeout
     /// * `Err(Error::Unhandled)` - Deserialization error
     fn fetch(&self, buffer: &mut T, time: TickType) -> Result<()> {
-        let mut buf_bytes = Vec::with_capacity(buffer.len());     
+        let mut buf_bytes = vec![0u8; buffer.len()];
 
         if let Ok(()) = self.0.fetch(&mut buf_bytes, time) {
-            
-            to_bytes(buffer, &mut buf_bytes).map_err(|_| Error::Unhandled("Deserializiation error"))?;
+
+            *buffer = from_bytes(&buf_bytes).map_err(|_| Error::Unhandled("Deserializiation error"))?;
 
             Ok(())
         } else {
@@ -854,10 +854,10 @@ where
     /// 
     /// Must only be called from ISR context.
     fn fetch_from_isr(&self, buffer: &mut T) -> Result<()> {
-        let mut buf_bytes = Vec::with_capacity(buffer.len());       
+        let mut buf_bytes = vec![0u8; buffer.len()];
 
         if let Ok(()) = self.0.fetch_from_isr(&mut buf_bytes) {
-            to_bytes(buffer, &mut buf_bytes).map_err(|_| Error::Unhandled("Deserializiation error"))?;
+            *buffer = from_bytes(&buf_bytes).map_err(|_| Error::Unhandled("Deserializiation error"))?;
             Ok(())
         } else {
             Err(Error::Timeout)
@@ -879,11 +879,9 @@ where
     /// * `Err(Error::Timeout)` - Queue full
     /// * `Err(Error::Unhandled)` - Serialization error
     fn post(&self, item: &T, time: TickType) -> Result<()> {
+        let mut buf_bytes = vec![0u8; item.len()];
 
-
-        let mut buf_bytes = Vec::with_capacity(item.len()); 
-
-        to_bytes(item, &mut buf_bytes).map_err(|_| Error::Unhandled("Deserializiation error"))?;
+        to_bytes(item, &mut buf_bytes).map_err(|_| Error::Unhandled("Serialization error"))?;
 
         self.0.post(&buf_bytes, time)
     }
@@ -906,10 +904,9 @@ where
     /// 
     /// Must only be called from ISR context.
     fn post_from_isr(&self, item: &T) -> Result<()> {
+        let mut buf_bytes = vec![0u8; item.len()];
 
-        let mut buf_bytes = Vec::with_capacity(item.len()); 
-
-        to_bytes(item, &mut buf_bytes).map_err(|_| Error::Unhandled("Deserializiation error"))?;
+        to_bytes(item, &mut buf_bytes).map_err(|_| Error::Unhandled("Serialization error"))?;
 
         self.0.post_from_isr(&buf_bytes)
     }

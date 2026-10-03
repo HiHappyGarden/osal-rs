@@ -36,7 +36,11 @@ use std::path::PathBuf;
 use std::convert::AsRef;
 use std::ffi::OsStr;
 use std::fs;
+#[cfg(any(feature = "posix", feature = "freertos"))]
 use std::process::Command;
+
+#[cfg(all(feature = "posix", feature = "freertos"))]
+compile_error!("osal-rs-build: the \"posix\" and \"freertos\" features are mutually exclusive");
 
 /// Detects the active backend's platform type sizes and (for `posix`) links
 /// the C porting layer, driven from a `build.rs` script.
@@ -60,14 +64,19 @@ use std::process::Command;
 ///
 /// let _generator = osal_rs_build::TypeGenerator::new(PathBuf::from("workspace/osal-rs"));
 /// ```
-pub struct TypeGenerator(PathBuf, bool, Option<PathBuf>);
+pub struct TypeGenerator(
+    PathBuf,
+    bool,
+    // Only read by the `freertos` backend.
+    #[cfg_attr(not(feature = "freertos"), allow(dead_code))] Option<PathBuf>,
+);
 
 impl TypeGenerator {
     /// Create a new generator with a custom FreeRTOSConfig.h path
     pub fn new<P>(manifest_path: P) -> Self
     where P: Into<PathBuf> + AsRef<OsStr>
     {
-        #[cfg(feature = "posix")]
+        #[cfg(all(feature = "posix", not(feature = "freertos")))]
         let freertos_config: Option<PathBuf> = {
             //Avoid unused_variables
             let _ = manifest_path;
@@ -187,7 +196,7 @@ pub type StackType = {};
 }
 
 
-#[cfg(feature = "posix")]
+#[cfg(all(feature = "posix", not(feature = "freertos")))]
 impl TypeGenerator {
 
     /// No-op for the POSIX backend: it has no C porting sources of its own
@@ -355,7 +364,7 @@ impl TypeGenerator {
 
         self.write_generated_types(tick_size, tick_type, ubase_size, ubase_type, base_size, base_type, stack_size, stack_type);
 
-        println!("cargo:warning=Generated FreeRTOS types: TickType={}, UBaseType={}, BaseType={} StackType={}",
+        println!("Generated FreeRTOS types: TickType={}, UBaseType={}, BaseType={} StackType={}",
                  tick_type, ubase_type, base_type, stack_type);
     }
 
@@ -410,7 +419,7 @@ impl TypeGenerator {
             println!("cargo:rustc-cfg=freertos_core_affinity");
         }
 
-        println!("cargo:warning=FreeRTOS layout: configRECORD_STACK_HIGH_ADDRESS={record_stack_high_address} configUSE_CORE_AFFINITY={use_core_affinity} configNUMBER_OF_CORES={number_of_cores}");
+        println!("FreeRTOS layout: configRECORD_STACK_HIGH_ADDRESS={record_stack_high_address} configUSE_CORE_AFFINITY={use_core_affinity} configNUMBER_OF_CORES={number_of_cores}");
     }
 
     /// Numeric value of the first `#define name <value>` in `config`.

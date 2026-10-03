@@ -460,9 +460,12 @@ fn test_async_queue_post_async_parks_until_drained() -> Result<()> {
     let spawned = consumer.spawn_simple(move || {
         System::delay(HEAD_START_MS);
         let mut buffer = [0u8; 4];
+        // Mark before draining: the slot is freed (and `PostFuture` can
+        // complete) inside `fetch`, so storing afterwards would race the
+        // main thread's assertion.
+        consumer_mark.store(1, Ordering::Release);
         // Synchronous `fetch` wakes the parked `PostFuture`.
         consumer_queue.fetch(&mut buffer, 100)?;
-        consumer_mark.store(1, Ordering::Release);
         Ok(Arc::new(()))
     })?;
 

@@ -11,6 +11,55 @@ together.
 
 ## [Unreleased]
 
+## [1.2.2] - 2026-10-03
+
+FreeRTOS backend fixes only; the POSIX backend is unchanged.
+
+### Fixed
+
+- `TaskStatus` (the Rust mirror of `TaskStatus_t`) now matches the C layout
+  when `FreeRTOSConfig.h` enables optional fields: `pxTopOfStack`/`pxEndOfStack`
+  with `configRECORD_STACK_HIGH_ADDRESS == 1`, and `uxCoreAffinityMask` with
+  `configUSE_CORE_AFFINITY == 1` on more than one core. The struct was smaller
+  than what `uxTaskGetSystemState`/`vTaskGetInfo` write, so they overran the
+  buffer and every task after the first was read with shifted fields.
+  `osal-rs-build` now reads `FreeRTOSConfig.h` (from `FREERTOS_CONFIG_PATH` or
+  `<workspace>/inc/FreeRTOSConfig.h`) and emits the
+  `freertos_record_stack_high_address` and `freertos_core_affinity` cfgs; a
+  missing file falls back to the FreeRTOS defaults (all off) with a cargo
+  warning.
+- `Duration::to_ticks` no longer loses the "wait forever" sentinel: the
+  conversion saturated to `TickType::MAX` *before* dividing by 1000, so
+  `MAX_DELAY` became `TickType::MAX / 1000`. It also truncated the
+  milliseconds to `TickType` up front, wrapping long durations into short ones.
+  The arithmetic is now done in `u128` and clamped only at the end.
+- `Duration::ticks` (tick → `Duration`) widens to `u64` before multiplying, so
+  a large tick count no longer comes back as a shorter delay.
+- `QueueStreamed` `fetch`/`fetch_from_isr`/`post`/`post_from_isr` allocated
+  their byte buffer with `Vec::with_capacity`, i.e. a zero-length slice, so
+  nothing was actually copied in or out of the queue. They now use a
+  zero-filled buffer of the message size.
+- With the `serde` feature, `QueueStreamed::fetch`/`fetch_from_isr` called
+  `to_bytes` on the received buffer instead of deserializing it with
+  `from_bytes`, so the received message was never written to `buffer`. The
+  `post` error message now reads "Serialization error".
+- `ThreadFn::get_metadata` delegates to `Thread::get_metadata`, which reports
+  the parameters passed to `new()` for a thread that has not been spawned yet.
+  It called `vTaskGetInfo` with the NULL handle, which FreeRTOS resolves to the
+  current task, returning the *caller's* metadata. Matches the POSIX backend.
+
+### Tests
+
+- `test_system_thread_metadata` accepts priority 0 for the idle tasks (one
+  per core on SMP).
+- `test_async_queue_post_async_parks_until_drained` sets its flag before the
+  consumer's `fetch` (the woken waiter preempts the consumer, so setting it
+  afterwards raced) and also checks that `post_async` actually waited.
+- `test_thread_notification_all_actions` matches the kernel's behaviour:
+  `bits_to_clear_on_entry` is skipped when a notification is already pending.
+- The FreeRTOS test suite prints its output with `println!` instead of
+  `log_info!`.
+
 ## [1.2.1] - 2026-09-12
 
 ### Added
@@ -256,7 +305,8 @@ hardware.
   components.
 - README rewritten around backend selection, feature flags and POSIX support.
 
-[Unreleased]: https://github.com/HiHappyGarden/osal-rs/compare/1.2.1...HEAD
+[Unreleased]: https://github.com/HiHappyGarden/osal-rs/compare/1.2.2...HEAD
+[1.2.2]: https://github.com/HiHappyGarden/osal-rs/compare/1.2.1...1.2.2
 [1.2.1]: https://github.com/HiHappyGarden/osal-rs/compare/1.2.0...1.2.1
 [1.2.0]: https://github.com/HiHappyGarden/osal-rs/compare/1.1.0...1.2.0
 [1.1.0]: https://github.com/HiHappyGarden/osal-rs/compare/1.0.4...1.1.0

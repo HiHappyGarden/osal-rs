@@ -148,7 +148,8 @@ pub fn test_system_thread_metadata() -> Result<()> {
     for thread_meta in state.tasks.iter() {
         assert!(!thread_meta.thread.is_null());
         assert!(!thread_meta.name.is_empty());
-        assert!(thread_meta.priority > 0);
+        // Only the idle tasks (one per core on SMP) run at tskIDLE_PRIORITY (0)
+        assert!(thread_meta.priority > 0 || thread_meta.name.as_str().starts_with("IDLE"));
     }
     log_debug!(TAG, "Verified metadata for {} threads", state.tasks.len());
     log_info!(TAG, "test_system_thread_metadata PASSED");

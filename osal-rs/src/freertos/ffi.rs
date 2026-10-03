@@ -150,8 +150,17 @@ pub(super) struct TaskStatus {
     pub(super) ulRunTimeCounter: u32,
     /// Stack base address
     pub(super) pxStackBase: *mut StackType,
+    /// Top address of the stack area (`configRECORD_STACK_HIGH_ADDRESS == 1`)
+    #[cfg(freertos_record_stack_high_address)]
+    pub(super) pxTopOfStack: *mut StackType,
+    /// End address of the stack area (`configRECORD_STACK_HIGH_ADDRESS == 1`)
+    #[cfg(freertos_record_stack_high_address)]
+    pub(super) pxEndOfStack: *mut StackType,
     /// Stack high water mark (minimum free stack)
-    pub(super) usStackHighWaterMark: StackType
+    pub(super) usStackHighWaterMark: StackType,
+    /// Core affinity mask (`configUSE_CORE_AFFINITY == 1` on SMP)
+    #[cfg(freertos_core_affinity)]
+    pub(super) uxCoreAffinityMask: UBaseType,
 }
 
 impl Default for TaskStatus {
@@ -165,7 +174,13 @@ impl Default for TaskStatus {
             uxBasePriority: 0,
             ulRunTimeCounter: 0,
             pxStackBase: ptr::null_mut(),
+            #[cfg(freertos_record_stack_high_address)]
+            pxTopOfStack: ptr::null_mut(),
+            #[cfg(freertos_record_stack_high_address)]
+            pxEndOfStack: ptr::null_mut(),
             usStackHighWaterMark: 0,
+            #[cfg(freertos_core_affinity)]
+            uxCoreAffinityMask: 0,
         }
     }
 }

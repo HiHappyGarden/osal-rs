@@ -41,9 +41,10 @@ use std::process::Command;
 /// Detects the active backend's platform type sizes and (for `posix`) links
 /// the C porting layer, driven from a `build.rs` script.
 ///
-/// Wraps the build script's `OUT_DIR` (where generated files are written)
-/// and a flag recording whether the `real_time` (`SCHED_FIFO`) cfg should be
-/// enabled for the crate being built.
+/// Wraps the build script's `OUT_DIR` (where generated files are written),
+/// a flag recording whether the `real_time` (`SCHED_FIFO`) cfg should be
+/// enabled for the crate being built and, for `freertos`, the path of the
+/// `FreeRTOSConfig.h` the struct layouts are derived from.
 ///
 /// # Examples
 ///
@@ -59,7 +60,7 @@ use std::process::Command;
 ///
 /// let _generator = osal_rs_build::TypeGenerator::new(PathBuf::from("workspace/osal-rs"));
 /// ```
-pub struct TypeGenerator(PathBuf, bool);
+pub struct TypeGenerator(PathBuf, bool, Option<PathBuf>);
 
 impl TypeGenerator {
     /// Create a new generator with a custom FreeRTOSConfig.h path
@@ -67,13 +68,14 @@ impl TypeGenerator {
     where P: Into<PathBuf> + AsRef<OsStr>
     {
         #[cfg(feature = "posix")]
-        {
+        let freertos_config: Option<PathBuf> = {
             //Avoid unused_variables
             let _ = manifest_path;
-        }
+            None
+        };
 
         #[cfg(feature = "freertos")]
-        {
+        let freertos_config = {
             // Initialize the type generator with the FreeRTOS configuration file path.
             // This will parse FreeRTOSConfig.h and generate Rust type definitions and constants.
 
@@ -87,18 +89,25 @@ impl TypeGenerator {
 
             // Determine the path to FreeRTOSConfig.h.
             // Priority: Environment variable > Default location
-            let _freertos_config = if let Ok(config_path) = env::var("FREERTOS_CONFIG_PATH") {
+            let freertos_config = if let Ok(config_path) = env::var("FREERTOS_CONFIG_PATH") {
                 // Use the path specified in FREERTOS_CONFIG_PATH environment variable
                 PathBuf::from(config_path)
             } else {
                 // Default: Look for FreeRTOSConfig.h in <workspace_root>/inc/
                 workspace_root.join("inc/FreeRTOSConfig.h")
             };
-        }
+            Some(freertos_config)
+        };
+
+        #[cfg(not(any(feature = "posix", feature = "freertos")))]
+        let freertos_config: Option<PathBuf> = {
+            let _ = manifest_path;
+            None
+        };
 
         let out_dir = PathBuf::from(env::var("OUT_DIR").expect("OUT_DIR not set"));
         Self (
-            out_dir, false
+            out_dir, false, freertos_config
         )
     }
 
@@ -355,7 +364,75 @@ impl TypeGenerator {
     pub fn generate_all(&mut self) {
         self.generate_types();
         self.enable_sched_fifo();
+        self.generate_layout_cfgs();
         // self.generate_config();
+    }
+
+    /// Emits the cfgs that size `TaskStatus_t` like the C side does.
+    ///
+    /// `TaskStatus_t` gains `pxTopOfStack`/`pxEndOfStack` with
+    /// `configRECORD_STACK_HIGH_ADDRESS == 1` and `uxCoreAffinityMask` with
+    /// `configUSE_CORE_AFFINITY == 1` on more than one core. A Rust mirror
+    /// without them is smaller than what `uxTaskGetSystemState`/`vTaskGetInfo`
+    /// write, so they overrun the buffer and every field after the first
+    /// entry is read shifted.
+    ///
+    /// | cfg | enabled when |
+    /// |---|---|
+    /// | `freertos_record_stack_high_address` | `configRECORD_STACK_HIGH_ADDRESS == 1` |
+    /// | `freertos_core_affinity` | `configUSE_CORE_AFFINITY == 1 && configNUMBER_OF_CORES > 1` |
+    ///
+    /// A missing `FreeRTOSConfig.h` falls back to the FreeRTOS defaults (all
+    /// off) with a cargo warning.
+    fn generate_layout_cfgs(&self) {
+        println!("cargo:rustc-check-cfg=cfg(freertos_record_stack_high_address)");
+        println!("cargo:rustc-check-cfg=cfg(freertos_core_affinity)");
+        println!("cargo:rerun-if-env-changed=FREERTOS_CONFIG_PATH");
+
+        let Some(path) = &self.2 else { return };
+        println!("cargo:rerun-if-changed={}", path.display());
+
+        let Ok(config) = fs::read_to_string(path) else {
+            println!("cargo:warning=FreeRTOSConfig.h not found at {}, assuming FreeRTOS defaults for struct layouts", path.display());
+            return;
+        };
+
+        let record_stack_high_address = Self::config_value(&config, "configRECORD_STACK_HIGH_ADDRESS").unwrap_or(0);
+        let use_core_affinity = Self::config_value(&config, "configUSE_CORE_AFFINITY").unwrap_or(0);
+        let number_of_cores = Self::config_value(&config, "configNUMBER_OF_CORES")
+            .or_else(|| Self::config_value(&config, "configNUM_CORES"))
+            .unwrap_or(1);
+
+        if record_stack_high_address == 1 {
+            println!("cargo:rustc-cfg=freertos_record_stack_high_address");
+        }
+        if use_core_affinity == 1 && number_of_cores > 1 {
+            println!("cargo:rustc-cfg=freertos_core_affinity");
+        }
+
+        println!("cargo:warning=FreeRTOS layout: configRECORD_STACK_HIGH_ADDRESS={record_stack_high_address} configUSE_CORE_AFFINITY={use_core_affinity} configNUMBER_OF_CORES={number_of_cores}");
+    }
+
+    /// Numeric value of the first `#define name <value>` in `config`.
+    ///
+    /// Only plain integer values are understood, optionally wrapped in
+    /// parentheses (`( 1 )`) or with a `U`/`UL` suffix; anything else - an
+    /// expression or another macro - yields `None`. The first definition
+    /// wins, whatever `#if` it sits in, which matches how these flags are
+    /// written in practice (a single `#define`, sometimes inside `#ifndef`).
+    fn config_value(config: &str, name: &str) -> Option<i64> {
+        config.lines().find_map(|line| {
+            let rest = line.trim_start().strip_prefix('#')?.trim_start().strip_prefix("define")?;
+            let mut parts = rest.split_whitespace();
+            if parts.next()? != name {
+                return None;
+            }
+            let value: String = parts.collect::<Vec<_>>().join("");
+            let value = value.split("/*").next()?.split("//").next()?;
+            let value = value.trim_matches(|c| c == '(' || c == ')');
+            let value = value.trim_end_matches(|c| c == 'u' || c == 'U' || c == 'l' || c == 'L');
+            value.parse().ok()
+        })
     }
 
     /// Query the sizes of FreeRTOS types

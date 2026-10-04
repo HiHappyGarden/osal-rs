@@ -30,6 +30,8 @@ pub mod system_tests;
 #[cfg(feature = "async")]
 pub mod async_tests;
 pub mod error_paths_tests;
+#[cfg(feature = "serde")]
+pub mod serde_tests;
 pub mod traits_tests;
 pub mod log_tests;
 pub mod utils_tests;
@@ -56,6 +58,8 @@ pub fn run_all_tests() -> Result<()> {
     #[cfg(feature = "async")]
     async_tests::run_all_tests()?;
     error_paths_tests::run_all_tests()?;
+    #[cfg(feature = "serde")]
+    serde_tests::run_all_tests()?;
     traits_tests::run_all_tests()?;
     log_tests::run_all_tests()?;
     utils_tests::run_all_tests()?;

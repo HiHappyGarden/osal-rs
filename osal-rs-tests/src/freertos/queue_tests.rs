@@ -200,16 +200,68 @@ pub fn test_queue_streamed() -> Result<()> {
     let message = sample_message();
     streamed.post(&message, Duration::from_millis(100).to_ticks())?;
 
-    let mut received = sample_message();
+    let mut received = QueueMessage::default();
     streamed.fetch(&mut received, Duration::from_millis(100).to_ticks())?;
+    assert_eq!(received, message);
     log_debug!(TAG, "QueueStreamed post/fetch round-tripped a message");
 
+    let mut received = QueueMessage::default();
     streamed.post_from_isr(&message)?;
     streamed.fetch_from_isr(&mut received)?;
+    assert_eq!(received, message);
     log_debug!(TAG, "QueueStreamed post_from_isr/fetch_from_isr round-tripped a message");
 
     streamed.delete();
     log_info!(TAG, "test_queue_streamed PASSED");
+    Ok(())
+}
+
+/// Tuple struct payload built with `#[derive(Serialize, Deserialize)]`, so the
+/// derive's unnamed-fields branch is exercised through a real RTOS queue.
+#[cfg(feature = "serde")]
+mod tuple_payload {
+    use osal_rs::os::BytesHasLen;
+    use osal_rs_serde::{Deserialize, Serialize};
+
+    #[derive(Serialize, Deserialize, Clone, Copy, Debug, Default, PartialEq)]
+    pub struct SensorSample(pub i16, pub u8, pub u32);
+
+    impl BytesHasLen for SensorSample {
+        fn len(&self) -> usize {
+            // i16 + u8 + u32, little-endian, no padding
+            2 + 1 + 4
+        }
+    }
+}
+
+#[cfg(feature = "serde")]
+pub fn test_queue_streamed_tuple_struct() -> Result<()> {
+    use tuple_payload::SensorSample;
+
+    log_info!(TAG, "Starting test_queue_streamed_tuple_struct");
+    let mut streamed = QueueStreamed::<SensorSample>::new(4, SensorSample::default().len() as UBaseType)?;
+
+    let samples = [SensorSample(-100, 42, 0xDEADBEEF), SensorSample(i16::MAX, u8::MAX, 0)];
+    for sample in &samples {
+        streamed.post(sample, Duration::from_millis(100).to_ticks())?;
+    }
+
+    // FIFO order and every field preserved
+    for sample in &samples {
+        let mut received = SensorSample::default();
+        streamed.fetch(&mut received, Duration::from_millis(100).to_ticks())?;
+        log_debug!(TAG, "Fetched {:?}", received);
+        assert_eq!(&received, sample);
+    }
+
+    let mut received = SensorSample::default();
+    streamed.post_from_isr(&samples[0])?;
+    streamed.fetch_from_isr(&mut received)?;
+    assert_eq!(received, samples[0]);
+    log_debug!(TAG, "QueueStreamed post_from_isr/fetch_from_isr round-tripped a tuple struct");
+
+    streamed.delete();
+    log_info!(TAG, "test_queue_streamed_tuple_struct PASSED");
     Ok(())
 }
 
@@ -230,6 +282,8 @@ pub fn run_all_tests() -> Result<()> {
     test_queue_from_isr()?;
     test_queue_with_to_tick()?;
     test_queue_streamed()?;
+    #[cfg(feature = "serde")]
+    test_queue_streamed_tuple_struct()?;
     test_queue_drop()?;
     log_info!(TAG, "========== All Queue Tests PASSED ==========");
     Ok(())

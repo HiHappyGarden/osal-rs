@@ -518,3 +518,194 @@ fn test_binary_array_of_structs() {
     assert_eq!(decoded.users[2].role, 30);
     assert_eq!(decoded.flags, 0xABCD);
 }
+
+// ============================================================================
+// Tests with tuple structs
+// ============================================================================
+
+#[derive(Serialize, Deserialize, Debug, PartialEq)]
+struct Coordinates(i16, u8, u32);
+
+#[derive(Serialize, Deserialize, Debug, PartialEq)]
+struct Celsius(i16);
+
+#[test]
+fn test_derive_tuple_struct() {
+    let coords = Coordinates(-100, 42, 0xDEADBEEF);
+
+    let mut buffer = [0u8; 32];
+    let len = to_bytes(&coords, &mut buffer).unwrap();
+
+    // Expected layout (little-endian): i16 (2) + u8 (1) + u32 (4) = 7 bytes
+    assert_eq!(len, 7, "Expected 7 bytes, got {}", len);
+    assert_eq!(&buffer[..2], &(-100i16).to_le_bytes());
+    assert_eq!(buffer[2], 42);
+    assert_eq!(&buffer[3..7], &0xDEADBEEFu32.to_le_bytes());
+
+    let decoded: Coordinates = from_bytes(&buffer[..len]).unwrap();
+    assert_eq!(decoded, coords);
+}
+
+#[test]
+fn test_derive_newtype_struct() {
+    let temp = Celsius(-273);
+
+    let mut buffer = [0u8; 8];
+    let len = to_bytes(&temp, &mut buffer).unwrap();
+    assert_eq!(len, 2);
+
+    let decoded: Celsius = from_bytes(&buffer[..len]).unwrap();
+    assert_eq!(decoded, temp);
+}
+
+#[test]
+fn test_derive_tuple_struct_nested() {
+    #[derive(Serialize, Deserialize, Debug, PartialEq)]
+    struct Reading {
+        id: u8,
+        temp: Celsius,
+        position: Coordinates,
+        history: [Celsius; 2],
+    }
+
+    let reading = Reading {
+        id: 7,
+        temp: Celsius(215),
+        position: Coordinates(1, 2, 3),
+        history: [Celsius(-5), Celsius(30)],
+    };
+
+    let mut buffer = [0u8; 32];
+    let len = to_bytes(&reading, &mut buffer).unwrap();
+    // id (1) + temp (2) + position (7) + history (2 * 2) = 14 bytes
+    assert_eq!(len, 14, "Expected 14 bytes, got {}", len);
+
+    let decoded: Reading = from_bytes(&buffer[..len]).unwrap();
+    assert_eq!(decoded, reading);
+}
+
+/// Wraps `ByteSerializer`/`ByteDeserializer` and records the struct protocol calls,
+/// so that the event sequences produced by `Serialize` and `Deserialize` can be compared.
+mod tracing {
+    use osal_rs_serde::{ByteDeserializer, ByteSerializer, Deserialize, Deserializer, Error, Serialize, Serializer};
+
+    macro_rules! delegate_ser {
+        ($($method:ident: $ty:ty),*) => {
+            $(fn $method(&mut self, name: &str, v: $ty) -> Result<(), Error> { self.inner.$method(name, v) })*
+        };
+    }
+
+    macro_rules! delegate_de {
+        ($($method:ident: $ty:ty),*) => {
+            $(fn $method(&mut self, name: &str) -> Result<$ty, Error> { self.inner.$method(name) })*
+        };
+    }
+
+    pub struct TracingSerializer<'a> {
+        pub inner: ByteSerializer<'a>,
+        pub events: Vec<String>,
+    }
+
+    impl Serializer for TracingSerializer<'_> {
+        type Error = Error;
+
+        delegate_ser!(
+            serialize_bool: bool, serialize_u8: u8, serialize_i8: i8,
+            serialize_u16: u16, serialize_i16: i16, serialize_u32: u32, serialize_i32: i32,
+            serialize_u64: u64, serialize_i64: i64, serialize_u128: u128, serialize_i128: i128,
+            serialize_f32: f32, serialize_f64: f64, serialize_bytes: &[u8],
+            serialize_string: &String, serialize_str: &str
+        );
+
+        fn serialize_vec<T: Serialize>(&mut self, name: &str, v: &Vec<T>) -> Result<(), Error> {
+            self.serialize_u32(name, v.len() as u32)?;
+            v.iter().try_for_each(|item| item.serialize(name, self))
+        }
+
+        fn serialize_array<T: Serialize>(&mut self, name: &str, v: &[T]) -> Result<(), Error> {
+            v.iter().try_for_each(|item| item.serialize(name, self))
+        }
+
+        fn serialize_struct_start(&mut self, name: &str, _len: usize) -> Result<(), Error> {
+            self.events.push(format!("start:{name}"));
+            Ok(())
+        }
+
+        fn serialize_field<T: Serialize>(&mut self, name: &str, value: &T) -> Result<(), Error> {
+            self.events.push(format!("field:{name}"));
+            value.serialize(name, self)
+        }
+
+        fn serialize_struct_end(&mut self) -> Result<(), Error> {
+            self.events.push("end".to_string());
+            Ok(())
+        }
+    }
+
+    pub struct TracingDeserializer<'a> {
+        pub inner: ByteDeserializer<'a>,
+        pub events: Vec<String>,
+    }
+
+    impl Deserializer for TracingDeserializer<'_> {
+        type Error = Error;
+
+        delegate_de!(
+            deserialize_bool: bool, deserialize_u8: u8, deserialize_i8: i8,
+            deserialize_u16: u16, deserialize_i16: i16, deserialize_u32: u32, deserialize_i32: i32,
+            deserialize_u64: u64, deserialize_i64: i64, deserialize_u128: u128, deserialize_i128: i128,
+            deserialize_f32: f32, deserialize_f64: f64, deserialize_string: String
+        );
+
+        fn deserialize_bytes(&mut self, name: &str, buffer: &mut [u8]) -> Result<usize, Error> {
+            self.inner.deserialize_bytes(name, buffer)
+        }
+
+        fn deserialize_vec<T: Deserialize>(&mut self, name: &str) -> Result<Vec<T>, Error> {
+            let len = self.deserialize_u32(name)? as usize;
+            (0..len).map(|_| T::deserialize(self, name)).collect()
+        }
+
+        fn deserialize_array<T: Deserialize, const N: usize>(&mut self, name: &str) -> Result<[T; N], Error> {
+            let items = (0..N).map(|_| T::deserialize(self, name)).collect::<Result<Vec<T>, Error>>()?;
+            items.try_into().map_err(|_| Error::InvalidData)
+        }
+
+        fn deserialize_struct_start(&mut self, name: &str) -> Result<(), Error> {
+            self.events.push(format!("start:{name}"));
+            Ok(())
+        }
+
+        fn deserialize_field<T: Deserialize>(&mut self, name: &str) -> Result<T, Error> {
+            self.events.push(format!("field:{name}"));
+            T::deserialize(self, name)
+        }
+
+        fn deserialize_struct_end(&mut self) -> Result<(), Error> {
+            self.events.push("end".to_string());
+            Ok(())
+        }
+    }
+}
+
+#[test]
+fn test_derive_tuple_struct_protocol_symmetry() {
+    use osal_rs_serde::ByteSerializer;
+    use tracing::{TracingDeserializer, TracingSerializer};
+
+    let coords = Coordinates(-100, 42, 0xDEADBEEF);
+
+    let mut buffer = [0u8; 32];
+    let mut ser = TracingSerializer { inner: ByteSerializer::new(&mut buffer), events: Vec::new() };
+    coords.serialize("coords", &mut ser).unwrap();
+    let len = ser.inner.position();
+    let ser_events = ser.events;
+
+    assert_eq!(ser_events, ["start:coords", "field:0", "field:1", "field:2", "end"]);
+
+    let mut de = TracingDeserializer { inner: ByteDeserializer::new(&buffer[..len]), events: Vec::new() };
+    let decoded = Coordinates::deserialize(&mut de, "coords").unwrap();
+
+    assert_eq!(decoded, coords);
+    assert_eq!(de.events, ser_events);
+}

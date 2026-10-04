@@ -179,14 +179,23 @@ pub fn derive_deserialize(input: TokenStream) -> TokenStream {
             }
         }
         Fields::Unnamed(fields) => {
-            let field_types = fields.unnamed.iter().map(|f| &f.ty);
+            let field_deserializations = fields.unnamed.iter().enumerate().map(|(i, f)| {
+                let name_lit = Literal::string(&i.to_string());
+                let field_type = &f.ty;
+                quote! {
+                    deserializer.deserialize_field::<#field_type>(#name_lit)?
+                }
+            });
 
             quote! {
                 impl osal_rs_serde::Deserialize for #name {
                     fn deserialize<D: osal_rs_serde::Deserializer>(deserializer: &mut D, name: &str) -> Result<Self, D::Error> {
-                        Ok(Self(
-                            #(<#field_types as osal_rs_serde::Deserialize>::deserialize(deserializer, name)?,)*
-                        ))
+                        deserializer.deserialize_struct_start(name)?;
+                        let result = Self(
+                            #(#field_deserializations,)*
+                        );
+                        deserializer.deserialize_struct_end()?;
+                        Ok(result)
                     }
                 }
             }

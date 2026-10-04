@@ -469,11 +469,24 @@ fn test_async_queue_post_async_parks_until_drained() -> Result<()> {
         Ok(Arc::new(()))
     })?;
 
+    // The queue starts full, so this cannot complete until the consumer has
+    // run and freed the slot: reaching the assert at all means the future
+    // parked. `drained` confirms the consumer is what released us, and the
+    // elapsed tick count confirms we really waited for its head start rather
+    // than spinning through.
+    let before = System::get_tick_count();
     block_on(queue.post_async(&[2u8, 2, 2, 2]))?;
+    let waited = System::get_tick_count() - before;
+
+    log_debug!(TAG, "post_async parked for {} ticks", waited);
     assert_eq!(
         drained.load(Ordering::Acquire),
         1,
         "must have waited for the consumer to free a slot"
+    );
+    assert!(
+        waited >= HEAD_START_MS / 2,
+        "post_async returned without parking for the consumer"
     );
 
     spawned.join(null_mut())?;

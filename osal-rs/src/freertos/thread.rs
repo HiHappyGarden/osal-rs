@@ -336,6 +336,13 @@ impl Thread {
     /// println!("Thread '{}' state: {:?}", metadata.name, metadata.state);
     /// ```
     pub fn get_metadata_from_handle(handle: ThreadHandle) -> ThreadMetadata {
+        // `vTaskGetInfo` resolves a NULL handle to the calling task, which
+        // would report the caller's metadata. Mirrors the zero-handle guard
+        // in `posix::Thread::get_metadata_from_handle`.
+        if handle.is_null() {
+            return ThreadMetadata::default();
+        }
+
         let mut status = TaskStatus::default();
         unsafe {
             vTaskGetInfo(handle, &mut status, pdTRUE, INVALID);

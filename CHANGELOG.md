@@ -34,6 +34,13 @@ together.
   and skipped start/end). No change with `ByteSerializer`/`ByteDeserializer`,
   whose struct hooks are no-ops; custom (de)serializers that use them can now
   round-trip tuple structs.
+- FreeRTOS: `Thread::get_metadata_from_handle` returns `ThreadMetadata::default()`
+  (state `Invalid`) for a NULL handle. It passed NULL to `vTaskGetInfo`, which
+  resolves it to the calling task, so it reported the *caller's* metadata.
+  Matches the POSIX zero-handle guard.
+- POSIX: `ThreadFn::delete` is a no-op on a never-spawned thread instead of
+  calling `pthread_join` on handle 0 (undefined behaviour, even if glibc
+  happens to tolerate it). Matches the FreeRTOS backend.
 - `osal-rs-serde` implements `Serialize` for `Vec<T>`. `Deserialize` for
   `Vec<T>` and `Serializer::serialize_vec` already existed, but a struct with
   a `Vec` field could not derive `Serialize`.
@@ -57,8 +64,14 @@ together.
 - FreeRTOS suite: new `serde_tests` module (with the `serde` feature) running
   the same `osal-rs-serde` checks on target; `test_queue_streamed_tuple_struct`
   sends a derived tuple struct through a real `QueueStreamed`.
-- `test_queue_streamed` (FreeRTOS) now asserts the fetched message equals the
-  posted one; it previously started from the same value and checked nothing.
+- `test_queue_streamed` (both backends) now asserts the fetched message equals
+  the posted one; it previously started from the same value and checked
+  nothing. `test_queue_streamed_tuple_struct` is mirrored on POSIX.
+- Mirrored-suite alignment: `test_thread_null_handle_guards` covers
+  `get_metadata_from_handle(null)` on FreeRTOS and `delete()` on an unspawned
+  thread on POSIX; `test_mutex_accessors_without_locking` (FreeRTOS) checks the
+  `Debug`/`Display` output; `test_async_queue_post_async_parks_until_drained`
+  (POSIX) also checks that `post_async` actually waited.
 - `test_bytes_has_len_blanket_impl` (both backends) no longer needs `serde`,
   covers `i8`/`bool`, and checks that `[0u32; 4].len()` is still 4 with
   `osal_rs::os::*` in scope.

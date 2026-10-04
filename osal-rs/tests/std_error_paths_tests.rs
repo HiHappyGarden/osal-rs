@@ -581,9 +581,11 @@ fn test_thread_null_handle_guards() -> Result<()> {
         Err(Error::NullPtr)
     ));
 
-    // Suspend/resume are silent no-ops rather than signalling pthread 0.
+    // Suspend/resume/delete are silent no-ops rather than signalling or
+    // joining pthread 0.
     unspawned.suspend();
     unspawned.resume();
+    unspawned.delete();
 
     // Metadata still reflects the constructor arguments, but the state is
     // `Invalid` because there is no live thread.

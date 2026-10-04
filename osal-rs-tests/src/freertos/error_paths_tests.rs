@@ -29,15 +29,12 @@
 //! and slice bounds-checks the POSIX side already had, so these assertions
 //! are identical on both.
 //!
-//! Three POSIX tests still have no counterpart here, for reasons that are
-//! about the platform rather than the wrapper:
+//! Two groups of POSIX tests still have no counterpart here, for reasons that
+//! are about the platform rather than the wrapper:
 //!
 //! * The `*_deadline_crosses_second_boundary` tests exist purely to drive the
 //!   `timespec` normalisation in the POSIX backend's *absolute* deadline
 //!   arithmetic. FreeRTOS takes relative tick counts and has no such code.
-//! * `test_timer_clone_after_original_deleted`. `posix::Timer` shares one
-//!   `Arc<TimerShared>` between clones, so a clone observes the original's
-//!   `delete()`; `freertos::Timer` clones copy the raw handle, so they cannot.
 //! * The contended `lock_from_isr` tests. FreeRTOS's recursive mutexes must
 //!   not be taken from ISR context at all, so "contended `trylock`" has no
 //!   meaningful FreeRTOS counterpart.
@@ -287,6 +284,8 @@ pub fn test_mutex_accessors_without_locking() -> Result<()> {
 
     // `Debug`/`Display` must not deadlock by trying to read the payload.
     log_debug!(TAG, "Mutex debug: {:?} display: {}", shared, shared);
+    assert!(!alloc::format!("{:?}", shared).is_empty());
+    assert!(!alloc::format!("{}", shared).is_empty());
 
     log_info!(TAG, "test_mutex_accessors_without_locking PASSED");
     Ok(())
@@ -535,6 +534,12 @@ pub fn test_thread_null_handle_guards() -> Result<()> {
     assert_eq!(metadata.state, ThreadState::Invalid);
     assert_eq!(metadata.name.as_str(), "never-spawned");
     assert_eq!(metadata.priority, 3);
+
+    // The handle-keyed lookup has its own null guard: `vTaskGetInfo` would
+    // otherwise resolve NULL to the calling task and report its metadata.
+    let from_null = Thread::get_metadata_from_handle(null_mut());
+    assert_eq!(from_null.state, ThreadState::Invalid);
+    assert_eq!(from_null.name.len(), 0);
 
     // `new_with_handle*` reject the null handle for the same reason.
     struct Lowest;

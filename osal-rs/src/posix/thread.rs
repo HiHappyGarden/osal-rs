@@ -912,7 +912,7 @@ impl ThreadFn for Thread {
     /// Joins the thread (blocking until it finishes) and forgets its
     /// registry/notification-slot entries, discarding any error from the
     /// underlying `pthread_join`. Prefer [`ThreadFn::join`] when the exit
-    /// status matters.
+    /// status matters. A no-op if this handle [`ThreadFn::is_null`].
     ///
     /// # Examples
     ///
@@ -925,6 +925,12 @@ impl ThreadFn for Thread {
     /// spawned.delete();
     /// ```
     fn delete(&self) {
+        // Joining pthread 0 is undefined behaviour; a never-spawned thread
+        // has nothing to tear down. Mirrors `freertos::Thread::delete`.
+        if self.is_null() {
+            return;
+        }
+
         let _ = unsafe { pthread_join(self.handle, null_mut()) };
         forget_notify_slot(self.handle);
         forget_thread(self.handle);

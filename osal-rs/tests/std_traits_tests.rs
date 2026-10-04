@@ -184,15 +184,14 @@ fn test_bytes_has_len_provided_method() -> Result<()> {
     Ok(())
 }
 
-/// The blanket impl is `impl<T: Serialize, const N: usize> BytesHasLen for
-/// [T; N]`, and plain `u8` only satisfies `Serialize` through `osal-rs-serde`
-/// - so the array form only exists with the `serde` feature on.
-#[cfg(feature = "serde")]
+/// The blanket impl only covers arrays of single-byte elements (`u8`, `i8`,
+/// `bool`), where the byte length equals `N`. It does not depend on `serde`.
 #[test]
 fn test_bytes_has_len_blanket_impl() -> Result<()> {
     log_info!(TAG, "Starting test_bytes_has_len_blanket_impl");
 
-    // Length is the const generic, independent of the contents.
+    // Byte length of a single-byte element array is the const generic,
+    // independent of the contents.
     let four = [1u8, 2, 3, 4];
     assert_eq!(BytesHasLen::len(&four), 4);
     assert!(!BytesHasLen::is_empty(&four));
@@ -200,6 +199,14 @@ fn test_bytes_has_len_blanket_impl() -> Result<()> {
     let none: [u8; 0] = [];
     assert_eq!(BytesHasLen::len(&none), 0);
     assert!(BytesHasLen::is_empty(&none));
+
+    assert_eq!(BytesHasLen::len(&[-1i8; 3]), 3);
+    assert_eq!(BytesHasLen::len(&[true, false]), 2);
+
+    // Wider element types get no blanket impl, so with `osal_rs::os::*` in
+    // scope `.len()` on them still resolves to the slice element count.
+    let words = [0u32; 4];
+    assert_eq!(words.len(), 4);
 
     log_info!(TAG, "test_bytes_has_len_blanket_impl PASSED");
     Ok(())

@@ -11,6 +11,58 @@ together.
 
 ## [Unreleased]
 
+### Changed
+
+- **Breaking:** the blanket `BytesHasLen` impl for arrays now covers only
+  single-byte elements (`[u8; N]`, `[i8; N]`, `[bool; N]`) and no longer
+  depends on the `serde` feature. It used to be `impl<T: Serialize> BytesHasLen
+  for [T; N]` returning `N`, i.e. the element count rather than the byte
+  length: `QueueStreamed<[u16; N]>` (or any wider element) sized its buffer
+  too small and every `post` failed with "Serialization error". Such arrays
+  now fail to compile instead; wrap them in a struct and implement
+  `BytesHasLen` for it. A byte-counting blanket impl was not an option: a
+  trait method on `[T; N]` takes precedence over the inherent slice `len()`,
+  so it would have silently changed what `array.len()` returns wherever
+  `osal_rs::os::*` is imported.
+
+### Fixed
+
+- `#[derive(Deserialize)]` on tuple structs now follows the same protocol as
+  `#[derive(Serialize)]`: it calls `deserialize_struct_start`/
+  `deserialize_struct_end` and reads each field with `deserialize_field` under
+  the names `"0"`, `"1"`, ... (it called `T::deserialize` with the struct name
+  and skipped start/end). No change with `ByteSerializer`/`ByteDeserializer`,
+  whose struct hooks are no-ops; custom (de)serializers that use them can now
+  round-trip tuple structs.
+- `osal-rs-serde` implements `Serialize` for `Vec<T>`. `Deserialize` for
+  `Vec<T>` and `Serializer::serialize_vec` already existed, but a struct with
+  a `Vec` field could not derive `Serialize`.
+
+### Documentation
+
+- All `osal-rs-serde` and `osal-rs-serde-derive` doctests now run (with the
+  `derive` feature): the OSAL queue example uses a stand-in for `osal_rs::os`,
+  the custom serializer example is a complete `TextSerializer`, and the derive
+  examples round-trip named, tuple and unit structs. Enums, unions and generic
+  structs are documented with `compile_fail` doctests.
+- The `osal-rs-serde-derive` README is compiled as doctests, every example is
+  self-contained, and the "Error Messages" section lists the errors the macros
+  actually emit.
+
+### Tests
+
+- `osal-rs-serde`: tuple struct, newtype struct, nested tuple struct and
+  `Vec`/`String` round-trips, plus a protocol-symmetry test that records the
+  struct hook calls of `Serialize` and `Deserialize`.
+- FreeRTOS suite: new `serde_tests` module (with the `serde` feature) running
+  the same `osal-rs-serde` checks on target; `test_queue_streamed_tuple_struct`
+  sends a derived tuple struct through a real `QueueStreamed`.
+- `test_queue_streamed` (FreeRTOS) now asserts the fetched message equals the
+  posted one; it previously started from the same value and checked nothing.
+- `test_bytes_has_len_blanket_impl` (both backends) no longer needs `serde`,
+  covers `i8`/`bool`, and checks that `[0u32; 4].len()` is still 4 with
+  `osal_rs::os::*` in scope.
+
 ## [1.2.2] - 2026-10-03
 
 FreeRTOS backend fixes only; the POSIX backend is unchanged.

@@ -23,9 +23,6 @@
 //! This module provides traits for converting types to and from byte arrays,
 //! enabling type-safe serialization for queue and communication operations.
 
-#[cfg(feature = "serde")]
-use osal_rs_serde::Serialize;
-
 #[cfg(not(feature = "serde"))]
 use crate::utils::Result;
 
@@ -71,17 +68,43 @@ pub trait BytesHasLen {
     }
 }
 
-/// Automatic implementation of `BytesHasLen` for fixed-size arrays.
+/// Automatic implementation of `BytesHasLen` for fixed-size arrays of
+/// single-byte elements (`u8`, `i8`, `bool`), whose byte length is `N`.
 ///
-/// This allows arrays of types implementing `Serialize` to automatically
-/// report their size.
-impl<T, const N: usize> BytesHasLen for [T; N] 
-where 
-    T: Serialize + Sized {
-    fn len(&self) -> usize {
-        N
-    }
+/// Arrays of wider elements are deliberately left out: their byte length is
+/// not `N`, and because a trait method on `[T; N]` takes precedence over the
+/// inherent slice `len()`, a byte-counting impl would silently change what
+/// `array.len()` returns wherever `osal_rs::os::*` is imported. Wrap such
+/// arrays in a struct and implement `BytesHasLen` for it instead.
+///
+/// # Examples
+///
+/// ```
+/// use osal_rs::os::*;
+///
+/// assert_eq!(BytesHasLen::len(&[1u8, 2, 3, 4]), 4);
+/// assert_eq!(BytesHasLen::len(&[true; 3]), 3);
+/// ```
+///
+/// ```compile_fail
+/// use osal_rs::os::*;
+///
+/// // `[u16; 4]` is 8 bytes, not 4: no blanket impl
+/// let _ = BytesHasLen::len(&[0u16; 4]);
+/// ```
+macro_rules! impl_bytes_has_len_for_byte_array {
+    ($($t:ty),*) => {
+        $(
+            impl<const N: usize> BytesHasLen for [$t; N] {
+                fn len(&self) -> usize {
+                    N
+                }
+            }
+        )*
+    };
 }
+
+impl_bytes_has_len_for_byte_array!(u8, i8, bool);
 
 /// Trait for converting types to byte slices.
 ///

@@ -16,7 +16,7 @@ Add the `derive` feature to enable these macros:
 
 ```toml
 [dependencies]
-osal-rs-serde = { version = "1.2", features = ["derive"] }
+osal-rs-serde = { version = "1.3", features = ["derive"] }
 ```
 
 Then use the macros on your structs:

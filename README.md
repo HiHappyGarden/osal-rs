@@ -29,27 +29,40 @@ OSAL-RS provides a unified API for developing multi-platform embedded applicatio
 
 ## Breaking Changes
 
+Only a short example per change is shown here; see the [CHANGELOG](https://github.com/HiHappyGarden/osal-rs/blob/master/CHANGELOG.md) for the full description.
+
+### `BytesHasLen` for arrays covers only single-byte elements (from version 1.3.0)
+
+```rust
+// Before: compiled, but len() returned 4 (elements) instead of 8 (bytes),
+// so every post() failed with "Serialization error"
+let queue = QueueStreamed::<[u16; 4]>::new(8, 8)?;
+
+// After: [u8; N], [i8; N] and [bool; N] still work; wider arrays go in a struct
+#[derive(Serialize, Deserialize, Default)]
+struct Samples([u16; 4]);
+
+impl BytesHasLen for Samples {
+    fn len(&self) -> usize { 4 * size_of::<u16>() }
+}
+
+let queue = QueueStreamed::<Samples>::new(8, 8)?;
+```
+
+Details: [1.3.0](https://github.com/HiHappyGarden/osal-rs/blob/master/CHANGELOG.md#130---2026-10-04).
+
 ### `Timer` clones share one timer, and the last handle destroys it (from version 1.2.0)
 
 ```rust
 let timer = Timer::new("tick", 100, true, None, |_t, p| Ok(p.unwrap_or(Arc::new(()))))?;
 let clone = timer.clone();
 
-timer.start(0);
 clone.stop(0);  // the same timer: either handle drives it
-
 drop(clone);    // not the last handle: the timer stays alive
 drop(timer);    // last handle gone: the timer is destroyed here
 ```
 
-`Timer` was already `Clone`, but on FreeRTOS a clone merely copied the raw handle: a `delete()` through one handle left every other one holding a dangling handle, and because `Drop` deleted per-handle, the *first* clone dropped destroyed the timer for everyone. Both backends now keep the timer in shared state, so every clone observes a deletion performed through any of them, and the timer is destroyed exactly once - when the last handle goes away. That last part is new on POSIX too, where the timer and its background thread previously leaked unless `delete()` was called explicitly.
-
-Two further changes come with it, both bringing FreeRTOS in line with POSIX and with the trait documentation:
-
-- the value a timer callback returns is now handed to the next firing; FreeRTOS discarded it and always re-passed the original parameter.
-- the callback receives a *non-owning* handle. It used to receive one that owned the timer and destroyed it on return, so an auto-reload FreeRTOS timer deleted itself at its own first firing.
-
-On FreeRTOS, destroying a timer by dropping its last handle completes on the timer daemon task rather than inline, so it takes effect one tick later; `delete()` is still immediate. Code that relied on `Drop` doing nothing (POSIX) or on a clone's `Drop` destroying the timer (FreeRTOS) needs revisiting.
+Details: [1.2.0](https://github.com/HiHappyGarden/osal-rs/blob/master/CHANGELOG.md#120---2026-08-05).
 
 ### `ThreadFn::join` blocks on FreeRTOS instead of killing the thread (from version 1.2.0)
 
@@ -57,29 +70,26 @@ On FreeRTOS, destroying a timer by dropping its last handle completes on the tim
 // Before, on FreeRTOS only: join() deleted the task, killing it mid-work
 spawned.join(core::ptr::null_mut())?;
 
-// After, on both backends: join() blocks until the thread's closure returns
+// After, on both backends: join() blocks until the thread's closure returns;
+// use delete() to kill a task
 let mut ret: *mut core::ffi::c_void = core::ptr::null_mut();
 spawned.join(&raw mut ret)?;
 ```
 
-The FreeRTOS implementation called `vTaskDelete` on the target task - the opposite of both the trait documentation ("blocks the calling thread until this thread terminates") and the POSIX implementation, which forwards to `pthread_join`. Since both FreeRTOS task wrappers already delete themselves once their callback returns, the old code was additionally a use-after-free whenever the task had already finished. Every spawned thread now carries an exit latch, so `join` waits for the thread and collects its return value on both backends. Code that used `join()` as a way to *kill* a FreeRTOS task must call `delete()` instead.
+Details: [1.2.0](https://github.com/HiHappyGarden/osal-rs/blob/master/CHANGELOG.md#120---2026-08-05).
 
 ### `EventGroupFn::wait` gained a `wait_for_all_bits` parameter (from version 1.1.0)
-
-`EventGroup::wait` and `EventGroup::wait_with_to_tick` now take an explicit `wait_for_all_bits: bool`, matching FreeRTOS's `xEventGroupWaitBits`:
 
 ```rust
 // Before
 let bits = event_group.wait(mask, timeout_ticks);
 
 // After
-let bits = event_group.wait(mask, true, timeout_ticks);   // AND: block until every bit in `mask` is set
-let bits = event_group.wait(mask, false, timeout_ticks);  // OR: block until any bit in `mask` is set
-
-let bits = event_group.wait_with_to_tick(mask, true, timeout);
+let bits = event_group.wait(mask, true, timeout_ticks);   // AND: every bit in `mask`
+let bits = event_group.wait(mask, false, timeout_ticks);  // OR: any bit in `mask`
 ```
 
-Previously the two backends silently disagreed: POSIX only ever implemented AND-wait, while FreeRTOS hardcoded OR-wait (`xWaitForAllBits = pdFALSE`) regardless of what the trait docs said. Code that waited on multiple independent bits (e.g. "unblock when *either* of these two mutually exclusive events fires") could hang forever on POSIX while working by accident on FreeRTOS. Both backends now implement the same, explicit semantics.
+Details: [1.1.0](https://github.com/HiHappyGarden/osal-rs/blob/master/CHANGELOG.md#110---2026-08-02).
 
 ## Supported Backends
 

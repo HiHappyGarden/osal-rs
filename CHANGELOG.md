@@ -11,6 +11,11 @@ together.
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-10-04
+
+Contains one breaking change (`BytesHasLen` for arrays, see below) released as
+a minor version: it only removes impls that produced wrong buffer sizes.
+
 ### Changed
 
 - **Breaking:** the blanket `BytesHasLen` impl for arrays now covers only
@@ -30,6 +35,11 @@ together.
   notification delivered before the wait could come back with bits missing.
   Only callers passing a non-zero `bits_to_clear_on_entry` are affected. The
   parameter documentation now states this on both backends.
+- `osal-rs-build`: enabling both the `posix` and `freertos` features is now a
+  `compile_error!` with an explicit message, instead of compiling both
+  backends' `TypeGenerator` code. The informational build messages
+  (generated FreeRTOS types, `FreeRTOSConfig.h` layout) are no longer emitted
+  as `cargo:warning`; the missing-`FreeRTOSConfig.h` fallback still is.
 
 ### Fixed
 
@@ -376,7 +386,8 @@ hardware.
   components.
 - README rewritten around backend selection, feature flags and POSIX support.
 
-[Unreleased]: https://github.com/HiHappyGarden/osal-rs/compare/1.2.2...HEAD
+[Unreleased]: https://github.com/HiHappyGarden/osal-rs/compare/1.3.0...HEAD
+[1.3.0]: https://github.com/HiHappyGarden/osal-rs/compare/1.2.2...1.3.0
 [1.2.2]: https://github.com/HiHappyGarden/osal-rs/compare/1.2.1...1.2.2
 [1.2.1]: https://github.com/HiHappyGarden/osal-rs/compare/1.2.0...1.2.1
 [1.2.0]: https://github.com/HiHappyGarden/osal-rs/compare/1.1.0...1.2.0

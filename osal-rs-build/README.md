@@ -24,7 +24,7 @@ Exactly one of the `freertos` / `posix` features is expected to be enabled, matc
 | `freertos` | ❌ | Generate types for the FreeRTOS backend. |
 | `posix` | ❌ | Generate types for the POSIX backend and compile/link its C porting shim. |
 
-There is no default: pick exactly one, matching the feature enabled on `osal-rs` itself.
+There is no default: pick exactly one, matching the feature enabled on `osal-rs` itself. Enabling both is a `compile_error!` (since 1.3.0).
 
 ## Installation
 

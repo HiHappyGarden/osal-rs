@@ -19,6 +19,19 @@ OSAL-RS provides a unified API for developing multi-platform embedded applicatio
 - **osal-rs-tests**: Comprehensive test suite for all components
 - **osal-rs-serde**: ✨ Extensible serialization/deserialization framework with derive macros
 
+### Core Features
+
+- **Thread Management**: Create, manage, and synchronize threads with priorities
+- **Synchronization Primitives**: Mutexes (recursive & non-recursive), binary & counting semaphores, event groups
+- **Message Queues**: Type-safe inter-thread communication with blocking/non-blocking operations
+- **Software Timers**: Periodic and one-shot timers with callbacks
+- **Memory Allocation**: Custom allocator integration for heap management (`freertos`) or the system allocator (`posix`)
+- **Time Management**: Duration handling and tick-based timing
+- **System Control**: Scheduler control, task notifications, and system information
+- **No-std Support**: Fully compatible with bare-metal embedded systems (`freertos` backend)
+- **Host Testing**: Native `std` execution for tests, examples and simulation (`posix` backend)
+- **🧪 _EXPERIMENTAL_ Async/Await**: Backend-agnostic `async`/`await` support without Tokio (see [Async/Await Support](#-_experimental_-asyncawait-support-feature-async))
+
 ## Current Implementation Status
 
 - ✅ **FreeRTOS**: Fully implemented and tested
@@ -26,70 +39,6 @@ OSAL-RS provides a unified API for developing multi-platform embedded applicatio
 - ✅ **Serialization**: Complete osal-rs-serde implementation with derive macros
 - 🧪 **Async/Await**: Experimental, backend-agnostic, works on both FreeRTOS and POSIX
 - 🚧 **Other RTOSes**: Under consideration
-
-## Breaking Changes
-
-Only a short example per change is shown here; see the [CHANGELOG](https://github.com/HiHappyGarden/osal-rs/blob/master/CHANGELOG.md) for the full description.
-
-### `BytesHasLen` for arrays covers only single-byte elements (from version 1.3.0)
-
-```rust
-// Before: compiled, but len() returned 4 (elements) instead of 8 (bytes),
-// so every post() failed with "Serialization error"
-let queue = QueueStreamed::<[u16; 4]>::new(8, 8)?;
-
-// After: [u8; N], [i8; N] and [bool; N] still work; wider arrays go in a struct
-#[derive(Serialize, Deserialize, Default)]
-struct Samples([u16; 4]);
-
-impl BytesHasLen for Samples {
-    fn len(&self) -> usize { 4 * size_of::<u16>() }
-}
-
-let queue = QueueStreamed::<Samples>::new(8, 8)?;
-```
-
-Details: [1.3.0](https://github.com/HiHappyGarden/osal-rs/blob/master/CHANGELOG.md#130---2026-10-04).
-
-### `Timer` clones share one timer, and the last handle destroys it (from version 1.2.0)
-
-```rust
-let timer = Timer::new("tick", 100, true, None, |_t, p| Ok(p.unwrap_or(Arc::new(()))))?;
-let clone = timer.clone();
-
-clone.stop(0);  // the same timer: either handle drives it
-drop(clone);    // not the last handle: the timer stays alive
-drop(timer);    // last handle gone: the timer is destroyed here
-```
-
-Details: [1.2.0](https://github.com/HiHappyGarden/osal-rs/blob/master/CHANGELOG.md#120---2026-08-05).
-
-### `ThreadFn::join` blocks on FreeRTOS instead of killing the thread (from version 1.2.0)
-
-```rust
-// Before, on FreeRTOS only: join() deleted the task, killing it mid-work
-spawned.join(core::ptr::null_mut())?;
-
-// After, on both backends: join() blocks until the thread's closure returns;
-// use delete() to kill a task
-let mut ret: *mut core::ffi::c_void = core::ptr::null_mut();
-spawned.join(&raw mut ret)?;
-```
-
-Details: [1.2.0](https://github.com/HiHappyGarden/osal-rs/blob/master/CHANGELOG.md#120---2026-08-05).
-
-### `EventGroupFn::wait` gained a `wait_for_all_bits` parameter (from version 1.1.0)
-
-```rust
-// Before
-let bits = event_group.wait(mask, timeout_ticks);
-
-// After
-let bits = event_group.wait(mask, true, timeout_ticks);   // AND: every bit in `mask`
-let bits = event_group.wait(mask, false, timeout_ticks);  // OR: any bit in `mask`
-```
-
-Details: [1.1.0](https://github.com/HiHappyGarden/osal-rs/blob/master/CHANGELOG.md#110---2026-08-02).
 
 ## Supported Backends
 
@@ -127,6 +76,24 @@ rustup target add thumbv8m.main-none-eabi
 cargo build --release --target thumbv8m.main-none-eabi --features freertos
 ```
 
+#### Custom `FreeRTOSConfig.h` Path
+
+`osal-rs` generates its Rust types from `FreeRTOSConfig.h` at build time, so it must read the same header your kernel is built with. By default it looks for `<workspace_root>/inc/FreeRTOSConfig.h`; set `FREERTOS_CONFIG_PATH` to use another one:
+
+```bash
+export FREERTOS_CONFIG_PATH="/path/to/your/FreeRTOSConfig.h"
+cargo build --release --target thumbv8m.main-none-eabi --features freertos
+```
+
+Or, to avoid exporting it every time, in `.cargo/config.toml`:
+
+```toml
+[env]
+FREERTOS_CONFIG_PATH = { value = "/path/to/your/FreeRTOSConfig.h" }
+```
+
+With CMake, pass it through `cmake -E env` as shown in [Basic CMake Integration](#basic-cmake-integration). Cargo rebuilds the bindings whenever the variable changes.
+
 ### POSIX Backend (`posix`)
 
 Runs on any POSIX/pthreads host so OSAL-RS applications - and their tests and doc examples - can execute for real on Linux/macOS without embedded hardware or a cross toolchain. Enabling `posix` disables `no_std` and builds the crate against `std`.
@@ -156,15 +123,20 @@ Threads spawned by the `posix` backend normally inherit the creating thread's sc
 
 You don't need to request this feature yourself: `osal-rs-build`'s build script probes the host at compile time and automatically turns `real_time` on whenever the OS/kernel supports `SCHED_FIFO`. It's a plain Cargo feature only so it can be inspected via `cfg(feature = "real_time")`; a plain `cargo build --features posix` is enough to get it on a capable host.
 
-### Caveats of the POSIX Backend
+#### Caveats of the POSIX Backend
 
 - `System::start()` simply spins until [`System::stop()`] is called from another thread - there is no scheduler to hand control to, unlike FreeRTOS where it never returns.
 - Timers each spawn their own background thread and permanently block `SIGALRM` on the thread that creates them; create a new `Timer` rather than reusing one that already fired as a one-shot.
 
 ## Quick Start
 
+The snippets below run unchanged on both backends; only the `freertos`/`posix` feature changes.
+
+### Threads
+
 ```rust
 use osal_rs::os::*;
+use osal_rs::println; // works in no_std too
 
 fn main() {
     // Create a thread
@@ -186,6 +158,8 @@ fn main() {
 }
 ```
 
+### Mutex
+
 ```rust
 use osal_rs::os::*;
 use std::sync::Arc;
@@ -201,6 +175,8 @@ thread.spawn_simple(move || {
 }).unwrap();
 ```
 
+### Queue
+
 ```rust
 use osal_rs::os::*;
 
@@ -214,6 +190,8 @@ queue.post(&data, 100).unwrap();
 let mut buffer = [0u8; 4];
 queue.fetch(&mut buffer, 100).unwrap();
 ```
+
+### Event Groups
 
 ```rust
 use osal_rs::os::*;
@@ -237,21 +215,6 @@ thread.spawn_simple(move || {
 
 events.set(READY); // wakes the waiting thread
 ```
-
-The same code compiles and runs unchanged against either backend - just switch the `freertos`/`posix` feature flags.
-
-## Core OSAL Features
-
-- **Thread Management**: Create, manage, and synchronize threads with priorities
-- **Synchronization Primitives**: Mutexes (recursive & non-recursive), binary & counting semaphores, event groups
-- **Message Queues**: Type-safe inter-thread communication with blocking/non-blocking operations
-- **Software Timers**: Periodic and one-shot timers with callbacks
-- **Memory Allocation**: Custom allocator integration for heap management (`freertos`) or the system allocator (`posix`)
-- **Time Management**: Duration handling and tick-based timing
-- **System Control**: Scheduler control, task notifications, and system information
-- **No-std Support**: Fully compatible with bare-metal embedded systems (`freertos` backend)
-- **Host Testing**: Native `std` execution for tests, examples and simulation (`posix` backend)
-- **🧪 _EXPERIMENTAL_ Async/Await**: Backend-agnostic `async`/`await` support without Tokio (see below)
 
 ## Cargo Features
 
@@ -297,13 +260,13 @@ To use OSAL-RS in your project with specific features (exactly one of `freertos`
 
 ```toml
 [dependencies]
-osal-rs = { version = "1.0", features = ["freertos"] }
+osal-rs = { version = "1.3", features = ["freertos"] }
 
 # Or for host development/testing
-osal-rs = { version = "1.0", features = ["posix"] }
+osal-rs = { version = "1.3", features = ["posix"] }
 
 # Or with serialization support
-osal-rs = { version = "1.0", features = ["freertos", "serde"] }
+osal-rs = { version = "1.3", features = ["freertos", "serde"] }
 ```
 
 ## 🧪 _EXPERIMENTAL_ Async/Await Support (feature `async`)
@@ -352,23 +315,7 @@ block_on(async {
 });
 ```
 
-### Enable the feature
-
-```toml
-# Cargo.toml
-[dependencies]
-osal-rs = { version = "1.0", features = ["freertos", "async"] }
-# or for host development
-osal-rs = { version = "1.0", features = ["posix", "async"] }
-```
-
-```bash
-# FreeRTOS embedded target
-cargo build --release --target thumbv8m.main-none-eabi --features freertos,async
-
-# POSIX host (for tests / simulation)
-cargo build --features posix,async
-```
+Enable it together with a backend, e.g. `features = ["freertos", "async"]` (see [Cargo Features](#cargo-features)).
 
 ## osal-rs-serde Features
 
@@ -453,153 +400,176 @@ CMake integration is only needed for the **FreeRTOS** backend, since it must lin
 
 ### Basic CMake Integration
 
-Add OSAL-RS to your existing CMake project:
+OSAL-RS is not linked on its own: your Rust code lives in an application crate built as a `staticlib` that depends on `osal-rs`, and CMake links that single archive into the firmware together with the FreeRTOS kernel and the C porting layer.
+
+```toml
+# app/Cargo.toml
+[lib]
+crate-type = ["staticlib"]
+
+[dependencies]
+osal-rs = { version = "1.3", features = ["freertos"] }
+
+[profile.dev]
+panic = "abort"
+
+[profile.release]
+panic = "abort"
+```
+
+The example below targets a Raspberry Pi Pico 2 (RP2350) with the Pico SDK and the FreeRTOS kernel port shipped with it; for another MCU, replace the Pico SDK lines and the FreeRTOS port with your own. It assumes `FreeRTOS-Kernel/`, `osal-rs/` and the `app/` crate sit next to `CMakeLists.txt`.
 
 ```cmake
-cmake_minimum_required(VERSION 3.20)
-project(my_embedded_project C CXX)
+cmake_minimum_required(VERSION 3.16)
 
-# Configure FreeRTOS (assuming it's already in your project)
-add_subdirectory(freertos)
+set(PICO_BOARD pico2_w)
 
-# Add OSAL-RS porting layer
-add_library(osal_rs_porting STATIC
-    osal-rs-porting/freeretos/src/osal_rs.c
+# Pull in the Pico SDK (must be before project())
+include(${PICO_SDK_PATH}/external/pico_sdk_import.cmake)
+
+# FreeRTOS kernel and the directory holding FreeRTOSConfig.h
+set(FREERTOS_KERNEL_PATH ${CMAKE_SOURCE_DIR}/FreeRTOS-Kernel)
+set(FREERTOS_CONFIG_FILE_DIRECTORY ${CMAKE_SOURCE_DIR}/inc/config)
+add_subdirectory(${FREERTOS_KERNEL_PATH}/portable/ThirdParty/GCC/RP2350_ARM_NTZ/)
+
+project(my_app C CXX ASM)
+
+pico_sdk_init()
+
+# --- Rust application crate (pulls in osal-rs) ---
+set(CARGO_TARGET "thumbv8m.main-none-eabi")
+
+if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+    set(CARGO_PROFILE_FLAG "")
+    set(CARGO_PROFILE_DIR "debug")
+else()
+    set(CARGO_PROFILE_FLAG "--release")
+    set(CARGO_PROFILE_DIR "release")
+endif()
+
+set(RUST_LIB ${CMAKE_SOURCE_DIR}/app/target/${CARGO_TARGET}/${CARGO_PROFILE_DIR}/libapp.a)
+
+# Same FreeRTOSConfig.h used by the kernel: osal-rs generates its Rust types from it
+set(FREERTOS_CONFIG_PATH ${FREERTOS_CONFIG_FILE_DIRECTORY}/FreeRTOSConfig.h)
+
+# Rebuild the Rust library when the app or osal-rs sources change
+file(GLOB_RECURSE RUST_SOURCES CONFIGURE_DEPENDS
+    "${CMAKE_SOURCE_DIR}/app/src/*.rs"
+    "${CMAKE_SOURCE_DIR}/app/Cargo.toml"
+    "${CMAKE_SOURCE_DIR}/osal-rs/*/src/*.rs"
+    "${CMAKE_SOURCE_DIR}/osal-rs/*/Cargo.toml"
+    "${CMAKE_SOURCE_DIR}/osal-rs/osal-rs/build.rs"
 )
 
-target_include_directories(osal_rs_porting PUBLIC
-    osal-rs-porting/freeretos/inc
-    ${FREERTOS_INCLUDE_DIRS}
-)
-
-target_link_libraries(osal_rs_porting PUBLIC
-    freertos
-)
-
-# Configure Rust library
-set(RUST_TARGET "thumbv8m.main-none-eabi")  # Adjust for your target
-set(OSAL_RS_LIB "${CMAKE_CURRENT_SOURCE_DIR}/osal-rs/target/${RUST_TARGET}/release/libosal_rs.a")
-
-# Custom command to build Rust library
 add_custom_command(
-    OUTPUT ${OSAL_RS_LIB}
-    COMMAND cargo build --release --target ${RUST_TARGET} --features freertos
-    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/osal-rs
-    COMMENT "Building OSAL-RS library"
+    OUTPUT ${RUST_LIB}
+    COMMAND ${CMAKE_COMMAND} -E env
+        FREERTOS_CONFIG_PATH=${FREERTOS_CONFIG_PATH}
+        cargo build --target ${CARGO_TARGET} ${CARGO_PROFILE_FLAG}
+    DEPENDS ${RUST_SOURCES} ${FREERTOS_CONFIG_PATH}
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/app
+    COMMENT "Building Rust library: app"
+    VERBATIM
+    USES_TERMINAL
 )
 
-add_custom_target(osal_rs_build DEPENDS ${OSAL_RS_LIB})
+add_custom_target(rust_app ALL DEPENDS ${RUST_LIB})
 
-# Create imported library for OSAL-RS
-add_library(osal_rs STATIC IMPORTED GLOBAL)
-set_target_properties(osal_rs PROPERTIES
-    IMPORTED_LOCATION ${OSAL_RS_LIB}
-)
-add_dependencies(osal_rs osal_rs_build)
-
-# Your main application
-add_executable(my_app
-    src/main.c
+# --- Firmware: C sources + OSAL-RS porting layer ---
+file(GLOB_RECURSE SOURCES CONFIGURE_DEPENDS
+    "src/*.c"
+    "osal-rs/osal-rs-porting/freeretos/src/*.c"
 )
 
-target_link_libraries(my_app PRIVATE
-    osal_rs
-    osal_rs_porting
-    freertos
+add_executable(${PROJECT_NAME} ${SOURCES})
+add_dependencies(${PROJECT_NAME} rust_app)
+
+target_include_directories(${PROJECT_NAME} PRIVATE
+    ${CMAKE_CURRENT_LIST_DIR}/inc
+    ${FREERTOS_CONFIG_FILE_DIRECTORY}
+    ${CMAKE_CURRENT_LIST_DIR}/osal-rs/osal-rs-porting/freeretos/inc
 )
-```
 
-### Advanced CMake Integration with Multiple Configurations
-
-```cmake
-# Function to build OSAL-RS for different configurations
-function(add_osal_rs_library TARGET_NAME RUST_TARGET CARGO_PROFILE)
-    set(PROFILE_DIR ${CARGO_PROFILE})
-    if(CARGO_PROFILE STREQUAL "release")
-        set(CARGO_FLAGS "--release")
-    else()
-        set(CARGO_FLAGS "")
-    endif()
-
-    set(LIB_PATH "${CMAKE_CURRENT_SOURCE_DIR}/osal-rs/target/${RUST_TARGET}/${PROFILE_DIR}/libosal_rs.a")
-
-    add_custom_command(
-        OUTPUT ${LIB_PATH}
-        COMMAND cargo build ${CARGO_FLAGS} --target ${RUST_TARGET} --features freertos
-        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/osal-rs
-        COMMENT "Building OSAL-RS (${CARGO_PROFILE}) for ${RUST_TARGET}"
-    )
-
-    add_custom_target(${TARGET_NAME}_build DEPENDS ${LIB_PATH})
-
-    add_library(${TARGET_NAME} STATIC IMPORTED GLOBAL)
-    set_target_properties(${TARGET_NAME} PROPERTIES
-        IMPORTED_LOCATION ${LIB_PATH}
-    )
-    add_dependencies(${TARGET_NAME} ${TARGET_NAME}_build)
-endfunction()
-
-# Use it in your project
-add_osal_rs_library(osal_rs "thumbv8m.main-none-eabi" "release")
-```
-
-### Cross-Compilation Setup
-
-Example CMake toolchain file for ARM Cortex-M:
-
-```cmake
-# toolchain-arm-none-eabi.cmake
-set(CMAKE_SYSTEM_NAME Generic)
-set(CMAKE_SYSTEM_PROCESSOR arm)
-
-set(CMAKE_C_COMPILER arm-none-eabi-gcc)
-set(CMAKE_CXX_COMPILER arm-none-eabi-g++)
-set(CMAKE_ASM_COMPILER arm-none-eabi-gcc)
-
-set(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)
-set(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)
-set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)
-
-# Rust target
-set(RUST_TARGET "thumbv8m.main-none-eabi")
-```
-
-Use it with:
-
-```bash
-cmake -DCMAKE_TOOLCHAIN_FILE=toolchain-arm-none-eabi.cmake -B build
-cmake --build build
-```
-
-### Custom FreeRTOS Configuration Path
-
-By default, OSAL-RS looks for `FreeRTOSConfig.h` at `<workspace_root>/inc/FreeRTOSConfig.h`. You can override this path using the `FREERTOS_CONFIG_PATH` environment variable.
-
-#### Setting via CMake
-
-```cmake
-# Set custom path to FreeRTOSConfig.h
-set(FREERTOS_CONFIG_PATH "${CMAKE_SOURCE_DIR}/inc/hhg-config/pico/FreeRTOSConfig.h")
-
-# Pass to Cargo build via environment variable
-add_custom_command(
-    OUTPUT ${OSAL_RS_LIB}
-    COMMAND ${CMAKE_COMMAND} -E env FREERTOS_CONFIG_PATH=${FREERTOS_CONFIG_PATH}
-            cargo build --release --target ${RUST_TARGET} --features freertos
-    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/osal-rs
-    COMMENT "Building OSAL-RS library"
+target_link_libraries(${PROJECT_NAME}
+    ${RUST_LIB}
+    pico_stdlib
+    FreeRTOS-Kernel
+    FreeRTOS-Kernel-Heap4
 )
+
+pico_add_extra_outputs(${PROJECT_NAME})
 ```
 
-#### Setting via Environment Variable
+Key points:
 
-```bash
-# Set environment variable before building
-export FREERTOS_CONFIG_PATH="/path/to/your/FreeRTOSConfig.h"
-cargo build --release --target thumbv8m.main-none-eabi --features freertos
+- **One Rust archive**: only the application `staticlib` is linked; `osal-rs` is compiled into it as a normal Cargo dependency.
+- **Same `FreeRTOSConfig.h` on both sides**: `FREERTOS_CONFIG_PATH` must point to the header the kernel is built with, otherwise the generated Rust types will not match the C ones.
+- **Porting layer**: `osal-rs-porting/freeretos/src/osal_rs.c` is compiled into the firmware and its `inc/` directory must be on the include path, next to the FreeRTOS headers.
+- **Rebuilds**: `DEPENDS` lists the Rust sources and the config header, so CMake re-runs `cargo build` only when one of them changes.
+
+## Breaking Changes
+
+Only a short example per change is shown here; see the [CHANGELOG](https://github.com/HiHappyGarden/osal-rs/blob/master/CHANGELOG.md) for the full description.
+
+### `BytesHasLen` for arrays covers only single-byte elements (from version 1.3.0)
+
+```rust
+// Before: compiled, but len() returned 4 (elements) instead of 8 (bytes),
+// so every post() failed with "Serialization error"
+let queue = QueueStreamed::<[u16; 4]>::new(8, 8)?;
+
+// After: [u8; N], [i8; N] and [bool; N] still work; wider arrays go in a struct
+#[derive(Serialize, Deserialize, Default)]
+struct Samples([u16; 4]);
+
+impl BytesHasLen for Samples {
+    fn len(&self) -> usize { 4 * size_of::<u16>() }
+}
+
+let queue = QueueStreamed::<Samples>::new(8, 8)?;
 ```
 
-**Note**: The build system will automatically regenerate Rust type bindings from the specified `FreeRTOSConfig.h` during the build process.
+Details: [1.3.0](https://github.com/HiHappyGarden/osal-rs/blob/master/CHANGELOG.md#130---2026-10-04).
+
+### `Timer` clones share one timer, and the last handle destroys it (from version 1.2.0)
+
+```rust
+let timer = Timer::new("tick", 100, true, None, |_t, p| Ok(p.unwrap_or(Arc::new(()))))?;
+let clone = timer.clone();
+
+clone.stop(0);  // the same timer: either handle drives it
+drop(clone);    // not the last handle: the timer stays alive
+drop(timer);    // last handle gone: the timer is destroyed here
+```
+
+Details: [1.2.0](https://github.com/HiHappyGarden/osal-rs/blob/master/CHANGELOG.md#120---2026-08-05).
+
+### `ThreadFn::join` blocks on FreeRTOS instead of killing the thread (from version 1.2.0)
+
+```rust
+// Before, on FreeRTOS only: join() deleted the task, killing it mid-work
+spawned.join(core::ptr::null_mut())?;
+
+// After, on both backends: join() blocks until the thread's closure returns;
+// use delete() to kill a task
+let mut ret: *mut core::ffi::c_void = core::ptr::null_mut();
+spawned.join(&raw mut ret)?;
+```
+
+Details: [1.2.0](https://github.com/HiHappyGarden/osal-rs/blob/master/CHANGELOG.md#120---2026-08-05).
+
+### `EventGroupFn::wait` gained a `wait_for_all_bits` parameter (from version 1.1.0)
+
+```rust
+// Before
+let bits = event_group.wait(mask, timeout_ticks);
+
+// After
+let bits = event_group.wait(mask, true, timeout_ticks);   // AND: every bit in `mask`
+let bits = event_group.wait(mask, false, timeout_ticks);  // OR: any bit in `mask`
+```
+
+Details: [1.1.0](https://github.com/HiHappyGarden/osal-rs/blob/master/CHANGELOG.md#110---2026-08-02).
 
 ## Project Structure
 
@@ -635,7 +605,4 @@ Antonio Salsi - [passy.linux@zresa.it](mailto:passy.linux@zresa.it)
 - [Repository](https://github.com/HiHappyGarden/osal-rs)
 - [Documentation](https://docs.rs/osal-rs)
 - [Crates.io](https://crates.io/crates/osal-rs)
-
-## Example implementation
-
-[https://github.com/HiHappyGarden/hi-happy-garden-rs](https://github.com/HiHappyGarden/hi-happy-garden-rs)
+- [Example implementation: hi-happy-garden-rs](https://github.com/HiHappyGarden/hi-happy-garden-rs)

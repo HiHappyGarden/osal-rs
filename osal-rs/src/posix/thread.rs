@@ -1146,7 +1146,9 @@ impl ThreadFn for Thread {
     /// (pass [`TickType::MAX`] to wait forever), returning the notification
     /// value. `bits_to_clear_on_entry`/`bits_to_clear_on_exit` clear the
     /// matching bits from the value before waiting/before returning,
-    /// respectively. Fails with [`Error::Timeout`] on timeout.
+    /// respectively; as on FreeRTOS, the entry clear is skipped when a
+    /// notification is already pending. Fails with [`Error::Timeout`] on
+    /// timeout.
     ///
     /// # Examples
     ///
@@ -1169,9 +1171,12 @@ impl ThreadFn for Thread {
         let slot = notify_slot(self.handle);
         let mut state = slot.state.lock().unwrap();
 
-        state.value &= !bits_to_clear_on_entry;
-
         if !state.pending {
+            // Like FreeRTOS's `xTaskGenericNotifyWait`, the entry clear only
+            // applies when no notification is pending: one that has already
+            // arrived is returned untouched rather than losing bits.
+            state.value &= !bits_to_clear_on_entry;
+
             set_thread_state(self.handle, ThreadState::Blocked);
 
             if timeout_ticks == TickType::MAX {

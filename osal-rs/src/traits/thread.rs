@@ -763,7 +763,7 @@ pub trait Thread {
     ///
     /// # Parameters
     ///
-    /// * `bits_to_clear_on_entry` - Bits to clear before waiting
+    /// * `bits_to_clear_on_entry` - Bits to clear before waiting, applied only when no notification is already pending (FreeRTOS semantics)
     /// * `bits_to_clear_on_exit` - Bits to clear after receiving notification
     /// * `timeout_ticks` - Maximum ticks to wait (0 = no wait, MAX = wait forever)
     ///

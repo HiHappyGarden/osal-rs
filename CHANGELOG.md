@@ -24,6 +24,12 @@ together.
   trait method on `[T; N]` takes precedence over the inherent slice `len()`,
   so it would have silently changed what `array.len()` returns wherever
   `osal_rs::os::*` is imported.
+- POSIX: `ThreadFn::wait_notification` applies `bits_to_clear_on_entry` only
+  when no notification is already pending, matching FreeRTOS
+  (`xTaskGenericNotifyWait`). It used to clear the bits unconditionally, so a
+  notification delivered before the wait could come back with bits missing.
+  Only callers passing a non-zero `bits_to_clear_on_entry` are affected. The
+  parameter documentation now states this on both backends.
 
 ### Fixed
 

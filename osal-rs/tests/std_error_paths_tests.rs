@@ -655,11 +655,25 @@ fn test_thread_notification_all_actions() -> Result<()> {
     current.notify(ThreadNotification::SetBits(0b1010))?;
     assert_eq!(current.wait_notification(0, 0, 0)?, 0b1111);
 
-    // `bits_to_clear_on_entry` wipes bits before the wait...
+    // `bits_to_clear_on_entry` is applied only when no notification is
+    // already pending, matching the `ucNotifyState != taskNOTIFICATION_RECEIVED`
+    // guard in FreeRTOS's `xTaskGenericNotifyWait`. With one pending the clear
+    // is skipped and the value comes back untouched.
     current.notify(ThreadNotification::SetBits(0))?;
-    assert_eq!(current.wait_notification(0b0001, 0, 0)?, 0b1110);
+    assert_eq!(current.wait_notification(0b0001, 0, 0)?, 0b1111);
 
-    // ...and `bits_to_clear_on_exit` wipes them after reading.
+    // With nothing pending the entry clear does happen, but the wait then has
+    // no notification to report, so it times out; the cleared value is what
+    // the next wait observes.
+    assert!(matches!(
+        current.wait_notification(0b0001, 0, 0),
+        Err(Error::Timeout)
+    ));
+    current.notify(ThreadNotification::SetBits(0))?;
+    assert_eq!(current.wait_notification(0, 0, 0)?, 0b1110);
+
+    // `bits_to_clear_on_exit` is applied after the returned value is sampled,
+    // so it shows up on the *following* wait rather than this one.
     current.notify(ThreadNotification::SetBits(0))?;
     assert_eq!(current.wait_notification(0, 0b0010, 0)?, 0b1110);
     current.notify(ThreadNotification::SetBits(0))?;

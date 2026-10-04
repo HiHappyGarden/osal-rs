@@ -262,13 +262,43 @@
 //!
 //! ## Integration with OSAL-RS
 //!
-//! Perfect for inter-task communication using queues:
+//! Perfect for inter-task communication using queues
+//! (`osal-rs` is not a dependency of this crate, so the doctest uses a minimal
+//! stand-in for `osal_rs::os` with the same `Queue`/`QueueFn` signatures):
 //!
-//! ```ignore
+#![cfg_attr(feature = "derive", doc = "```")]
+#![cfg_attr(not(feature = "derive"), doc = "```ignore")]
+//! # mod osal_rs {
+//! #     pub mod os {
+//! #         use core::cell::RefCell;
+//! #         pub type Result<T> = core::result::Result<T, ()>;
+//! #         pub trait QueueFn {
+//! #             fn fetch(&self, buffer: &mut [u8], time: u32) -> Result<()>;
+//! #             fn post(&self, item: &[u8], time: u32) -> Result<()>;
+//! #         }
+//! #         pub struct Queue { slot: RefCell<Vec<u8>> }
+//! #         impl Queue {
+//! #             pub fn new(_size: u32, _message_size: u32) -> Result<Self> {
+//! #                 Ok(Self { slot: RefCell::new(Vec::new()) })
+//! #             }
+//! #         }
+//! #         impl QueueFn for Queue {
+//! #             fn fetch(&self, buffer: &mut [u8], _time: u32) -> Result<()> {
+//! #                 let slot = self.slot.borrow();
+//! #                 buffer[..slot.len()].copy_from_slice(&slot);
+//! #                 Ok(())
+//! #             }
+//! #             fn post(&self, item: &[u8], _time: u32) -> Result<()> {
+//! #                 *self.slot.borrow_mut() = item.to_vec();
+//! #                 Ok(())
+//! #             }
+//! #         }
+//! #     }
+//! # }
 //! use osal_rs::os::{Queue, QueueFn};
 //! use osal_rs_serde::{Serialize, Deserialize, to_bytes, from_bytes};
 //!
-//! #[derive(Serialize, Deserialize)]
+//! #[derive(Serialize, Deserialize, Debug, PartialEq)]
 //! struct Message {
 //!     command: u8,
 //!     data: [u16; 4],
@@ -281,11 +311,15 @@
 //!     queue.post(&buffer[..len], 100).unwrap();
 //! }
 //!
-//! fn receiver(queue: &Queue) {
+//! fn receiver(queue: &Queue) -> Message {
 //!     let mut buffer = [0u8; 32];
 //!     queue.fetch(&mut buffer, 100).unwrap();
-//!     let msg: Message = from_bytes(&buffer).unwrap();
+//!     from_bytes(&buffer).unwrap()
 //! }
+//!
+//! let queue = Queue::new(4, 32).unwrap();
+//! sender(&queue);
+//! assert_eq!(receiver(&queue), Message { command: 0x42, data: [1, 2, 3, 4] });
 //! ```
 //!
 //! ## Supported Types
@@ -301,25 +335,84 @@
 //! You can create custom serializers for different formats (JSON, MessagePack, CBOR, etc.)
 //! by implementing the `Serializer` and `Deserializer` traits:
 //!
-//! ```ignore
-//! use osal_rs_serde::{Serializer, Error};
+//! ```
+//! use core::fmt::Write;
+//! use osal_rs_serde::{Serialize, Serializer, Error};
 //!
-//! struct JsonSerializer<'a> {
+//! /// Writes `name=value;` pairs into a fixed buffer.
+//! struct TextSerializer<'a> {
 //!     buffer: &'a mut [u8],
 //!     position: usize,
 //! }
 //!
-//! impl<'a> Serializer for JsonSerializer<'a> {
-//!     type Error = Error;
-//!     
-//!     fn serialize_u32(&mut self, name: &str, v: u32) -> Result<(), Self::Error> {
-//!         // Write JSON format: "name": value
-//!         // Implementation here...
+//! impl Write for TextSerializer<'_> {
+//!     fn write_str(&mut self, s: &str) -> core::fmt::Result {
+//!         let end = self.position + s.len();
+//!         self.buffer.get_mut(self.position..end).ok_or(core::fmt::Error)?.copy_from_slice(s.as_bytes());
+//!         self.position = end;
 //!         Ok(())
 //!     }
-//!     
-//!     // Implement other serialize_* methods...
 //! }
+//!
+//! impl TextSerializer<'_> {
+//!     fn write_value(&mut self, name: &str, v: impl core::fmt::Display) -> Result<(), Error> {
+//!         write!(self, "{name}={v};").map_err(|_| Error::BufferTooSmall)
+//!     }
+//! }
+//!
+//! impl Serializer for TextSerializer<'_> {
+//!     type Error = Error;
+//!
+//!     fn serialize_u32(&mut self, name: &str, v: u32) -> Result<(), Self::Error> {
+//!         self.write_value(name, v)
+//!     }
+//!
+//!     fn serialize_i16(&mut self, name: &str, v: i16) -> Result<(), Self::Error> {
+//!         self.write_value(name, v)
+//!     }
+//!
+//!     // ...the other serialize_* methods follow the same pattern
+//! #   fn serialize_bool(&mut self, name: &str, v: bool) -> Result<(), Error> { self.write_value(name, v) }
+//! #   fn serialize_u8(&mut self, name: &str, v: u8) -> Result<(), Error> { self.write_value(name, v) }
+//! #   fn serialize_i8(&mut self, name: &str, v: i8) -> Result<(), Error> { self.write_value(name, v) }
+//! #   fn serialize_u16(&mut self, name: &str, v: u16) -> Result<(), Error> { self.write_value(name, v) }
+//! #   fn serialize_i32(&mut self, name: &str, v: i32) -> Result<(), Error> { self.write_value(name, v) }
+//! #   fn serialize_u64(&mut self, name: &str, v: u64) -> Result<(), Error> { self.write_value(name, v) }
+//! #   fn serialize_i64(&mut self, name: &str, v: i64) -> Result<(), Error> { self.write_value(name, v) }
+//! #   fn serialize_u128(&mut self, name: &str, v: u128) -> Result<(), Error> { self.write_value(name, v) }
+//! #   fn serialize_i128(&mut self, name: &str, v: i128) -> Result<(), Error> { self.write_value(name, v) }
+//! #   fn serialize_f32(&mut self, name: &str, v: f32) -> Result<(), Error> { self.write_value(name, v) }
+//! #   fn serialize_f64(&mut self, name: &str, v: f64) -> Result<(), Error> { self.write_value(name, v) }
+//! #   fn serialize_bytes(&mut self, _name: &str, _v: &[u8]) -> Result<(), Error> { Err(Error::Unsupported) }
+//! #   fn serialize_string(&mut self, name: &str, v: &String) -> Result<(), Error> { self.write_value(name, v) }
+//! #   fn serialize_str(&mut self, name: &str, v: &str) -> Result<(), Error> { self.write_value(name, v) }
+//! #   fn serialize_vec<T: Serialize>(&mut self, name: &str, v: &Vec<T>) -> Result<(), Error> {
+//! #       v.iter().try_for_each(|item| item.serialize(name, self))
+//! #   }
+//! #   fn serialize_array<T: Serialize>(&mut self, name: &str, v: &[T]) -> Result<(), Error> {
+//! #       v.iter().try_for_each(|item| item.serialize(name, self))
+//! #   }
+//! }
+//!
+//! struct Reading {
+//!     id: u32,
+//!     temperature: i16,
+//! }
+//!
+//! impl Serialize for Reading {
+//!     fn serialize<S: Serializer>(&self, name: &str, serializer: &mut S) -> Result<(), S::Error> {
+//!         serializer.serialize_struct_start(name, 2)?;
+//!         serializer.serialize_field("id", &self.id)?;
+//!         serializer.serialize_field("temperature", &self.temperature)?;
+//!         serializer.serialize_struct_end()
+//!     }
+//! }
+//!
+//! let mut buffer = [0u8; 64];
+//! let mut serializer = TextSerializer { buffer: &mut buffer, position: 0 };
+//! Reading { id: 7, temperature: -12 }.serialize("reading", &mut serializer).unwrap();
+//! let len = serializer.position;
+//! assert_eq!(&buffer[..len], b"id=7;temperature=-12;");
 //! ```
 //!
 //! See `examples/custom_serializer.rs` for a complete implementation example.

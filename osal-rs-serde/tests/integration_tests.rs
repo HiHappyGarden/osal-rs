@@ -709,3 +709,25 @@ fn test_derive_tuple_struct_protocol_symmetry() {
     assert_eq!(decoded, coords);
     assert_eq!(de.events, ser_events);
 }
+
+#[test]
+fn test_derive_collections() {
+    #[derive(Serialize, Deserialize, Debug, PartialEq)]
+    struct WithCollections {
+        items: Vec<u32>,
+        name: String,
+    }
+
+    let value = WithCollections { items: vec![1, 2, 3], name: "osal".to_string() };
+
+    let mut buffer = [0u8; 64];
+    let len = to_bytes(&value, &mut buffer).unwrap();
+    // items: u32 length (4) + 3 * u32 (12); name: u32 length (4) + 4 UTF-8 bytes
+    assert_eq!(len, 24, "Expected 24 bytes, got {}", len);
+    assert_eq!(&buffer[..4], &3u32.to_le_bytes());
+    assert_eq!(&buffer[16..20], &4u32.to_le_bytes());
+    assert_eq!(&buffer[20..24], b"osal");
+
+    let decoded: WithCollections = from_bytes(&buffer[..len]).unwrap();
+    assert_eq!(decoded, value);
+}

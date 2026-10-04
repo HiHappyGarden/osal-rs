@@ -590,6 +590,16 @@ impl<T: Serialize, const N: usize> Serialize for [T; N] {
     }
 }
 
+// Vec implementation
+impl<T: Serialize> Serialize for Vec<T> {
+    fn serialize<S>(&self, name: &str, serializer: &mut S) -> core::result::Result<(), S::Error>
+    where
+        S: Serializer
+    {
+        serializer.serialize_vec(name, self)
+    }
+}
+
 // Tuple implementations
 impl<T1: Serialize, T2: Serialize> Serialize for (T1, T2) {
     fn serialize<S>(&self, name: &str, serializer: &mut S) -> core::result::Result<(), S::Error> 

@@ -16,20 +16,28 @@ Add the `derive` feature to enable these macros:
 
 ```toml
 [dependencies]
-osal-rs-serde = { version = "1.0", features = ["derive"] }
+osal-rs-serde = { version = "1.2", features = ["derive"] }
 ```
 
 Then use the macros on your structs:
 
 ```rust
-use osal_rs_serde::{Serialize, Deserialize};
+use osal_rs_serde::{Serialize, Deserialize, to_bytes, from_bytes};
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug, PartialEq)]
 struct SensorData {
     temperature: i16,
     humidity: u8,
     pressure: u32,
 }
+
+let data = SensorData { temperature: 25, humidity: 60, pressure: 1013 };
+
+let mut buffer = [0u8; 16];
+let len = to_bytes(&data, &mut buffer).unwrap();
+
+let decoded: SensorData = from_bytes(&buffer[..len]).unwrap();
+assert_eq!(decoded, data);
 ```
 
 ## Supported Struct Types
@@ -37,6 +45,8 @@ struct SensorData {
 ### Named Fields (Most Common)
 
 ```rust
+use osal_rs_serde::{Serialize, Deserialize};
+
 #[derive(Serialize, Deserialize)]
 struct Point {
     x: i32,
@@ -46,14 +56,22 @@ struct Point {
 
 ### Tuple Structs
 
+Fields are named `"0"`, `"1"`, ... when passed to the serializer.
+
 ```rust
+use osal_rs_serde::{Serialize, Deserialize};
+
 #[derive(Serialize, Deserialize)]
 struct Color(u8, u8, u8);
 ```
 
 ### Unit Structs
 
+Unit structs serialize to zero bytes.
+
 ```rust
+use osal_rs_serde::{Serialize, Deserialize};
+
 #[derive(Serialize, Deserialize)]
 struct Marker;
 ```
@@ -65,6 +83,8 @@ The derive macros work with any type that implements `Serialize`/`Deserialize`:
 ### Primitives
 
 ```rust
+use osal_rs_serde::{Serialize, Deserialize};
+
 #[derive(Serialize, Deserialize)]
 struct AllPrimitives {
     a: bool,
@@ -80,6 +100,8 @@ struct AllPrimitives {
 ### Arrays
 
 ```rust
+use osal_rs_serde::{Serialize, Deserialize};
+
 #[derive(Serialize, Deserialize)]
 struct WithArrays {
     samples: [u16; 8],
@@ -90,6 +112,8 @@ struct WithArrays {
 ### Tuples
 
 ```rust
+use osal_rs_serde::{Serialize, Deserialize};
+
 #[derive(Serialize, Deserialize)]
 struct WithTuples {
     coordinate: (i32, i32),
@@ -100,6 +124,8 @@ struct WithTuples {
 ### Option Types
 
 ```rust
+use osal_rs_serde::{Serialize, Deserialize};
+
 #[derive(Serialize, Deserialize)]
 struct WithOptionals {
     required_id: u32,
@@ -111,6 +137,8 @@ struct WithOptionals {
 ### Nested Structs
 
 ```rust
+use osal_rs_serde::{Serialize, Deserialize};
+
 #[derive(Serialize, Deserialize)]
 struct Inner {
     value: i32,
@@ -126,6 +154,8 @@ struct Outer {
 ### Collections (always available)
 
 ```rust
+use osal_rs_serde::{Serialize, Deserialize};
+
 #[derive(Serialize, Deserialize)]
 struct WithCollections {
     items: Vec<u32>,
@@ -194,15 +224,21 @@ struct DeviceConfig {
 
 ## Serialization Order
 
-Fields are serialized in the order they are declared in the struct:
+Fields are serialized in the order they are declared in the struct, little-endian:
 
 ```rust
-#[derive(Serialize, Deserialize)]
+use osal_rs_serde::{Serialize, to_bytes};
+
+#[derive(Serialize)]
 struct Example {
     first: u8,    // Byte 0
     second: u16,  // Bytes 1-2
     third: u32,   // Bytes 3-6
 }
+
+let mut buffer = [0u8; 8];
+let len = to_bytes(&Example { first: 0x01, second: 0x0302, third: 0x07060504 }, &mut buffer).unwrap();
+assert_eq!(&buffer[..len], &[0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07]);
 ```
 
 This produces the binary layout: `[first, second_lo, second_hi, third_0, third_1, third_2, third_3]`
@@ -213,8 +249,10 @@ This produces the binary layout: `[first, second_lo, second_hi, third_0, third_1
 
 Currently, enums are not supported by the derive macro:
 
-```rust
+```rust,compile_fail
 // ❌ NOT SUPPORTED YET
+use osal_rs_serde::{Serialize, Deserialize};
+
 #[derive(Serialize, Deserialize)]
 enum Status {
     Active,
@@ -226,6 +264,8 @@ For enums, implement the traits manually or use an integer representation:
 
 ```rust
 // ✅ WORKAROUND
+use osal_rs_serde::{Serialize, Deserialize};
+
 #[derive(Serialize, Deserialize)]
 struct Status {
     code: u8,  // 0 = Inactive, 1 = Active
@@ -236,8 +276,10 @@ struct Status {
 
 Unions are not supported:
 
-```rust
+```rust,compile_fail
 // ❌ NOT SUPPORTED
+use osal_rs_serde::{Serialize, Deserialize};
+
 #[derive(Serialize, Deserialize)]
 union Data {
     integer: i32,
@@ -249,8 +291,10 @@ union Data {
 
 Generic types are not yet supported in the current version:
 
-```rust
+```rust,compile_fail
 // ❌ NOT SUPPORTED YET
+use osal_rs_serde::{Serialize, Deserialize};
+
 #[derive(Serialize, Deserialize)]
 struct Container<T> {
     value: T,
@@ -259,17 +303,28 @@ struct Container<T> {
 
 ## Generated Code
 
-The derive macros generate implementations similar to:
+For this struct:
 
 ```rust
-// For this struct:
+use osal_rs_serde::{Serialize, Deserialize};
+
 #[derive(Serialize, Deserialize)]
 struct Point {
     x: i32,
     y: i32,
 }
+```
 
-// The macro generates approximately:
+the macros generate the equivalent of:
+
+```rust
+use osal_rs_serde::{Serialize, Deserialize, Serializer, Deserializer};
+
+struct Point {
+    x: i32,
+    y: i32,
+}
+
 impl Serialize for Point {
     fn serialize<S: Serializer>(&self, name: &str, serializer: &mut S) -> Result<(), S::Error> {
         serializer.serialize_struct_start(name, 2)?;
@@ -293,6 +348,8 @@ impl Deserialize for Point {
 }
 ```
 
+Tuple structs follow the same pattern, with fields named `"0"`, `"1"`, ...; unit structs generate empty implementations.
+
 `name` is whatever the caller passes: `""` for a top-level call (e.g. via `to_bytes`/`from_bytes`), or the field name when the struct is nested inside another via `serialize_field`/`deserialize_field`. `ByteSerializer`/`ByteDeserializer` ignore it entirely since the binary format has no field names; a JSON-style serializer would use it as the key.
 
 ## Debugging
@@ -308,20 +365,30 @@ cargo expand --example your_example
 
 Common errors and solutions:
 
-### "the trait bound `T: Serialize` is not satisfied"
+### "the trait bound `CustomType: Serialize` is not satisfied"
 
-**Solution**: Ensure all field types implement `Serialize`:
+Every field type must implement `Serialize`/`Deserialize`:
 
-```rust
+```rust,compile_fail
+use osal_rs_serde::{Serialize, Deserialize};
+
+struct CustomType(u8); // ❌ missing #[derive(Serialize, Deserialize)]
+
 #[derive(Serialize, Deserialize)]
 struct MyType {
-    value: CustomType,  // CustomType must implement Serialize
+    value: CustomType,
 }
 ```
 
-### "expected named fields"
+**Solution**: derive (or manually implement) the traits on the field type too.
 
-**Solution**: Make sure you're using a supported struct type (named fields, tuple, or unit).
+### "Serialize derive macro does not support enums yet" / "... does not support unions"
+
+The derive was applied to an enum or a union. See [Limitations](#limitations): only structs (named, tuple or unit) are supported.
+
+### "missing generics for struct" / "implicit elided lifetime not allowed here"
+
+The derive was applied to a struct with generic or lifetime parameters, which is not supported yet. See [Generic Types](#generic-types).
 
 ## Performance
 
@@ -335,7 +402,7 @@ The derive macros generate efficient code with:
 
 1. **Always use derive when possible** - It's less error-prone than manual implementation
 2. **Keep structs simple** - Avoid deeply nested structures when possible
-3. **Consider field order** - Put frequently accessed fields first
+3. **Treat field order as part of the format** - Reordering fields changes the binary layout
 4. **Document binary format** - Add comments about the serialized format
 5. **Use Option for optional data** - Don't use magic values
 
@@ -365,4 +432,3 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 - [Repository](https://github.com/HiHappyGarden/osal-rs)
 - [Documentation](https://docs.rs/osal-rs-serde-derive)
 - [Crates.io](https://crates.io/crates/osal-rs-serde-derive)
-

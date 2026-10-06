@@ -228,7 +228,11 @@ fn test_system_delay_until_already_past() -> Result<()> {
     log_info!(TAG, "Starting test_system_delay_until_already_past");
 
     // Wake time already in the past: `delay_until` must not sleep, but must
-    // still advance `previous_wake_time` by the full increment.
+    // still advance `previous_wake_time` by the full increment. The tick
+    // count starts near 0 with the process, so let it pass the increment
+    // first: otherwise `saturating_sub` clamps `previous` to 0 and the wake
+    // time is not actually in the past.
+    System::delay(20);
     let mut previous = System::get_tick_count().saturating_sub(1_000);
     let expected = previous + 10;
 

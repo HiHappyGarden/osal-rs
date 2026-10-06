@@ -11,6 +11,66 @@ together.
 
 ## [Unreleased]
 
+### Added
+
+- POSIX: macOS on Apple Silicon (`aarch64-apple-darwin`) support. The `posix`
+  feature alone selects Linux/glibc or macOS from the compilation target;
+  any other target fails to build with an explicit error. Thread
+  suspend/resume uses `SIGUSR1`/`SIGUSR2` on macOS (Linux keeps using the
+  first two application real-time signals).
+- POSIX: unit test checking every hand-written FFI type size and constant
+  against the platform's C headers (needs a C compiler, `$CC` or `cc`).
+
+### Changed
+
+- POSIX: `ffi.rs` split into a shared part plus `ffi/linux.rs` and
+  `ffi/macos.rs`; the four copies of the monotonic timed-wait logic
+  (event group, semaphore, queue, thread notifications) now share one
+  implementation.
+- POSIX: timers no longer use `timer_create`/`SIGALRM`. Each timer's
+  background thread now sleeps on a condition variable until the next
+  deadline, the same code on Linux and macOS. Creating a `Timer` no longer
+  blocks `SIGALRM` in the calling thread, and a one-shot timer can be
+  started again after it fired. Auto-reload timers advance from the
+  previous deadline (no drift), coalescing missed periods.
+- POSIX: thread names are set by the new thread itself (the only way macOS
+  allows), and thread stack sizes are rounded up to a whole page.
+- `osal-rs-build`: `real_time` is now really enabled automatically for
+  POSIX on Linux and macOS targets. It never was before: the build probe
+  tested a macro (`USE_SCHED_FIFO`) nothing defined. The POSIX backend no
+  longer needs a C compiler at build time.
+- POSIX `real_time`: if `pthread_create` with `SCHED_FIFO` is refused with
+  `EPERM` (unprivileged Linux processes), the thread is created again
+  inheriting the caller's scheduling policy instead of failing.
+- `osal-rs-build`: POSIX type sizes come from the target's pointer width
+  (`CARGO_CFG_TARGET_POINTER_WIDTH`) instead of the host's `uname`, which
+  fixes cross-compilation and macOS (`arm64`), and are always generated even
+  if `gcc` is unavailable.
+
+### Fixed
+
+- POSIX: `resume()` sent right after `suspend()` could be lost, leaving the
+  thread suspended forever (systematic on macOS). The suspend handler is now
+  installed with `sigaction` and runs with the resume signal blocked, so an
+  early resume stays pending until `sigsuspend()` picks it up.
+- POSIX: dropping the last `Timer` handle while a callback was starting
+  could let that callback run after the drop returned. User handles now hold
+  an ownership token separate from the shared state; the handle given to
+  the callback is borrowed (as documented, and as on FreeRTOS), so the
+  last user drop always stops and joins the timer thread.
+- POSIX: a thread suspended while holding one of osal-rs's internal locks
+  (thread/notification registries, notification slot) deadlocked every
+  thread needing that lock, including the `resume()` meant to wake it. Both
+  suspend/resume signals are now blocked while those locks are held, so
+  the thread parks only after releasing them and a resume sent meanwhile
+  is not lost.
+- Test `test_system_thread_metadata` failed whenever `real_time` was on: it
+  required a non-zero priority from the calling thread, which
+  `get_all_thread()` lists although osal-rs did not create it.
+- Test `test_system_delay_until_already_past` used a wake time that was not
+  actually in the past early in the process, and only passed on Linux by
+  a sub-millisecond margin.
+
 ## [1.3.0] - 2026-10-04
 
 Contains one breaking change (`BytesHasLen` for arrays, see below) released as

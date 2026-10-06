@@ -54,7 +54,7 @@ use alloc::vec::Vec;
 
 use crate::os::ThreadFn;
 use crate::posix::ffi::{
-    self, _SC_AVPHYS_PAGES, _SC_PAGESIZE, CLOCK_MONOTONIC, PTHREAD_ONCE_INIT, clock_gettime, nanosleep, pthread_once, pthread_once_t, pthread_self, sched_yield, sysconf, timespec,
+    self, _SC_PAGESIZE, available_physical_pages, CLOCK_MONOTONIC, PTHREAD_ONCE_INIT, clock_gettime, nanosleep, pthread_once, pthread_once_t, pthread_self, sched_yield, sysconf, timespec,
 };
 use crate::posix::thread::{Thread, all_registered_threads, registered_thread_count};
 use crate::posix::types::{BaseType, TickType, UBaseType};
@@ -572,7 +572,7 @@ impl SystemFn for System {
         // allocator can keep extending it via mmap/brk), so this reports
         // available physical memory as the closest analogue.
         let page_size = unsafe { sysconf(_SC_PAGESIZE) };
-        let avail_pages = unsafe { sysconf(_SC_AVPHYS_PAGES) };
+        let avail_pages = available_physical_pages();
 
         if page_size <= 0 || avail_pages <= 0 {
             0

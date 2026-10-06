@@ -36,7 +36,7 @@ use std::path::PathBuf;
 use std::convert::AsRef;
 use std::ffi::OsStr;
 use std::fs;
-#[cfg(any(feature = "posix", feature = "freertos"))]
+#[cfg(feature = "freertos")]
 use std::process::Command;
 
 #[cfg(all(feature = "posix", feature = "freertos"))]
@@ -185,7 +185,8 @@ pub type StackType = {};
         }
     }
 
-    /// Enable the `sched_fifo` feature cfg for the crate build when requested.
+    /// Enables the `real_time` feature cfg for the crate being built when
+    /// the target supports `SCHED_FIFO` (POSIX on Linux/macOS).
     #[allow(unused)]
     fn enable_sched_fifo(&self) {
         if self.1 {
@@ -210,10 +211,15 @@ impl TypeGenerator {
     /// ```
     pub fn add_rerun_if_changed() {}
 
-    /// Probes the host architecture (and `SCHED_FIFO` support) by compiling
-    /// and running a small C program with `gcc`, then writes the
-    /// corresponding `TickType`/`UBaseType`/`BaseType`/`StackType` aliases
-    /// into `OUT_DIR/types_generated.rs`.
+    /// Writes the `TickType`/`UBaseType`/`BaseType`/`StackType` aliases into
+    /// `OUT_DIR/types_generated.rs`, sized on the *target*'s native word
+    /// (`CARGO_CFG_TARGET_POINTER_WIDTH`, so cross-compiling and macOS's
+    /// `arm64` naming both work), and records whether the target supports
+    /// `SCHED_FIFO` (`CARGO_CFG_TARGET_OS` is `linux` or `macos`), for
+    /// `enable_sched_fifo`.
+    ///
+    /// Outside a build script (`CARGO_CFG_*` unset) the platform running
+    /// this code is used instead.
     ///
     /// # Examples
     ///
@@ -228,92 +234,32 @@ impl TypeGenerator {
     /// ```
     pub fn generate_types(&mut self) {
 
-        let query_program = r#"
-#include <stdio.h>
-#include <sys/utsname.h>
+        let pointer_width = env::var("CARGO_CFG_TARGET_POINTER_WIDTH")
+            .ok()
+            .and_then(|width| width.parse::<u32>().ok())
+            .unwrap_or(usize::BITS);
 
-int main() {
-    struct utsname buffer;
-    if (uname(&buffer) == 0) {
-        printf("ARCH=%s\n", buffer.machine);
-    }
-#if defined(USE_SCHED_FIFO)
-    printf("SCHED_FIFO=1\n");
-#else
-    printf("SCHED_FIFO=0\n");
-#endif
-    return 0;
-}
-"#;
+        // Native word size: 8 bytes on 64-bit targets, 4 bytes on 32-bit ones
+        let word_size: u16 = match pointer_width {
+            64 => 8,
+            32 => 4,
+            other => panic!("osal-rs-build: unsupported POSIX pointer width '{other}'"),
+        };
 
-        let query_c = self.0.join("query_types.c");
-        fs::write(&query_c, query_program).expect("Failed to write query program");
-        
-        // Compile the query program
-        let query_exe = self.0.join("query_types");
-        let compile_status = Command::new("gcc")
-            .arg(&query_c)
-            .arg("-o")
-            .arg(&query_exe)
-            .status();
-        
-        if compile_status.is_ok() && compile_status.unwrap().success() {
-            // Run the query program
-            let output = Command::new(&query_exe)
-                .output()
-                .expect("Failed to run query program");
-            
-            let stdout = String::from_utf8_lossy(&output.stdout);
+        let tick_type = Self::size_to_type(word_size, false);
+        let u_base_type = Self::size_to_type(word_size, false);
+        let base_type = Self::size_to_type(word_size, true);
+        let stack_type = Self::size_to_type(word_size, true);
 
+        self.write_generated_types(word_size, tick_type, word_size, u_base_type, word_size, base_type, word_size, stack_type);
 
-            for line in stdout.lines() {
-                //println!("cargo:warning=line:{line}");
-                if let Some(arch) = line.strip_prefix("ARCH=") {
-                    match arch {
-                        "x86_64" | "aarch64" | "riscv64" => {
-                            // 64-bit architectures: native word size is 8 bytes
-                            let tick_size: u16 = 8;
-                            let u_base_size: u16 = 8;
-                            let base_size: u16 = 8;
-                            let base_signed = true;
-                            let stack_size: u16 = 8;
-
-                            let tick_type = Self::size_to_type(tick_size, false);
-                            let u_base_type = Self::size_to_type(u_base_size, false);
-                            let base_type = Self::size_to_type(base_size, base_signed);
-                            let stack_type = Self::size_to_type(stack_size, true);
-
-                            self.write_generated_types(tick_size, tick_type, u_base_size, u_base_type, base_size, base_type, stack_size, stack_type);
-                        }
-                        "x86" | "arm" | "riscv32" => {
-                            // 32-bit architectures: native word size is 4 bytes
-                            let tick_size: u16 = 4;
-                            let u_base_size: u16 = 4;
-                            let base_size: u16 = 4;
-                            let base_signed = true;
-                            let stack_size: u16 = 4;
-
-                            let tick_type = Self::size_to_type(tick_size, false);
-                            let u_base_type = Self::size_to_type(u_base_size, false);
-                            let base_type = Self::size_to_type(base_size, base_signed);
-                            let stack_type = Self::size_to_type(stack_size, true);
-
-                            self.write_generated_types(tick_size, tick_type, u_base_size, u_base_type, base_size, base_type, stack_size, stack_type);
-                        }
-                        //TODO: mac
-                        //TODO: freebsd
-                        other => panic!("osal-rs-build: unsupported POSIX architecture '{other}'"),
-                    }
-                } else if let Some(value) = line.strip_prefix("SCHED_FIFO=") {
-                    self.1 = value == "1";
-                }
-            }
-
-        } else {
- 
-
-        }
-
+        // Both platforms the `posix` backend supports provide `SCHED_FIFO`.
+        // Whether the running process may actually use it is only known at
+        // runtime, so `osal-rs` falls back to the inherited policy on `EPERM`.
+        self.1 = match env::var("CARGO_CFG_TARGET_OS") {
+            Ok(target_os) => target_os == "linux" || target_os == "macos",
+            Err(_) => cfg!(any(target_os = "linux", target_os = "macos")),
+        };
     }
 
     /// Runs the full POSIX build step: [`TypeGenerator::generate_types`],

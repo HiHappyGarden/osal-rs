@@ -24,8 +24,9 @@
 //! `UBaseType`/`BaseType`/`StackType` aliases the crate `include!`s from
 //! `OUT_DIR/types_generated.rs`, and wire up `cargo:rerun-if-changed` for the
 //! active backend's C porting sources. See `osal-rs-build`'s own docs for
-//! exactly what each backend does at build time (POSIX probes the host
-//! architecture and `SCHED_FIFO` support for real; the FreeRTOS path
+//! exactly what each backend does at build time (POSIX sizes the types on
+//! the target's pointer width and enables `real_time` on Linux/macOS
+//! targets; the FreeRTOS path
 //! currently always emits the common 32-bit type mapping rather than parsing
 //! `FreeRTOSConfig.h`).
 //!
@@ -60,8 +61,8 @@
 //!
 //! # Build Dependencies
 //!
-//! Requires the `osal-rs-build` crate (`TypeGenerator`) and, for `posix`,
-//! `gcc` on `PATH` (used only to probe the host architecture).
+//! Requires the `osal-rs-build` crate (`TypeGenerator`). The `posix` backend
+//! needs no C compiler at build time (`freertos` uses `gcc`).
 
 use osal_rs_build::TypeGenerator;
 use std::env;
@@ -79,7 +80,8 @@ use std::path::PathBuf;
 ///
 /// - If `CARGO_MANIFEST_DIR` is not set (cargo always sets this)
 /// - If neither or both of `freertos`/`posix` are enabled (`compile_error!`)
-/// - If generation fails (handled by `TypeGenerator`, e.g. missing `gcc`)
+/// - If generation fails (handled by `TypeGenerator`, e.g. an unsupported
+///   target pointer width)
 ///
 /// # Environment Variables
 ///

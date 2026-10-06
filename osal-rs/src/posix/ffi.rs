@@ -22,8 +22,21 @@
 //!
 //! This module provides raw FFI declarations for the pthread functions that
 //! back the safe Rust wrappers in the rest of the `posix` module. It talks
-//! directly to the platform's `libpthread`/`libc` with hand-written
-//! declarations — no `libc` crate, no `bindgen`, nothing external.
+//! directly to the platform's C library with hand-written declarations —
+//! no `libc` crate, no `bindgen`, nothing external.
+//!
+//! # Layout
+//!
+//! Everything both supported platforms share (the opaque pthread object
+//! wrappers, `struct timespec`, the portable POSIX functions and the
+//! constants whose values coincide) lives here. What differs — opaque type
+//! sizes, constant values, and functions only one platform provides — lives
+//! in a submodule selected by `target_os` and glob re-exported from here:
+//!
+//! - `ffi/linux.rs` - Linux/glibc
+//! - `ffi/macos.rs` - macOS/libSystem (Apple Silicon only)
+//!
+//! Any other `target_os` fails to build.
 //!
 //! # Safety
 //!
@@ -45,59 +58,30 @@
 
 #![allow(non_camel_case_types)]
 
-use core::ffi::{c_char, c_int, c_long, c_void};
+use core::ffi::{c_int, c_long, c_void};
+use core::time::Duration;
 
 use crate::os::types::ThreadHandle;
 
-// Size (in bytes) of glibc's opaque `pthread_attr_t`, taken from
-// `bits/pthreadtypes-arch.h` (`__SIZEOF_PTHREAD_ATTR_T`) for each
-// architecture this crate supports (same architecture set as
-// `osal_rs_build::TypeGenerator::generate_types`):
-// - 64-bit: x86_64/amd64, aarch64/arm64, riscv64
-// - 32-bit: i586/i686, armv7l/armv6l/arm, riscv32
-#[cfg(target_arch = "x86_64")]
-const PTHREAD_ATTR_T_SIZE: usize = 56;
-#[cfg(target_arch = "x86")]
-const PTHREAD_ATTR_T_SIZE: usize = 36;
-#[cfg(target_arch = "aarch64")]
-const PTHREAD_ATTR_T_SIZE: usize = 64;
-#[cfg(target_arch = "arm")]
-const PTHREAD_ATTR_T_SIZE: usize = 36;
-#[cfg(target_arch = "riscv64")]
-const PTHREAD_ATTR_T_SIZE: usize = 56;
-#[cfg(target_arch = "riscv32")]
-const PTHREAD_ATTR_T_SIZE: usize = 32;
+#[cfg(target_os = "linux")]
+mod linux;
+#[cfg(target_os = "linux")]
+pub(super) use linux::*;
 
-#[cfg(not(any(
-    target_arch = "x86_64",
-    target_arch = "x86",
-    target_arch = "aarch64",
-    target_arch = "arm",
-    target_arch = "riscv64",
-    target_arch = "riscv32",
-)))]
-compile_error!(
-    "osal-rs: pthread_attr_t layout is not known for this target_arch; add its \
-     bits/pthreadtypes-arch.h __SIZEOF_PTHREAD_ATTR_T value to posix/ffi.rs"
-);
+#[cfg(target_os = "macos")]
+mod macos;
+#[cfg(target_os = "macos")]
+pub(super) use macos::*;
 
-/// Minimum stack size (in bytes) glibc allows for a thread
-/// (`PTHREAD_STACK_MIN`, `bits/pthread_stack_min.h`), for each architecture
-/// this crate supports (same architecture set as [`PTHREAD_ATTR_T_SIZE`]).
-///
-/// Every supported architecture uses glibc's generic Linux value (16384)
-/// except `aarch64`, which needs a larger minimum (131072) to fit its wider
-/// signal frames.
-#[cfg(any(target_arch = "x86_64", target_arch = "x86", target_arch = "arm", target_arch = "riscv64", target_arch = "riscv32"))]
-pub(super) const PTHREAD_STACK_MIN: usize = 16384;
-#[cfg(target_arch = "aarch64")]
-pub(super) const PTHREAD_STACK_MIN: usize = 131072;
+#[cfg(not(any(target_os = "linux", target_os = "macos")))]
+compile_error!("osal-rs: the `posix` backend supports only Linux and macOS");
 
 /// Opaque storage for `pthread_attr_t`.
 ///
 /// Rust never reads/writes its fields directly; only its address is handed
 /// to `pthread_attr_*`/`pthread_create`, so a correctly sized-and-aligned
-/// byte buffer is a valid stand-in for the real glibc struct.
+/// byte buffer is a valid stand-in for the real C struct. The size comes
+/// from the platform submodule (`PTHREAD_ATTR_T_SIZE`).
 #[repr(C, align(8))]
 #[derive(Copy, Clone)]
 pub(super) struct pthread_attr_t {
@@ -112,29 +96,11 @@ impl Default for pthread_attr_t {
     }
 }
 
-/// Size (in bytes) of glibc's opaque `pthread_mutex_t`, taken from
-/// `bits/pthreadtypes-arch.h` (`__SIZEOF_PTHREAD_MUTEX_T`) for each
-/// architecture this crate supports (same architecture set as
-/// [`PTHREAD_ATTR_T_SIZE`]).
-#[cfg(target_arch = "x86_64")]
-const PTHREAD_MUTEX_T_SIZE: usize = 40;
-#[cfg(target_arch = "x86")]
-const PTHREAD_MUTEX_T_SIZE: usize = 24;
-#[cfg(target_arch = "aarch64")]
-const PTHREAD_MUTEX_T_SIZE: usize = 48;
-#[cfg(target_arch = "arm")]
-const PTHREAD_MUTEX_T_SIZE: usize = 24;
-#[cfg(target_arch = "riscv64")]
-const PTHREAD_MUTEX_T_SIZE: usize = 40;
-#[cfg(target_arch = "riscv32")]
-const PTHREAD_MUTEX_T_SIZE: usize = 32;
-
 /// Opaque storage for `pthread_mutex_t`.
 ///
 /// As with [`pthread_attr_t`], Rust never reads/writes its fields directly;
 /// only its address is handed to `pthread_mutex_*`, so a correctly
-/// sized-and-aligned byte buffer is a valid stand-in for the real glibc
-/// struct.
+/// sized-and-aligned byte buffer is a valid stand-in for the real C struct.
 #[repr(C, align(8))]
 #[derive(Copy, Clone)]
 pub struct pthread_mutex_t {
@@ -150,31 +116,20 @@ impl Default for pthread_mutex_t {
 }
 
 impl pthread_mutex_t {
+    /// `true` while the buffer is still all zeroes, i.e. before
+    /// [`pthread_mutex_init`] ran on it. Valid on both platforms: glibc's
+    /// initialized mutexes are not all-zero once a type/protocol attribute
+    /// is set, and macOS's always carry a non-zero `__sig` signature.
     pub(super) fn is_empty(&self) -> bool {
         self._opaque.iter().all(|&b| b == 0)
     }
 }
 
-/// Size (in bytes) of glibc's opaque `pthread_mutexattr_t`
-/// (`__SIZEOF_PTHREAD_MUTEXATTR_T`), for each architecture this crate
-/// supports.
-#[cfg(any(
-    target_arch = "x86_64",
-    target_arch = "x86",
-    target_arch = "arm",
-    target_arch = "riscv64",
-    target_arch = "riscv32",
-))]
-const PTHREAD_MUTEXATTR_T_SIZE: usize = 4;
-#[cfg(target_arch = "aarch64")]
-const PTHREAD_MUTEXATTR_T_SIZE: usize = 8;
-
 /// Opaque storage for `pthread_mutexattr_t`.
 ///
 /// As with [`pthread_attr_t`], Rust never reads/writes its fields directly;
 /// only its address is handed to `pthread_mutexattr_*`, so a correctly
-/// sized-and-aligned byte buffer is a valid stand-in for the real glibc
-/// struct.
+/// sized-and-aligned byte buffer is a valid stand-in for the real C struct.
 #[repr(C, align(8))]
 #[derive(Copy, Clone)]
 pub(super) struct pthread_mutexattr_t {
@@ -189,18 +144,11 @@ impl Default for pthread_mutexattr_t {
     }
 }
 
-/// Size (in bytes) of glibc's opaque `pthread_cond_t` (`__SIZEOF_PTHREAD_COND_T`).
-///
-/// Unlike [`PTHREAD_MUTEX_T_SIZE`], glibc keeps this the same 48 bytes on
-/// every architecture this crate supports (`bits/pthreadtypes-arch.h`).
-const PTHREAD_COND_T_SIZE: usize = 48;
-
 /// Opaque storage for `pthread_cond_t`.
 ///
 /// As with [`pthread_mutex_t`], Rust never reads/writes its fields directly;
 /// only its address is handed to `pthread_cond_*`, so a correctly
-/// sized-and-aligned byte buffer is a valid stand-in for the real glibc
-/// struct.
+/// sized-and-aligned byte buffer is a valid stand-in for the real C struct.
 #[repr(C, align(8))]
 #[derive(Copy, Clone)]
 pub(super) struct pthread_cond_t {
@@ -221,28 +169,11 @@ impl pthread_cond_t {
     }
 }
 
-
-/// Size (in bytes) of glibc's opaque `pthread_condattr_t`
-/// (`__SIZEOF_PTHREAD_CONDATTR_T`), for each architecture this crate
-/// supports. Follows the same per-architecture split as
-/// [`PTHREAD_MUTEXATTR_T_SIZE`].
-#[cfg(any(
-    target_arch = "x86_64",
-    target_arch = "x86",
-    target_arch = "arm",
-    target_arch = "riscv64",
-    target_arch = "riscv32",
-))]
-const PTHREAD_CONDATTR_T_SIZE: usize = 4;
-#[cfg(target_arch = "aarch64")]
-const PTHREAD_CONDATTR_T_SIZE: usize = 8;
-
 /// Opaque storage for `pthread_condattr_t`.
 ///
 /// As with [`pthread_mutex_t`], Rust never reads/writes its fields directly;
 /// only its address is handed to `pthread_condattr_*`, so a correctly
-/// sized-and-aligned byte buffer is a valid stand-in for the real glibc
-/// struct.
+/// sized-and-aligned byte buffer is a valid stand-in for the real C struct.
 #[repr(C, align(8))]
 #[derive(Copy, Clone)]
 pub(super) struct pthread_condattr_t {
@@ -257,50 +188,11 @@ impl Default for pthread_condattr_t {
     }
 }
 
-
-/// One-time initialization control (`pthread_once_t`, `<pthread.h>`).
-///
-/// Unlike the opaque, per-architecture-sized `pthread_mutex_t`/`pthread_attr_t`,
-/// glibc defines this as a plain `int` (`bits/pthreadtypes.h`) on every
-/// architecture this crate supports.
-pub(super) type pthread_once_t = c_int;
-
-/// Initial value for a [`pthread_once_t`] (`PTHREAD_ONCE_INIT`, `<pthread.h>`).
-pub(super) const PTHREAD_ONCE_INIT: pthread_once_t = 0;
-
 /// One-time initialization routine, as accepted by `pthread_once(3)`.
 pub(super) type PthreadOnceRoutine = unsafe extern "C" fn();
 
 /// Thread entry point matching the C signature `void *(*)(void *)`.
 pub(super) type ThreadStartRoutine = unsafe extern "C" fn(arg: *mut c_void) -> *mut c_void;
-
-/// Size (in bytes) of glibc's `sigset_t` (`bits/sigset.h`).
-///
-/// Unlike [`pthread_attr_t`], this is the same on every architecture: glibc
-/// defines it as `1024 / (8 * sizeof(unsigned long int))` words, which is
-/// 128 bytes whether `sizeof(unsigned long)` is 4 (32-bit targets) or 8
-/// (64-bit targets).
-const SIGSET_T_SIZE: usize = 128;
-
-/// Opaque storage for `sigset_t`.
-///
-/// As with [`pthread_attr_t`], Rust never reads/writes its fields directly;
-/// only its address is handed to `sig*set`/`sigsuspend`, so a correctly
-/// sized-and-aligned byte buffer is a valid stand-in for the real glibc
-/// struct.
-#[repr(C, align(8))]
-#[derive(Copy, Clone)]
-pub(super) struct sigset_t {
-    _opaque: [u8; SIGSET_T_SIZE],
-}
-
-impl Default for sigset_t {
-    fn default() -> Self {
-        Self {
-            _opaque: [0u8; SIGSET_T_SIZE],
-        }
-    }
-}
 
 /// Signal handler function pointer, as accepted/returned by `signal(2)`.
 ///
@@ -310,51 +202,11 @@ impl Default for sigset_t {
 /// without needing an `Option<fn>` niche that only fits a null handler.
 pub(super) type sighandler_t = usize;
 
-/// Scheduling policy: real-time first-in-first-out (`<sched.h>`).
-///
-/// Value is stable across every glibc-supported architecture (defined in
-/// the generic `bits/sched.h`, not per-arch).
-#[cfg(feature = "real_time")]
-pub(super) const SCHED_FIFO: c_int = 1;
-
-/// Scheduling-inheritance attribute: use the policy/priority set on the
-/// `pthread_attr_t` itself instead of inheriting the creating thread's.
-#[cfg(feature = "real_time")]
-pub(super) const PTHREAD_EXPLICIT_SCHED: c_int = 1;
-
-/// Mirrors glibc's `struct sched_param` (`<bits/sched.h>`), which on Linux
-/// has no fields beyond `sched_priority`.
-#[cfg(feature = "real_time")]
-#[repr(C)]
-#[derive(Copy, Clone)]
-pub(super) struct sched_param {
-    pub(super) sched_priority: c_int,
-}
-
-/// `sysconf(3)` parameter names (`<bits/confname.h>`). Like [`SIGRTMIN`'s
-/// accessor](__libc_current_sigrtmin), these are glibc's own generic
-/// namespace, stable across every architecture it supports — not a
-/// kernel/arch ABI detail.
-pub(super) const _SC_PAGESIZE: c_int = 30;
-pub(super) const _SC_AVPHYS_PAGES: c_int = 86;
-
-/// Clock identifier for `clock_gettime(2)`: time since an unspecified
-/// starting point that never jumps backward or with wall-clock adjustments.
-/// Value is glibc's generic `<bits/time.h>` namespace, stable across every
-/// architecture it supports.
-pub(super) const CLOCK_MONOTONIC: c_int = 1;
-
-/// `errno` value for a timed-out wait (`<asm-generic/errno.h>`). Stable
-/// across every architecture this crate supports (all use the generic Linux
-/// errno numbering; only a handful of non-supported archs like mips/sparc/alpha
-/// diverge).
-pub(super) const ETIMEDOUT: c_int = 110;
-
 /// Mirrors `struct timespec` (`<time.h>`).
 ///
-/// glibc declares both fields as `long`, which matches the architecture's
-/// native word size on every target this crate supports (same reasoning as
-/// [`ThreadHandle`](crate::os::types::ThreadHandle)'s `c_ulong`).
+/// Both glibc and macOS declare both fields as `long` (`time_t` is `long`
+/// on every target this crate supports), which matches the architecture's
+/// native word size.
 #[repr(C)]
 #[derive(Copy, Clone, Default)]
 pub(super) struct timespec {
@@ -362,121 +214,22 @@ pub(super) struct timespec {
     pub(super) tv_nsec: c_long,
 }
 
-/// Mirrors `struct itimerspec` (`<time.h>`): the relative interval used to
-/// arm, re-arm, or (with an all-zero `it_value`) disarm a POSIX timer via
-/// [`timer_settime`].
-#[repr(C)]
-#[derive(Copy, Clone, Default)]
-pub(super) struct itimerspec {
-    pub(super) it_interval: timespec,
-    pub(super) it_value: timespec,
-}
+/// `errno` value for an operation the caller lacks the privilege for
+/// (`EPERM`), e.g. `pthread_create` asking for `SCHED_FIFO` without
+/// `CAP_SYS_NICE`/`RLIMIT_RTPRIO` on Linux. Value 1 on Linux and macOS alike.
+#[cfg(feature = "real_time")]
+pub(super) const EPERM: c_int = 1;
 
-/// Process/thread ID type (`__pid_t`, `bits/types.h`). glibc defines this as
-/// a plain `int` on every architecture it supports.
-pub(super) type pid_t = c_int;
-
-/// Opaque per-process timer identifier (`timer_t`, `bits/types/timer_t.h`).
-/// glibc defines `__timer_t` as `void *`; neither the kernel nor this crate
-/// ever dereferences it, only passes the opaque value back to
-/// [`timer_settime`]/[`timer_delete`].
-pub(super) type timer_t = *mut c_void;
-
-/// Padding word count for glibc's `sigevent_t` union (`bits/types/sigevent_t.h`,
-/// `__SIGEV_PAD_SIZE`). Together with [`sigval_t`]'s pointer-sized member,
-/// this keeps [`sigevent`] at glibc's fixed `__SIGEV_MAX_SIZE` (64 bytes) on
-/// every architecture this crate supports, whether `sizeof(void *)` is 4 or 8.
-#[cfg(target_pointer_width = "64")]
-const SIGEV_PAD_SIZE: usize = 12;
-#[cfg(target_pointer_width = "32")]
-const SIGEV_PAD_SIZE: usize = 13;
-
-/// Mirrors glibc's `sigval_t` (`bits/types/sigval_t.h`): a signal-associated
-/// value that is either an `int` or a pointer.
-#[repr(C)]
-#[derive(Copy, Clone)]
-pub(super) union sigval_t {
-    pub(super) sival_int: c_int,
-    pub(super) sival_ptr: *mut c_void,
-}
-
-impl Default for sigval_t {
-    fn default() -> Self {
-        Self { sival_ptr: core::ptr::null_mut() }
-    }
-}
-
-/// Mirrors the anonymous union inside glibc's `sigevent_t`
-/// (`_sigev_un` in `bits/types/sigevent_t.h`). Only the `tid` member (used
-/// with [`SIGEV_THREAD_ID`]) is exposed; `pad` exists solely so this union
-/// has the same size as glibc's, which also carries a `_sigev_thread` member
-/// (function-pointer notification, `SIGEV_THREAD`) this crate never uses.
-#[repr(C)]
-#[derive(Copy, Clone)]
-pub(super) union sigevent_un {
-    pub(super) pad: [c_int; SIGEV_PAD_SIZE],
-    /// Kernel thread ID to notify, when `sigev_notify == SIGEV_THREAD_ID`.
-    pub(super) tid: pid_t,
-}
-
-impl Default for sigevent_un {
-    fn default() -> Self {
-        Self { pad: [0; SIGEV_PAD_SIZE] }
-    }
-}
-
-/// Mirrors glibc's `sigevent_t` (`bits/types/sigevent_t.h`), used to tell
-/// [`timer_create`] how to notify on timer expiry. This crate only uses
-/// [`SIGEV_THREAD_ID`] notification (deliver `sigev_signo` directly to the
-/// thread named by `sigev_un.tid`), which is a Linux/glibc extension.
-#[repr(C)]
-#[derive(Copy, Clone, Default)]
-pub(super) struct sigevent {
-    pub(super) sigev_value: sigval_t,
-    pub(super) sigev_signo: c_int,
-    pub(super) sigev_notify: c_int,
-    pub(super) sigev_un: sigevent_un,
-}
-
-/// Notify by delivering `sigev_signo` directly to the thread whose kernel TID
-/// is given in `sigev_un.tid` (`SIGEV_THREAD_ID`, a Linux/glibc extension to
-/// `bits/sigevent-consts.h`, gated there behind `__USE_GNU`). Not part of
-/// POSIX; lets a timer target one specific thread instead of the whole
-/// process.
-pub(super) const SIGEV_THREAD_ID: c_int = 4;
-
-/// Alarm clock signal (`SIGALRM`, `bits/signum-generic.h`). Value 14 is part
-/// of Linux's base (non-real-time) signal numbering, stable across every
-/// architecture this crate supports.
-pub(super) const SIGALRM: c_int = 14;
-
-/// `sigprocmask(2)`/`pthread_sigmask(3)` operation: add the signals in `set`
-/// to the caller's current mask (`SIG_BLOCK`). Value is stable across every
-/// architecture this crate supports (defined in the generic
-/// `asm-generic/signal.h`, not an arch-specific ABI detail).
-pub(super) const SIG_BLOCK: c_int = 0;
-
-/// Interrupt signal (`SIGINT`, `bits/signum-generic.h`). Value 2 is part
-/// of Linux's base (non-real-time) signal numbering, stable across every
-/// architecture this crate supports.
+/// Interrupt signal (`SIGINT`). Value 2 on Linux and macOS alike.
 pub(super) const SIGINT: c_int = 2;
 
-/// Termination signal (`SIGTERM`, `bits/signum-generic.h`). Value 15 is part
-/// of Linux's base (non-real-time) signal numbering, stable across every
-/// architecture this crate supports.
+/// Termination signal (`SIGTERM`). Value 15 on Linux and macOS alike.
 pub(super) const SIGTERM: c_int = 15;
-
-/// Mutex type: the owning thread may lock it again without deadlocking,
-/// as long as it unlocks it the same number of times (`<pthread.h>`,
-/// `pthread_mutexattr_settype(3)`). Value is glibc's generic namespace,
-/// stable across every architecture it supports.
-pub(super) const PTHREAD_MUTEX_RECURSIVE: c_int = 1;
 
 /// Mutex protocol: a thread holding the mutex has its priority temporarily
 /// raised to that of the highest-priority thread blocked on it, preventing
 /// priority inversion (`<pthread.h>`, `pthread_mutexattr_setprotocol(3)`).
-/// Value is glibc's generic namespace, stable across every architecture it
-/// supports.
+/// Value 1 on Linux and macOS alike.
 pub(super) const PTHREAD_PRIO_INHERIT: c_int = 1;
 
 unsafe extern "C" {
@@ -501,6 +254,11 @@ unsafe extern "C" {
     #[cfg(feature = "real_time")]
     pub(super) fn pthread_attr_setschedparam(attr: *mut pthread_attr_t, param: *const sched_param) -> c_int;
 
+    /// Lowest priority valid for scheduling `policy` (`sched_get_priority_min(2)`):
+    /// 1 for `SCHED_FIFO` on Linux, 15 on macOS.
+    #[cfg(feature = "real_time")]
+    pub(super) fn sched_get_priority_min(policy: c_int) -> c_int;
+
     /// Create a new thread running `start_routine(arg)`, writing its ID to `thread`.
     pub(super) fn pthread_create(
         thread: *mut ThreadHandle,
@@ -519,24 +277,11 @@ unsafe extern "C" {
 
     pub(super) fn pthread_detach(thread: ThreadHandle) -> c_int;
 
-    /// Set the name (glibc extension, `<= 15` chars + NUL) of an existing thread.
-    pub(super) fn pthread_setname_np(thread: ThreadHandle, name: *const c_char) -> c_int;
-
     /// Send signal `sig` to `thread` (`pthread_kill(3)`).
     ///
     /// Used to implement [`suspend`](crate::posix::thread::Thread)/`resume`,
     /// since pthreads has no native suspend/resume API of its own.
     pub(super) fn pthread_kill(thread: ThreadHandle, sig: c_int) -> c_int;
-
-    /// Return the first real-time signal number glibc has not reserved for
-    /// its own internal use (`SIGRTMIN(3)`).
-    ///
-    /// The kernel's raw `SIGRTMIN` is reserved by NPTL for thread
-    /// cancellation/setuid bookkeeping; glibc exposes the first
-    /// application-usable one through this function rather than a fixed
-    /// constant, since the number of signals it reserves is an
-    /// implementation detail that could change.
-    pub(super) fn __libc_current_sigrtmin() -> c_int;
 
     /// Set `set` to contain every signal (`sigfillset(3)`).
     pub(super) fn sigfillset(set: *mut sigset_t) -> c_int;
@@ -555,8 +300,23 @@ unsafe extern "C" {
     /// handler (`signal(2)`).
     pub(super) fn signal(signum: c_int, handler: sighandler_t) -> sighandler_t;
 
-    /// Query a system configuration value (`sysconf(3)`), e.g. [`_SC_PAGESIZE`]
-    /// or [`_SC_AVPHYS_PAGES`].
+    /// Install `act` as the action for `signum`, optionally storing the
+    /// previous one in `oldact` (`sigaction(2)`). Unlike [`signal`], lets
+    /// the handler run with extra signals blocked (`sa_mask`).
+    pub(super) fn sigaction(signum: c_int, act: *const sigaction, oldact: *mut sigaction) -> c_int;
+
+    /// Fetch and/or change the calling thread's blocked-signal mask
+    /// (`pthread_sigmask(3)`): `how` is [`SIG_BLOCK`] (add `set`) or
+    /// [`SIG_SETMASK`] (replace with `set`); `oldset` may be null.
+    pub(super) fn pthread_sigmask(how: c_int, set: *const sigset_t, oldset: *mut sigset_t) -> c_int;
+
+    /// Initialize `set` to exclude every signal (`sigemptyset(3)`).
+    pub(super) fn sigemptyset(set: *mut sigset_t) -> c_int;
+
+    /// Add `signum` to `set` (`sigaddset(3)`).
+    pub(super) fn sigaddset(set: *mut sigset_t, signum: c_int) -> c_int;
+
+    /// Query a system configuration value (`sysconf(3)`), e.g. [`_SC_PAGESIZE`].
     pub(super) fn sysconf(name: c_int) -> c_long;
 
     /// Get the current time of `clock_id` (e.g. [`CLOCK_MONOTONIC`]) into
@@ -611,10 +371,6 @@ unsafe extern "C" {
     /// Initialize a condition-variable attributes object with default values.
     pub(super) fn pthread_condattr_init(attr: *mut pthread_condattr_t) -> c_int;
 
-    /// Set the clock (e.g. [`CLOCK_MONOTONIC`]) against which
-    /// `pthread_cond_timedwait`'s absolute deadline is measured.
-    pub(super) fn pthread_condattr_setclock(attr: *mut pthread_condattr_t, clock_id: c_int) -> c_int;
-
     /// Initialize `cond` with the attributes in `attr` (`NULL` for the
     /// implementation's defaults).
     pub(super) fn pthread_cond_init(cond: *mut pthread_cond_t, attr: *const pthread_condattr_t) -> c_int;
@@ -623,7 +379,7 @@ unsafe extern "C" {
     ///
     /// # Safety
     ///
-    /// No thread may be blocked in [`pthread_cond_wait`]/[`pthread_cond_timedwait`]
+    /// No thread may be blocked in [`pthread_cond_wait`]/[`cond_timedwait_monotonic`]
     /// on `cond`, and it must not be used again afterwards.
     pub(super) fn pthread_cond_destroy(cond: *mut pthread_cond_t) -> c_int;
 
@@ -636,65 +392,166 @@ unsafe extern "C" {
     /// mutex on every call for a given `cond`.
     pub(super) fn pthread_cond_wait(cond: *mut pthread_cond_t, mutex: *mut pthread_mutex_t) -> c_int;
 
-    /// As [`pthread_cond_wait`], but gives up and returns `ETIMEDOUT` once
-    /// the absolute deadline `abstime` (in `cond`'s attribute clock) passes
-    /// (`pthread_cond_timedwait(3)`).
-    ///
-    /// # Safety
-    ///
-    /// Same as [`pthread_cond_wait`].
-    pub(super) fn pthread_cond_timedwait(cond: *mut pthread_cond_t, mutex: *mut pthread_mutex_t, abstime: *const timespec) -> c_int;
-
     /// Wake every thread currently blocked on `cond`
     /// (`pthread_cond_broadcast(3)`).
     pub(super) fn pthread_cond_broadcast(cond: *mut pthread_cond_t) -> c_int;
 
-    /// Initialize `set` to exclude every signal (`sigemptyset(3)`).
-    pub(super) fn sigemptyset(set: *mut sigset_t) -> c_int;
+}
 
-    /// Add `signum` to `set` (`sigaddset(3)`).
-    pub(super) fn sigaddset(set: *mut sigset_t, signum: c_int) -> c_int;
+/// Initializes `cond` for timed waits measured on the monotonic clock, as
+/// [`cond_timedwait_monotonic`] and [`monotonic_deadline`] expect. The only
+/// platform-specific step, binding the condvar's attribute clock, is
+/// delegated to the platform submodule's `condattr_set_monotonic`.
+///
+/// # Safety
+///
+/// `cond` must be valid for writes of a [`pthread_cond_t`] and not already
+/// initialized.
+pub(super) unsafe fn cond_init_monotonic(cond: *mut pthread_cond_t) -> c_int {
+    let mut attr = pthread_condattr_t::default();
 
-    /// Fetch and/or change the calling thread's blocked-signal mask
-    /// (`sigprocmask(2)`); `oldset` may be null if the previous mask isn't
-    /// needed.
-    ///
-    /// POSIX leaves the multi-threaded behavior of `sigprocmask` unspecified
-    /// — `pthread_sigmask(3)` is the portable per-thread call — but on
-    /// Linux/glibc `sigprocmask` is a thin, thread-local wrapper around it,
-    /// which is what [`crate::posix::timer`] relies on to give a newly
-    /// created thread a mask that already has `SIGALRM` blocked.
-    pub(super) fn sigprocmask(how: c_int, set: *const sigset_t, oldset: *mut sigset_t) -> c_int;
+    unsafe {
+        pthread_condattr_init(&mut attr);
+        condattr_set_monotonic(&mut attr);
+        pthread_cond_init(cond, &attr)
+    }
+}
 
-    /// Synchronously accept one pending signal from `set`, storing its
-    /// number in `sig` (`sigwait(3)`). The signals in `set` must be blocked
-    /// in every thread that might receive them (see [`sigprocmask`]) —
-    /// `sigwait` "consumes" a pending blocked signal instead of running a
-    /// handler for it. Returns 0 on success, or a positive `errno`-style
-    /// error code (unlike most of this module's functions, `sigwait` does
-    /// not set `errno` itself).
-    pub(super) fn sigwait(set: *const sigset_t, sig: *mut c_int) -> c_int;
+/// Computes an absolute deadline `timeout` from now on the monotonic clock,
+/// for [`cond_timedwait_monotonic`].
+pub(super) fn monotonic_deadline(timeout: Duration) -> timespec {
+    let mut now = timespec::default();
+    unsafe {
+        clock_gettime(CLOCK_MONOTONIC, &mut now);
+    }
 
-    /// Return the calling thread's kernel thread ID (`gettid(2)`), as
-    /// opposed to [`pthread_self`]'s process-wide `pthread_t`. Needed
-    /// because [`SIGEV_THREAD_ID`] notification targets a kernel TID, not a
-    /// `pthread_t`.
-    ///
-    /// A direct glibc wrapper since glibc 2.30.
-    pub(super) fn gettid() -> pid_t;
+    let mut tv_sec = now.tv_sec + timeout.as_secs() as c_long;
+    let mut tv_nsec = now.tv_nsec + timeout.subsec_nanos() as c_long;
 
-    /// Create a per-process timer that notifies as described by `sevp`,
-    /// writing its ID to `timerid` (`timer_create(2)`). This crate always
-    /// uses [`CLOCK_MONOTONIC`] and [`SIGEV_THREAD_ID`] notification (see
-    /// [`crate::posix::timer`]).
-    pub(super) fn timer_create(clockid: c_int, sevp: *const sigevent, timerid: *mut timer_t) -> c_int;
+    if tv_nsec >= 1_000_000_000 {
+        tv_sec += 1;
+        tv_nsec -= 1_000_000_000;
+    }
 
-    /// Arm, re-arm, or (with an all-zero `new_value.it_value`) disarm
-    /// `timerid` (`timer_settime(2)`). `flags = 0` means `new_value.it_value`
-    /// is relative to now, which is all this crate uses.
-    pub(super) fn timer_settime(timerid: timer_t, flags: c_int, new_value: *const itimerspec, old_value: *mut itimerspec) -> c_int;
+    timespec { tv_sec, tv_nsec }
+}
 
-    /// Destroy `timerid`, releasing its resources (`timer_delete(2)`). Any
-    /// pending expiration notification is discarded.
-    pub(super) fn timer_delete(timerid: timer_t) -> c_int;
+#[cfg(test)]
+mod tests {
+    //! Checks the hand-written sizes and constants above (and in the
+    //! platform submodule) against the real C headers, by compiling and
+    //! running a small C program with `$CC` (default `cc`). A mismatch here
+    //! means undefined behavior at runtime, so it must fail loudly.
+
+    use super::*;
+
+    use std::collections::HashMap;
+    use std::process::Command;
+
+    const PROBE: &str = r#"
+#define _GNU_SOURCE
+#include <errno.h>
+#include <pthread.h>
+#include <signal.h>
+#include <stdio.h>
+#include <time.h>
+#include <unistd.h>
+#if defined(__APPLE__)
+#include <mach/mach.h>
+#endif
+
+#define S(t) printf("sizeof %s=%ld\n", #t, (long)sizeof(t))
+#define V(c) printf("%s=%ld\n", #c, (long)(c))
+
+int main(void) {
+    S(pthread_attr_t); S(pthread_mutex_t); S(pthread_mutexattr_t);
+    S(pthread_cond_t); S(pthread_condattr_t); S(pthread_once_t);
+    S(sigset_t); S(pthread_t); S(struct timespec); S(struct sched_param);
+    S(struct sigaction); V(SA_RESTART);
+    printf("alignof sigset_t=%ld\n", (long)_Alignof(sigset_t));
+    V(CLOCK_MONOTONIC); V(ETIMEDOUT); V(_SC_PAGESIZE); V(SIG_BLOCK); V(SIG_SETMASK);
+    V(PTHREAD_MUTEX_RECURSIVE); V(PTHREAD_PRIO_INHERIT);
+    V(SCHED_FIFO); V(PTHREAD_EXPLICIT_SCHED); V(EPERM);
+    V(SIGINT); V(SIGTERM);
+#if defined(__linux__)
+    V(_SC_AVPHYS_PAGES);
+#endif
+#if defined(__APPLE__)
+    V(SIGUSR1); V(SIGUSR2); V(HOST_VM_INFO64_COUNT);
+#endif
+    return 0;
+}
+"#;
+
+    /// Compiles and runs [`PROBE`], returning its `name=value` lines.
+    fn c_values() -> HashMap<String, i64> {
+        let dir = std::env::temp_dir().join(format!("osal_rs_ffi_layout_{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("create probe dir");
+
+        let src = dir.join("probe.c");
+        let exe = dir.join("probe");
+        std::fs::write(&src, PROBE).expect("write probe source");
+
+        let cc = std::env::var("CC").unwrap_or_else(|_| "cc".into());
+        let status = Command::new(&cc).arg(&src).arg("-o").arg(&exe).status().expect("run C compiler");
+        assert!(status.success(), "{cc} failed to compile the layout probe");
+
+        let output = Command::new(&exe).output().expect("run layout probe");
+        let _ = std::fs::remove_dir_all(&dir);
+
+        String::from_utf8_lossy(&output.stdout)
+            .lines()
+            .filter_map(|line| line.split_once('='))
+            .map(|(name, value)| (name.to_string(), value.parse().expect("numeric probe value")))
+            .collect()
+    }
+
+    #[test]
+    fn layout_matches_c_headers() {
+        let c = c_values();
+        let check = |name: &str, rust: i64| assert_eq!(c[name], rust, "`{name}` differs from the C headers");
+
+        check("sizeof pthread_attr_t", size_of::<pthread_attr_t>() as i64);
+        check("sizeof pthread_mutex_t", size_of::<pthread_mutex_t>() as i64);
+        check("sizeof pthread_mutexattr_t", size_of::<pthread_mutexattr_t>() as i64);
+        check("sizeof pthread_cond_t", size_of::<pthread_cond_t>() as i64);
+        check("sizeof pthread_condattr_t", size_of::<pthread_condattr_t>() as i64);
+        check("sizeof pthread_once_t", size_of::<pthread_once_t>() as i64);
+        check("sizeof sigset_t", size_of::<sigset_t>() as i64);
+        check("alignof sigset_t", align_of::<sigset_t>() as i64);
+        check("sizeof struct sigaction", size_of::<sigaction>() as i64);
+        check("SA_RESTART", SA_RESTART as i64);
+        check("sizeof pthread_t", size_of::<ThreadHandle>() as i64);
+        check("sizeof struct timespec", size_of::<timespec>() as i64);
+        #[cfg(feature = "real_time")]
+        check("sizeof struct sched_param", size_of::<sched_param>() as i64);
+
+        check("CLOCK_MONOTONIC", CLOCK_MONOTONIC as i64);
+        check("ETIMEDOUT", ETIMEDOUT as i64);
+        check("_SC_PAGESIZE", _SC_PAGESIZE as i64);
+        check("SIG_BLOCK", SIG_BLOCK as i64);
+        check("SIG_SETMASK", SIG_SETMASK as i64);
+        check("PTHREAD_MUTEX_RECURSIVE", PTHREAD_MUTEX_RECURSIVE as i64);
+        check("PTHREAD_PRIO_INHERIT", PTHREAD_PRIO_INHERIT as i64);
+        #[cfg(feature = "real_time")]
+        {
+            check("SCHED_FIFO", SCHED_FIFO as i64);
+            check("PTHREAD_EXPLICIT_SCHED", PTHREAD_EXPLICIT_SCHED as i64);
+            check("EPERM", EPERM as i64);
+        }
+        check("SIGINT", SIGINT as i64);
+        check("SIGTERM", SIGTERM as i64);
+
+        #[cfg(target_os = "linux")]
+        {
+            check("_SC_AVPHYS_PAGES", _SC_AVPHYS_PAGES as i64);
+        }
+
+        #[cfg(target_os = "macos")]
+        {
+            check("SIGUSR1", SIGUSR1 as i64);
+            check("SIGUSR2", SIGUSR2 as i64);
+            check("HOST_VM_INFO64_COUNT", HOST_VM_INFO64_COUNT as i64);
+        }
+    }
 }

@@ -561,7 +561,13 @@ int main(void) {
         {
             check("SIGUSR1", SIGUSR1 as i64);
             check("SIGUSR2", SIGUSR2 as i64);
-            check("HOST_VM_INFO64_COUNT", HOST_VM_INFO64_COUNT as i64);
+            // A buffer at least as large as the SDK's struct; see
+            // `VM_STATISTICS64_WORDS` for why it is not an exact match.
+            assert!(
+                VM_STATISTICS64_WORDS as i64 >= c["HOST_VM_INFO64_COUNT"],
+                "`VM_STATISTICS64_WORDS` ({VM_STATISTICS64_WORDS}) is smaller than the SDK's HOST_VM_INFO64_COUNT ({})",
+                c["HOST_VM_INFO64_COUNT"]
+            );
         }
     }
 }

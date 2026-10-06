@@ -179,14 +179,22 @@ const KERN_SUCCESS: kern_return_t = 0;
 /// `host_statistics64` flavor returning a `vm_statistics64` (`<mach/host_info.h>`).
 const HOST_VM_INFO64: c_int = 4;
 
-/// Size of `vm_statistics64_data_t` in 32-bit words (`HOST_VM_INFO64_COUNT`).
-pub(in crate::posix) const HOST_VM_INFO64_COUNT: c_uint = 62;
+/// Size, in 32-bit words, of the buffer handed to `host_statistics64`.
+///
+/// Deliberately not pinned to `HOST_VM_INFO64_COUNT`: `vm_statistics64`
+/// grows with macOS releases (62 words in the SDK on GitHub's runners, 104
+/// in the macOS 27 SDK), so any exact value would be wrong on some SDK.
+/// The kernel accepts a larger buffer, fills only the fields it knows and
+/// lowers `count` accordingly (verified: 256 in, 104 out); `free_count` is
+/// always the first word. The layout test checks this is at least the
+/// SDK's `HOST_VM_INFO64_COUNT`.
+pub(in crate::posix) const VM_STATISTICS64_WORDS: c_uint = 128;
 
 /// Opaque storage for `vm_statistics64_data_t` (`<mach/vm_statistics.h>`).
 /// Only its first word, `free_count` (free pages), is read.
 #[repr(C, align(8))]
 struct vm_statistics64 {
-    words: [c_uint; HOST_VM_INFO64_COUNT as usize],
+    words: [c_uint; VM_STATISTICS64_WORDS as usize],
 }
 
 unsafe extern "C" {
@@ -284,8 +292,8 @@ pub(in crate::posix) unsafe fn set_current_thread_name(name: *const c_char) -> c
 /// "Pages free"), or a value `<= 0` if it cannot be determined. macOS has
 /// no `sysconf(_SC_AVPHYS_PAGES)`.
 pub(in crate::posix) fn available_physical_pages() -> c_long {
-    let mut stats = vm_statistics64 { words: [0; HOST_VM_INFO64_COUNT as usize] };
-    let mut count = HOST_VM_INFO64_COUNT;
+    let mut stats = vm_statistics64 { words: [0; VM_STATISTICS64_WORDS as usize] };
+    let mut count = VM_STATISTICS64_WORDS;
 
     unsafe {
         let host = mach_host_self();

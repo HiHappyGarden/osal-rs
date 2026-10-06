@@ -410,10 +410,12 @@ pub trait Timer {
     ///
     /// static TIMED_OUT: AtomicBool = AtomicBool::new(false);
     ///
-    /// // Watchdog timer pattern
+    /// // Watchdog timer pattern. The period leaves a wide margin over the
+    /// // feeding interval, so scheduling jitter (e.g. on a busy CI VM) can't
+    /// // make a single late feed look like a missed one.
     /// let watchdog = Timer::new_with_to_tick(
     ///     "watchdog",
-    ///     Duration::from_millis(50),
+    ///     Duration::from_millis(200),
     ///     false,
     ///     None,
     ///     |_timer, _param| {
@@ -434,7 +436,7 @@ pub trait Timer {
     /// assert!(!TIMED_OUT.load(Ordering::SeqCst));
     ///
     /// // Stop feeding it and it fires.
-    /// System::delay(120);
+    /// System::delay(400);
     /// assert!(TIMED_OUT.load(Ordering::SeqCst));
     /// ```
     fn reset(&self, ticks_to_wait: TickType) -> OsalRsBool;

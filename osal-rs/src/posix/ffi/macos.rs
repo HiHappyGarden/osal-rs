@@ -180,7 +180,7 @@ const KERN_SUCCESS: kern_return_t = 0;
 const HOST_VM_INFO64: c_int = 4;
 
 /// Size of `vm_statistics64_data_t` in 32-bit words (`HOST_VM_INFO64_COUNT`).
-pub(in crate::posix) const HOST_VM_INFO64_COUNT: c_uint = 104;
+pub(in crate::posix) const HOST_VM_INFO64_COUNT: c_uint = 62;
 
 /// Opaque storage for `vm_statistics64_data_t` (`<mach/vm_statistics.h>`).
 /// Only its first word, `free_count` (free pages), is read.

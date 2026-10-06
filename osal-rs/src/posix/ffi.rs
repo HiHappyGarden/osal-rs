@@ -130,7 +130,12 @@ impl pthread_mutex_t {
 /// As with [`pthread_attr_t`], Rust never reads/writes its fields directly;
 /// only its address is handed to `pthread_mutexattr_*`, so a correctly
 /// sized-and-aligned byte buffer is a valid stand-in for the real C struct.
-#[repr(C, align(8))]
+///
+/// glibc defines it as a union of `char[N]` and `int` (4-byte aligned),
+/// macOS as `long __sig` + opaque bytes (8-byte aligned); the alignment
+/// must follow suit, or padding would make the Rust type larger than C's.
+#[cfg_attr(target_os = "linux", repr(C, align(4)))]
+#[cfg_attr(target_os = "macos", repr(C, align(8)))]
 #[derive(Copy, Clone)]
 pub(super) struct pthread_mutexattr_t {
     _opaque: [u8; PTHREAD_MUTEXATTR_T_SIZE],
@@ -174,7 +179,12 @@ impl pthread_cond_t {
 /// As with [`pthread_mutex_t`], Rust never reads/writes its fields directly;
 /// only its address is handed to `pthread_condattr_*`, so a correctly
 /// sized-and-aligned byte buffer is a valid stand-in for the real C struct.
-#[repr(C, align(8))]
+///
+/// glibc defines it as a union of `char[N]` and `int` (4-byte aligned),
+/// macOS as `long __sig` + opaque bytes (8-byte aligned); the alignment
+/// must follow suit, or padding would make the Rust type larger than C's.
+#[cfg_attr(target_os = "linux", repr(C, align(4)))]
+#[cfg_attr(target_os = "macos", repr(C, align(8)))]
 #[derive(Copy, Clone)]
 pub(super) struct pthread_condattr_t {
     _opaque: [u8; PTHREAD_CONDATTR_T_SIZE],

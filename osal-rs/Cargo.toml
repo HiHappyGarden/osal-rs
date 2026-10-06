@@ -4,7 +4,7 @@ version = "1.3.0"
 edition = "2024"
 rust-version = "1.85.0"
 authors = ["Antonio Salsi"]
-description = "Operating System Abstraction Layer for Rust with support for FreeRTOS and POSIX"
+description = "Operating System Abstraction Layer for Rust with support for FreeRTOS and POSIX (Linux, macOS)"
 license = "LGPL-2.1-or-later"
 repository = "https://github.com/HiHappyGarden/osal-rs"
 homepage = "https://github.com/HiHappyGarden/osal-rs"
@@ -50,7 +50,7 @@ default-target = "x86_64-unknown-linux-gnu"
 # Otherwise, these `targets` are built in addition to the default target.
 # If both `default-target` and `targets` are unset,
 #   all tier-one targets will be built and `x86_64-unknown-linux-gnu` will be used as the default target.
-targets = []
+targets = ["aarch64-apple-darwin"]
 
 # Additional `RUSTDOCFLAGS` to set (default: [])
 rustdoc-args = []

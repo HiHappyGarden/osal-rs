@@ -35,7 +35,7 @@ OSAL-RS provides a unified API for developing multi-platform embedded applicatio
 ## Current Implementation Status
 
 - ✅ **FreeRTOS**: Fully implemented and tested
-- ✅ **POSIX**: Fully implemented and tested (glibc/Linux) - native host backend for running, testing and simulating OSAL-RS applications without embedded hardware
+- ✅ **POSIX**: Fully implemented and tested (Linux/glibc and macOS on Apple Silicon) - native host backend for running, testing and simulating OSAL-RS applications without embedded hardware
 - ✅ **Serialization**: Complete osal-rs-serde implementation with derive macros
 - 🧪 **Async/Await**: Experimental, backend-agnostic, works on both FreeRTOS and POSIX
 - 🚧 **Other RTOSes**: Under consideration
@@ -99,7 +99,7 @@ With CMake, pass it through `cmake -E env` as shown in [Basic CMake Integration]
 Runs on any POSIX/pthreads host so OSAL-RS applications - and their tests and doc examples - can execute for real on Linux/macOS without embedded hardware or a cross toolchain. Enabling `posix` disables `no_std` and builds the crate against `std`.
 
 **Requirements:**
-- A **glibc**/Linux host (see note below)
+- A **Linux/glibc** or **macOS (Apple Silicon)** host (see note below) - the platform is picked automatically from the compilation target, only the `posix` feature is needed
 - No special build steps: unlike `freertos`, the small POSIX porting shim in `osal-rs-porting/posix/` is compiled and linked automatically by `osal-rs-build` - no CMake, cross toolchain or RTOS kernel sources required
 
 **Build:**
@@ -109,24 +109,33 @@ Runs on any POSIX/pthreads host so OSAL-RS applications - and their tests and do
 cargo build --features posix
 ```
 
-#### POSIX Backend: glibc Requirement
+#### POSIX Backend: Supported Platforms
 
-The `posix` backend links directly against **glibc** (the GNU C Library), not just any C compiler. It relies on glibc-specific internals - struct layouts (`pthread_attr_t`, `pthread_mutex_t`, `pthread_cond_t`, `sigset_t`, etc.) and the `__libc_current_sigrtmin()` extension used to implement thread suspend/resume via real-time signals.
+The `posix` backend talks to the platform C library through hand-written bindings, so it depends on that library's struct layouts (`pthread_attr_t`, `pthread_mutex_t`, `pthread_cond_t`, `sigset_t`, etc.) and constant values. Two are supported, selected at compile time from `target_os`:
+
+| Platform | Target | Notes |
+|----------|--------|-------|
+| Linux / **glibc** | `x86_64`, `aarch64`, `arm`, `x86`, `riscv64`, `riscv32` `-unknown-linux-gnu` | Thread suspend/resume uses the first two application real-time signals (`__libc_current_sigrtmin()`) |
+| **macOS** (Apple Silicon) | `aarch64-apple-darwin` | Thread suspend/resume uses `SIGUSR1`/`SIGUSR2`, which the backend therefore reserves |
+
+Everything the two platforms share is implemented once; only type sizes, constants and a few functions differ (`osal-rs/src/posix/ffi/{linux,macos}.rs`). A unit test compiles a small C program against the real system headers and checks every hand-written size and constant against it.
 
 This means:
 - The **compiler** doesn't matter - gcc or clang both work fine.
-- The **C library** does matter - targets linking against **musl** (e.g. `x86_64-unknown-linux-musl`) or non-glibc platforms (e.g. macOS/BSD libc) are **not supported** by the `posix` backend.
+- The **C library** does matter - **musl** (e.g. `x86_64-unknown-linux-musl`), macOS on Intel, BSDs and other platforms are **not supported** and fail to build.
 
 #### Real-Time Scheduling (`real_time`)
 
 Threads spawned by the `posix` backend normally inherit the creating thread's scheduling policy/priority. The `real_time` feature switches them to the real-time `SCHED_FIFO` policy instead.
 
-You don't need to request this feature yourself: `osal-rs-build`'s build script probes the host at compile time and automatically turns `real_time` on whenever the OS/kernel supports `SCHED_FIFO`. It's a plain Cargo feature only so it can be inspected via `cfg(feature = "real_time")`; a plain `cargo build --features posix` is enough to get it on a capable host.
+You don't need to request this feature yourself: `osal-rs-build`'s build script turns `real_time` on automatically for every supported target (Linux and macOS both provide `SCHED_FIFO`). It's a plain Cargo feature only so it can be inspected via `cfg(feature = "real_time")`; a plain `cargo build --features posix` is enough.
+
+Whether a process may actually use `SCHED_FIFO` is only known at runtime: on Linux it needs root, `CAP_SYS_NICE` or a non-zero `RLIMIT_RTPRIO` (macOS grants it to every process). When `pthread_create` is refused with `EPERM`, the thread is created again inheriting the creating thread's policy/priority, so `real_time` never makes spawning fail - threads are real-time where allowed, ordinary otherwise.
 
 #### Caveats of the POSIX Backend
 
 - `System::start()` simply spins until [`System::stop()`] is called from another thread - there is no scheduler to hand control to, unlike FreeRTOS where it never returns.
-- Timers each spawn their own background thread and permanently block `SIGALRM` on the thread that creates them; create a new `Timer` rather than reusing one that already fired as a one-shot.
+- Timers each spawn their own background thread, which sleeps on a condition variable until the next deadline (no signals involved).
 
 ## Quick Start
 
@@ -225,8 +234,8 @@ OSAL-RS provides several Cargo features to customize the build configuration for
 | Feature | Default | Description |
 |---------|---------|-------------|
 | `freertos` | ❌ | Enable the FreeRTOS backend implementation for embedded RTOS development. Mutually exclusive with `posix` - exactly one of the two is required. |
-| `posix` | ❌ | Enable the POSIX/native backend implementation for host environments. Requires **glibc** (see note above). Mutually exclusive with `freertos` - exactly one of the two is required. |
-| `real_time` | ❌ | POSIX only: schedules spawned threads with the real-time `SCHED_FIFO` policy instead of inheriting the creating thread's policy/priority. Not meant to be requested by hand - `osal-rs-build`'s build script enables it automatically when the host OS/kernel supports `SCHED_FIFO`. |
+| `posix` | ❌ | Enable the POSIX/native backend implementation for host environments. Linux/glibc or macOS on Apple Silicon (see note above). Mutually exclusive with `freertos` - exactly one of the two is required. |
+| `real_time` | ❌ | POSIX only: schedules spawned threads with the real-time `SCHED_FIFO` policy instead of inheriting the creating thread's policy/priority, falling back to the inherited policy when the process lacks the privilege (`EPERM`). Not meant to be requested by hand - `osal-rs-build`'s build script enables it automatically on Linux and macOS targets. |
 | `async` | ❌ | Enable backend-agnostic async/await support (`block_on`, `AsyncQueue`, `AsyncSemaphore`, `AsyncMutex`). Works with both `freertos` and `posix`. No Tokio required. |
 | `serde` | ❌ | Enable serialization/deserialization support via `osal-rs-serde`. Includes derive macros for automatic implementation. |
 

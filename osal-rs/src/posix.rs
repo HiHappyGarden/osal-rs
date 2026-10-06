@@ -57,7 +57,8 @@
 //!
 //! # Requirements
 //!
-//! - A POSIX-compliant host (glibc/Linux tested)
+//! - Linux (glibc) or macOS on Apple Silicon, picked automatically from the
+//!   compilation target: only the `posix` feature is needed
 //! - No special build steps: unlike `freertos`, this backend links only
 //!   against the host's libc/libpthread — no cross toolchain or RTOS kernel
 //!   sources required
@@ -164,9 +165,15 @@
 //!
 //! # Platform Support
 //!
-//! Tested against glibc on Linux. Any POSIX-compliant host implementing
-//! pthreads, `timer_create(2)`/`sigwait(3)` and `CLOCK_MONOTONIC` should
-//! work, but only Linux/glibc is part of this crate's test suite.
+//! Supported and tested: Linux/glibc and macOS (Apple Silicon,
+//! `aarch64-apple-darwin`). The platform is selected from `target_os` at
+//! compile time; any other target fails to build. Everything both platforms
+//! share is implemented once; only opaque type sizes, constant values and a
+//! handful of functions differ (see `ffi`).
+//!
+//! Thread suspend/resume is emulated with a pair of signals that the
+//! backend reserves: the first two application real-time signals on Linux,
+//! `SIGUSR1`/`SIGUSR2` on macOS.
 //!
 //! # Safety
 //!
@@ -182,10 +189,7 @@
 //! - `System::start()` on POSIX simply spins until [`crate::os::System::stop`]
 //!   is called from another thread — there is no scheduler to hand control
 //!   to, unlike FreeRTOS where it never returns.
-//! - Timers each spawn their own background thread and permanently block
-//!   `SIGALRM` on the thread that creates them (see [`timer`] for why);
-//!   create a new [`crate::os::Timer`] rather than reusing one that already
-//!   fired as a one-shot.
+//! - Timers each spawn their own background thread (see [`timer`]).
 
 /// POSIX FFI (Foreign Function Interface) bindings.
 ///

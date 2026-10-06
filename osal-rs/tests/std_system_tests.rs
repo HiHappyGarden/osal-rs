@@ -159,14 +159,18 @@ fn test_system_time_conversion() -> Result<()> {
 fn test_system_thread_metadata() -> Result<()> {
     log_info!(TAG, "Starting test_system_thread_metadata");
     let state = System::get_all_thread();
+    #[cfg(feature = "real_time")]
+    let caller = *Thread::get_current();
 
     for thread_meta in state.tasks.iter() {
         assert!(thread_meta.thread != 0);
         assert!(!thread_meta.name.is_empty());
         // 0 is a legitimate, real priority (POSIX SCHED_OTHER threads and
         // FreeRTOS's idle task both report it), not a sign of missing data.
+        // The calling thread is excluded: `get_all_thread()` lists it even
+        // though osal-rs did not create it, so it has no priority on record.
         #[cfg(feature = "real_time")]
-        {
+        if thread_meta.thread != caller {
             assert!(thread_meta.priority > 0);
         }
     }

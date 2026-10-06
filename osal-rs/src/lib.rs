@@ -210,8 +210,8 @@
 //!   - `configSUPPORT_DYNAMIC_ALLOCATION` - Must be 1 for dynamic allocation
 //!
 //! When using with POSIX:
-//! - A POSIX-compliant host implementing pthreads, `timer_create(2)`/`sigwait(3)`
-//!   and `CLOCK_MONOTONIC` (glibc/Linux is part of this crate's test suite)
+//! - Linux (glibc) or macOS on Apple Silicon, selected automatically from the
+//!   compilation target
 //! - No special build steps: unlike `freertos`, this backend links only
 //!   against the host's libc/libpthread - no cross toolchain or RTOS kernel
 //!   sources required
@@ -225,6 +225,7 @@
 //! - ARM Cortex-M7 (STM32H7 series) - `freertos` backend
 //! - RISC-V (RP2350 RISC-V cores) - `freertos` backend
 //! - glibc/Linux - `posix` backend
+//! - macOS on Apple Silicon - `posix` backend
 //!
 //! ## Thread Safety
 //!

@@ -22,7 +22,8 @@
 //!
 //! [`Thread`] wraps a pthread, adding what pthreads lacks natively but
 //! FreeRTOS tasks provide directly: suspend/resume (emulated with a pair of
-//! real-time signals), a single-slot notification value
+//! signals: the first two application real-time signals on Linux,
+//! `SIGUSR1`/`SIGUSR2` on macOS, which therefore are reserved), a single-slot notification value
 //! (`notify`/`wait_notification`, backed by a process-wide table keyed by
 //! thread handle), and metadata queries (`get_metadata`, backed by a similar
 //! registry so [`crate::os::System`] can enumerate every thread spawned
@@ -44,7 +45,7 @@
 //! ```
 
 use core::cell::UnsafeCell;
-use core::ffi::{c_int, c_long, c_void};
+use core::ffi::{c_int, c_void};
 use core::fmt::{Debug, Display, Formatter};
 use core::ops::Deref;
 use core::ptr::null_mut;
@@ -56,12 +57,11 @@ use alloc::sync::Arc;
 use crate::os::{Mutex, MutexFn, MutexGuard, ThreadSimpleFnPtr};
 use crate::posix::config::TICK_PERIOD_MS;
 #[cfg(feature = "real_time")]
-use crate::posix::ffi::{PTHREAD_EXPLICIT_SCHED, SCHED_FIFO, pthread_attr_setinheritsched, pthread_attr_setschedparam, pthread_attr_setschedpolicy, sched_param};
+use crate::posix::ffi::{EPERM, PTHREAD_EXPLICIT_SCHED, SCHED_FIFO, pthread_attr_setinheritsched, pthread_attr_setschedparam, pthread_attr_setschedpolicy, sched_param};
 use crate::posix::ffi::{
-	__libc_current_sigrtmin, CLOCK_MONOTONIC, ETIMEDOUT, PTHREAD_ONCE_INIT, PTHREAD_STACK_MIN, clock_gettime, pthread_attr_init, pthread_attr_setstacksize, pthread_attr_t,
-	pthread_cond_broadcast, pthread_cond_destroy, pthread_cond_init, pthread_cond_t, pthread_cond_timedwait, pthread_cond_wait, pthread_condattr_init, pthread_condattr_setclock,
-	pthread_condattr_t, pthread_create, pthread_detach, pthread_join, pthread_kill, pthread_once, pthread_once_t, pthread_self, pthread_setname_np, sigdelset, sigfillset, sigset_t, signal,
-	sigsuspend,
+	_SC_PAGESIZE, cond_init_monotonic, cond_timedwait_monotonic, monotonic_deadline, ETIMEDOUT, PTHREAD_ONCE_INIT, PTHREAD_STACK_MIN, pthread_attr_init, pthread_attr_setstacksize, pthread_attr_t,
+	pthread_cond_broadcast, pthread_cond_destroy, pthread_cond_t, pthread_cond_wait, pthread_create, pthread_detach, pthread_join, pthread_kill, pthread_once, pthread_once_t, pthread_self, resume_signal, set_current_thread_name, pthread_sigmask, SIG_BLOCK, SIG_SETMASK, sigaction, sigaddset, sigdelset, sigemptyset, sigfillset, sigset_t, signal,
+	sigsuspend, suspend_signal, sysconf, ThreadStartRoutine,
 	timespec,
 };
 use crate::posix::types::{BaseType, StackType, ThreadHandle, TickType, UBaseType};
@@ -69,37 +69,25 @@ use crate::traits::{ThreadFn, ThreadFnPtr, ThreadMetadata, ThreadNotification, T
 use crate::traits::MAX_TASK_NAME_LEN;
 use crate::utils::{Bytes, DoublePtr, Error, Result};
 
-/// Real-time signal sent to a thread to ask it to suspend itself; see
-/// [`suspend_signal_handler`].
-fn suspend_signal() -> c_int {
-    unsafe { __libc_current_sigrtmin() }
-}
-
-/// Real-time signal sent to a thread parked in [`suspend_signal_handler`] to
-/// wake it back up. Always `suspend_signal() + 1`, so it lands on the next
-/// glibc-usable real-time signal.
-fn resume_signal() -> c_int {
-    suspend_signal() + 1
-}
-
-/// Handler for [`suspend_signal`]: parks the calling thread until [`resume_signal`] arrives.
+/// Handler for `suspend_signal()`: parks the calling thread until `resume_signal()` arrives.
 ///
 /// pthreads has no native suspend/resume, so this crate emulates it with a
-/// pair of real-time signals. `sigsuspend()` atomically swaps in a mask that
+/// pair of signals (see `ffi::suspend_signal`/`ffi::resume_signal`). `sigsuspend()` atomically swaps in a mask that
 /// blocks every signal except the resume one and blocks the thread until a
 /// signal is delivered; since nothing else can get through, that signal can
 /// only be the resume one. When `sigsuspend()` returns, this handler returns
 /// too, and the thread it interrupted simply continues from wherever it was
 /// — that's what makes the suspension transparent to the thread's own code.
 ///
-/// # Caveat
+/// # Resume racing ahead of the suspension
 ///
-/// If `resume()` runs before the target thread has actually reached
-/// `sigsuspend()` below (the suspend signal was sent but not yet delivered),
-/// the resume signal is delivered with nothing waiting for it and is lost,
-/// leaving the thread suspended until a further `resume()` call. Callers
-/// needing a hard guarantee should pair `suspend()`/`resume()` with their
-/// own synchronization.
+/// `resume()` may be called before this handler has reached `sigsuspend()`
+/// (e.g. `suspend()` immediately followed by `resume()`). The resume signal
+/// is not lost: [`ensure_suspend_signal_handlers`] installs this handler
+/// with the resume signal blocked, so it stays pending until `sigsuspend()`
+/// atomically unblocks it and returns at once. And if both signals are
+/// pending together, the kernel delivers the lower-numbered one first,
+/// which is always the suspend signal.
 extern "C" fn suspend_signal_handler(_sig: c_int) {
     let mut mask: sigset_t = Default::default();
 
@@ -110,21 +98,31 @@ extern "C" fn suspend_signal_handler(_sig: c_int) {
     }
 }
 
-/// No-op handler for [`resume_signal`].
+/// No-op handler for `resume_signal()`.
 ///
 /// Its only purpose is to exist: installing a handler is what lets this
 /// signal interrupt `sigsuspend()` in [`suspend_signal_handler`] instead of
-/// being blocked, and — since this is a real-time signal — it avoids the
-/// default action of terminating the process.
+/// being blocked, and it avoids the signal's default action of terminating
+/// the process (true of both real-time signals and `SIGUSR2`).
 extern "C" fn resume_signal_handler(_sig: c_int) {}
 
 /// Installs [`suspend_signal_handler`]/[`resume_signal_handler`], once per process.
+///
+/// The suspend handler runs with the resume signal blocked, so a resume
+/// sent while it is still on its way to `sigsuspend()` stays pending
+/// instead of being consumed (and lost) by [`resume_signal_handler`].
 fn ensure_suspend_signal_handlers() {
     static mut ONCE: pthread_once_t = PTHREAD_ONCE_INIT;
 
     extern "C" fn init() {
+        let mut blocked_while_suspending: sigset_t = Default::default();
+
         unsafe {
-            signal(suspend_signal(), suspend_signal_handler as *const () as usize);
+            sigemptyset(&mut blocked_while_suspending);
+            sigaddset(&mut blocked_while_suspending, resume_signal());
+
+            let action = sigaction::new(suspend_signal_handler as *const () as usize, blocked_while_suspending);
+            sigaction(suspend_signal(), &action, null_mut());
             signal(resume_signal(), resume_signal_handler as *const () as usize);
         }
     }
@@ -134,26 +132,69 @@ fn ensure_suspend_signal_handlers() {
     }
 }
 
-/// Condition variable backing [`NotifySlot`]'s wait/wake, and [`ensure_suspend_signal_handlers`]'s
-/// [`pthread_once_t`]-based sibling for one-time initialization.
+/// Keeps the suspend *and* resume signals blocked on the calling thread for
+/// as long as it lives, restoring the previous signal mask on drop.
+///
+/// Held around every section that locks osal-rs's own internal state (the
+/// thread and notification registries, a thread's notification slot).
+/// Suspension parks a thread wherever the signal finds it, so without this
+/// a thread suspended while holding one of those locks would block every
+/// other thread needing it - including the very `suspend()`/`resume()`
+/// call that is supposed to wake it (a deadlock). With it, the signal stays
+/// pending and the thread parks right after releasing the lock.
+///
+/// The resume signal must be blocked too: otherwise a `resume()` arriving
+/// while the suspend is still pending would be consumed by the no-op
+/// [`resume_signal_handler`] and lost, and the thread would then park for
+/// good once the suspend is delivered. With both pending, unblocking
+/// delivers the lower-numbered one first - always the suspend signal - and
+/// its handler keeps the resume pending until `sigsuspend()` takes it.
+///
+/// Locks taken by user code (e.g. an `osal_rs::os::Mutex` held across
+/// `suspend()`) are not covered, as with FreeRTOS's `vTaskSuspend`.
+struct SuspendBlocked(sigset_t);
+
+impl SuspendBlocked {
+    fn new() -> Self {
+        let mut set: sigset_t = Default::default();
+        let mut previous: sigset_t = Default::default();
+
+        unsafe {
+            sigemptyset(&mut set);
+            sigaddset(&mut set, suspend_signal());
+            sigaddset(&mut set, resume_signal());
+            pthread_sigmask(SIG_BLOCK, &set, &mut previous);
+        }
+
+        Self(previous)
+    }
+}
+
+impl Drop for SuspendBlocked {
+    fn drop(&mut self) {
+        unsafe {
+            pthread_sigmask(SIG_SETMASK, &self.0, null_mut());
+        }
+    }
+}
+
+/// Condition variable backing [`NotifySlot`]'s wait/wake (and
+/// [`crate::posix::timer`]'s background thread), timed on the monotonic clock.
 ///
 /// Backed directly by `pthread_cond_t` rather than `std::sync::Condvar`:
 /// the latter's `wait`/`wait_timeout` only accept `std::sync::MutexGuard`,
 /// which can't pair with [`crate::os::Mutex`]'s own guard type.
-struct RawCondvar(UnsafeCell<pthread_cond_t>);
+pub(super) struct RawCondvar(UnsafeCell<pthread_cond_t>);
 
 unsafe impl Send for RawCondvar {}
 unsafe impl Sync for RawCondvar {}
 
 impl RawCondvar {
-    fn new() -> Self {
-        let mut attr: pthread_condattr_t = Default::default();
+    pub(super) fn new() -> Self {
         let mut cond: pthread_cond_t = Default::default();
 
         unsafe {
-            pthread_condattr_init(&mut attr);
-            pthread_condattr_setclock(&mut attr, CLOCK_MONOTONIC);
-            pthread_cond_init(&mut cond, &attr);
+            cond_init_monotonic(&mut cond);
         }
 
         Self(UnsafeCell::new(cond))
@@ -162,7 +203,7 @@ impl RawCondvar {
     /// Atomically unlocks `guard`'s mutex and blocks until [`notify_all`](Self::notify_all)
     /// wakes it, re-locking the mutex before returning. May return spuriously;
     /// callers must re-check their predicate in a loop, same as with any condvar.
-    fn wait<T: ?Sized>(&self, guard: &MutexGuard<'_, T>) {
+    pub(super) fn wait<T: ?Sized>(&self, guard: &MutexGuard<'_, T>) {
         unsafe {
             pthread_cond_wait(self.0.get(), guard.raw_handle());
         }
@@ -171,11 +212,11 @@ impl RawCondvar {
     /// As [`wait`](Self::wait), but gives up once the monotonic-clock `deadline`
     /// passes. Returns `true` if it gave up because of the deadline, `false` if
     /// woken normally (which, same as [`wait`](Self::wait), may be spurious).
-    fn wait_until<T: ?Sized>(&self, guard: &MutexGuard<'_, T>, deadline: timespec) -> bool {
-        unsafe { pthread_cond_timedwait(self.0.get(), guard.raw_handle(), &deadline) == ETIMEDOUT }
+    pub(super) fn wait_until<T: ?Sized>(&self, guard: &MutexGuard<'_, T>, deadline: timespec) -> bool {
+        unsafe { cond_timedwait_monotonic(self.0.get(), guard.raw_handle(), &deadline) == ETIMEDOUT }
     }
 
-    fn notify_all(&self) {
+    pub(super) fn notify_all(&self) {
         unsafe {
             pthread_cond_broadcast(self.0.get());
         }
@@ -194,26 +235,6 @@ impl Drop for RawCondvar {
             pthread_cond_destroy(self.0.get());
         }
     }
-}
-
-/// Computes an absolute deadline `timeout` from now on the monotonic clock,
-/// for [`RawCondvar::wait_until`] (its `pthread_condattr_setclock(CLOCK_MONOTONIC)`
-/// counterpart to `pthread_cond_timedwait`'s absolute `abstime`).
-fn monotonic_deadline(timeout: Duration) -> timespec {
-    let mut now = timespec::default();
-    unsafe {
-        clock_gettime(CLOCK_MONOTONIC, &mut now);
-    }
-
-    let mut tv_sec = now.tv_sec + timeout.as_secs() as c_long;
-    let mut tv_nsec = now.tv_nsec + timeout.subsec_nanos() as c_long;
-
-    if tv_nsec >= 1_000_000_000 {
-        tv_sec += 1;
-        tv_nsec -= 1_000_000_000;
-    }
-
-    timespec { tv_sec, tv_nsec }
 }
 
 /// A thread's pending task-notification value, plus whether one is pending.
@@ -266,6 +287,7 @@ fn notify_registry() -> &'static Mutex<HashMap<ThreadHandle, Arc<NotifySlot>>> {
 
 /// Returns `handle`'s notification slot, creating it on first use.
 fn notify_slot(handle: ThreadHandle) -> Arc<NotifySlot> {
+    let _blocked = SuspendBlocked::new();
     notify_registry()
         .lock()
         .unwrap()
@@ -281,6 +303,7 @@ fn notify_slot(handle: ThreadHandle) -> Arc<NotifySlot> {
 /// unrelated future thread. Called once a thread is known to be gone
 /// (`delete()`/`join()` returning successfully).
 fn forget_notify_slot(handle: ThreadHandle) {
+    let _blocked = SuspendBlocked::new();
     if let Ok(mut registry) = notify_registry().lock() {
         registry.remove(&handle);
     }
@@ -311,6 +334,7 @@ fn thread_registry() -> &'static Mutex<HashMap<ThreadHandle, ThreadMetadata>> {
 
 /// Records `metadata` under `metadata.thread` for [`System::get_all_thread()`].
 fn register_thread(metadata: ThreadMetadata) {
+    let _blocked = SuspendBlocked::new();
     if let Ok(mut registry) = thread_registry().lock() {
         registry.insert(metadata.thread, metadata);
     }
@@ -318,6 +342,7 @@ fn register_thread(metadata: ThreadMetadata) {
 
 /// Drops `handle`'s registry entry, if any (see [`forget_notify_slot`] for why).
 fn forget_thread(handle: ThreadHandle) {
+    let _blocked = SuspendBlocked::new();
     if let Ok(mut registry) = thread_registry().lock() {
         registry.remove(&handle);
     }
@@ -329,6 +354,7 @@ fn forget_thread(handle: ThreadHandle) {
 /// ever wrapped via [`Thread::new_with_handle`]) have no registry entry and
 /// are silently ignored, same as [`forget_thread`].
 fn set_thread_state(handle: ThreadHandle, state: ThreadState) {
+    let _blocked = SuspendBlocked::new();
     if let Ok(mut registry) = thread_registry().lock() {
         if let Some(metadata) = registry.get_mut(&handle) {
             metadata.state = state;
@@ -338,6 +364,7 @@ fn set_thread_state(handle: ThreadHandle, state: ThreadState) {
 
 /// Returns `handle`'s registry entry, if any.
 fn registered_thread_metadata(handle: ThreadHandle) -> Option<ThreadMetadata> {
+    let _blocked = SuspendBlocked::new();
     thread_registry().lock().ok().and_then(|registry| registry.get(&handle).cloned())
 }
 
@@ -358,6 +385,7 @@ fn effective_thread_state(handle: ThreadHandle, tracked: ThreadState) -> ThreadS
 ///
 /// Used by [`crate::posix::system::System::get_all_thread`].
 pub(crate) fn all_registered_threads() -> Vec<ThreadMetadata> {
+    let _blocked = SuspendBlocked::new();
     thread_registry()
         .lock()
         .map(|registry| registry.values().cloned().collect())
@@ -368,6 +396,7 @@ pub(crate) fn all_registered_threads() -> Vec<ThreadMetadata> {
 ///
 /// Used by [`crate::posix::system::System::count_threads`].
 pub(crate) fn registered_thread_count() -> usize {
+    let _blocked = SuspendBlocked::new();
     thread_registry().lock().map(|registry| registry.len()).unwrap_or(0)
 }
 
@@ -417,6 +446,71 @@ unsafe impl Send for Thread {}
 unsafe impl Sync for Thread {}
 
 impl Thread {
+    /// Builds the `pthread_attr_t` used by [`Thread::create`]: a stack of
+    /// `PTHREAD_STACK_MIN + stack_depth` bytes (at least 1 MiB), rounded up
+    /// to a whole number of pages since macOS rejects any other size, plus,
+    /// if `real_time` is requested (and the `real_time` feature enabled),
+    /// explicit `SCHED_FIFO` scheduling at `priority`.
+    fn new_attr(&self, real_time: bool) -> pthread_attr_t {
+        let mut attr: pthread_attr_t = Default::default();
+
+        unsafe {
+            pthread_attr_init (&mut attr);
+        }
+
+        let requested_stack_size = PTHREAD_STACK_MIN + self.stack_depth as usize;
+
+        let min_safe_stack_size = 1024usize * 1024usize;
+
+        let page_size = match unsafe { sysconf(_SC_PAGESIZE) } {
+            size if size > 0 => size as usize,
+            _ => 4096,
+        };
+
+        let stack_size = requested_stack_size.max(min_safe_stack_size).next_multiple_of(page_size);
+
+        unsafe {
+            pthread_attr_setstacksize (&mut attr, stack_size);
+        }
+
+        #[cfg(feature = "real_time")]
+        if real_time {
+            unsafe {
+                let fifo_param = sched_param::new(self.priority as core::ffi::c_int);
+                pthread_attr_setinheritsched(&mut attr, PTHREAD_EXPLICIT_SCHED);
+                pthread_attr_setschedpolicy(&mut attr, SCHED_FIFO);
+                pthread_attr_setschedparam(&mut attr, &fifo_param);
+            }
+        }
+
+        #[cfg(not(feature = "real_time"))]
+        let _ = real_time;
+
+        attr
+    }
+
+    /// Creates the pthread running `start(arg)`, storing its handle in
+    /// `self.handle`; shared by [`ThreadFn::spawn`] and
+    /// [`ThreadFn::spawn_simple`]. Returns `pthread_create`'s result.
+    ///
+    /// With `real_time` it first asks for `SCHED_FIFO`; if the process is
+    /// not allowed to (`EPERM`: the norm for unprivileged users on Linux,
+    /// lacking `CAP_SYS_NICE`/`RLIMIT_RTPRIO`), it creates the thread again
+    /// inheriting the caller's scheduling policy, so `real_time` never makes
+    /// spawning fail.
+    fn create(&mut self, start: ThreadStartRoutine, arg: *mut c_void) -> c_int {
+        let attr = self.new_attr(true);
+        let ret = unsafe { pthread_create(&mut self.handle, &attr, Some(start), arg) };
+
+        #[cfg(feature = "real_time")]
+        if ret == EPERM {
+            let attr = self.new_attr(false);
+            return unsafe { pthread_create(&mut self.handle, &attr, Some(start), arg) };
+        }
+
+        ret
+    }
+
     /// Describes a not-yet-spawned thread: `name`/`stack_depth`/`priority`
     /// are recorded now and used when [`ThreadFn::spawn`]/`spawn_simple` is
     /// called on it. [`ThreadFn::is_null`] is `true` until then.
@@ -659,6 +753,11 @@ unsafe extern "C" fn callback_c_wrapper(param_ptr: *mut c_void) -> *mut c_void {
 
     let mut thread_instance: Box<Thread> = unsafe { Box::from_raw(param_ptr as *mut _) };
 
+    // Named from inside the thread itself, the only way macOS allows it.
+    unsafe {
+        set_current_thread_name(thread_instance.name.as_cstr().as_ptr());
+    }
+
     thread_instance.as_mut().handle = unsafe { pthread_self() };
     let handle = thread_instance.handle;
 
@@ -682,9 +781,16 @@ unsafe extern "C" fn callback_c_wrapper(param_ptr: *mut c_void) -> *mut c_void {
     Box::into_raw(Box::new(ret)) as *mut c_void
 }
 
+/// Start payload handed to [`simple_callback_c_wrapper`]: the callback plus
+/// the thread's name, which the new thread applies to itself.
+struct SimpleStart {
+    name: Bytes<MAX_TASK_NAME_LEN>,
+    func: Arc<ThreadSimpleFnPtr>,
+}
+
 /// Internal C-compatible wrapper for simple (parameter-less) thread callbacks.
 ///
-/// Unpacks the boxed `Arc<ThreadSimpleFnPtr>` and invokes it directly; unlike
+/// Unpacks the boxed [`SimpleStart`], names the thread and invokes the callback; unlike
 /// [`callback_c_wrapper`] there is no `Thread` instance to reconstruct here.
 /// The callback's `Result<ThreadParam>` is boxed and returned as the raw
 /// `void *` exit value, the same way `callback_c_wrapper` does, so `Thread::join()`
@@ -692,15 +798,21 @@ unsafe extern "C" fn callback_c_wrapper(param_ptr: *mut c_void) -> *mut c_void {
 ///
 /// # Safety
 ///
-/// - `param_ptr` must be a valid pointer produced by `Box::into_raw` on an `Arc<ThreadSimpleFnPtr>`
+/// - `param_ptr` must be a valid pointer produced by `Box::into_raw` on a `SimpleStart`
 /// - Called only by `pthread_create()` as the thread's start routine
 unsafe extern "C" fn simple_callback_c_wrapper(param_ptr: *mut c_void) -> *mut c_void {
     if param_ptr.is_null() {
         return null_mut();
     }
 
-    let func: Box<Arc<ThreadSimpleFnPtr>> = unsafe { Box::from_raw(param_ptr as *mut _) };
-    let ret = func();
+    let start: Box<SimpleStart> = unsafe { Box::from_raw(param_ptr as *mut _) };
+
+    // See the equivalent comment in `callback_c_wrapper`.
+    unsafe {
+        set_current_thread_name(start.name.as_cstr().as_ptr());
+    }
+
+    let ret = (start.func)();
 
     // See the equivalent comment in `callback_c_wrapper`.
     set_thread_state(unsafe { pthread_self() }, ThreadState::Deleted);
@@ -763,42 +875,12 @@ impl ThreadFn for Thread {
         self.callback = Some(func);
         self.param = param.clone();
 
-        let mut attr: pthread_attr_t = Default::default();
-
-        unsafe {
-            pthread_attr_init (&mut attr);
-        }
-
-        let requested_stack_size = PTHREAD_STACK_MIN + self.stack_depth as usize;
-
-        let min_safe_stack_size = 1024usize * 1024usize;
-
-        unsafe {
-            pthread_attr_setstacksize (&mut attr, if requested_stack_size < min_safe_stack_size {  min_safe_stack_size } else { requested_stack_size });
-        }
-
-        #[cfg(feature = "real_time")]
-        unsafe {
-            let fifo_param = sched_param {
-                sched_priority: self.priority as core::ffi::c_int,
-            };
-            pthread_attr_setinheritsched(&mut attr, PTHREAD_EXPLICIT_SCHED);
-            pthread_attr_setschedpolicy(&mut attr, SCHED_FIFO);
-            pthread_attr_setschedparam(&mut attr, &fifo_param);
-        }
-
         let boxed_thread = Box::new(self.clone());
 
-        let ret = unsafe {
-            pthread_create(&mut self.handle, &attr, Some(callback_c_wrapper), Box::into_raw(boxed_thread) as *mut c_void)
-        };
+        let ret = self.create(callback_c_wrapper, Box::into_raw(boxed_thread) as *mut c_void);
 
         if ret != 0 {
             return Err(Error::ReturnWithCode(ret));
-        }
-
-        unsafe {
-            pthread_setname_np(self.handle, self.name.as_cstr().as_ptr());
         }
 
         register_thread(ThreadMetadata {
@@ -847,43 +929,12 @@ impl ThreadFn for Thread {
         Self: Sized,
     {
         let func: Arc<ThreadSimpleFnPtr> = Arc::new(callback);
-        let boxed_func = Box::new(func);
+        let boxed_func = Box::new(SimpleStart { name: self.name.clone(), func });
 
-
-        let mut attr: pthread_attr_t = Default::default();
-
-        unsafe {
-            pthread_attr_init (&mut attr);
-        }
-
-        let requested_stack_size = PTHREAD_STACK_MIN + self.stack_depth as usize;
-
-        let min_safe_stack_size = 1024usize * 1024usize;
-
-        unsafe {
-            pthread_attr_setstacksize (&mut attr, if requested_stack_size < min_safe_stack_size {  min_safe_stack_size } else { requested_stack_size });
-        }
-
-        #[cfg(feature = "real_time")]
-        unsafe {
-            let fifo_param = sched_param {
-                sched_priority: self.priority as core::ffi::c_int,
-            };
-            pthread_attr_setinheritsched(&mut attr, PTHREAD_EXPLICIT_SCHED);
-            pthread_attr_setschedpolicy(&mut attr, SCHED_FIFO);
-            pthread_attr_setschedparam(&mut attr, &fifo_param);
-        }
-
-        let ret = unsafe {
-            pthread_create(&mut self.handle, &attr, Some(simple_callback_c_wrapper), Box::into_raw(boxed_func) as *mut c_void)
-        };
+        let ret = self.create(simple_callback_c_wrapper, Box::into_raw(boxed_func) as *mut c_void);
 
         if ret != 0 {
             return Err(Error::ReturnWithCode(ret));
-        }
-
-        unsafe {
-            pthread_setname_np(self.handle, self.name.as_cstr().as_ptr());
         }
 
         register_thread(ThreadMetadata {
@@ -936,7 +987,7 @@ impl ThreadFn for Thread {
         forget_thread(self.handle);
     }
 
-    /// Suspends the thread by sending it a dedicated real-time signal that
+    /// Suspends the thread by sending it a dedicated signal that
     /// parks it until [`ThreadFn::resume`] sends the matching wake-up signal
     /// (pthreads has no native suspend/resume of its own). A no-op if this
     /// handle [`ThreadFn::is_null`].
@@ -1104,6 +1155,7 @@ impl ThreadFn for Thread {
         let slot = notify_slot(self.handle);
 
         let result = {
+            let _blocked = SuspendBlocked::new();
             let mut state = slot.state.lock().unwrap();
             apply_notification(&mut state, notification)
         };
@@ -1169,6 +1221,9 @@ impl ThreadFn for Thread {
         }
 
         let slot = notify_slot(self.handle);
+        // Declared before `state` so the lock is released first; a suspend
+        // requested meanwhile takes effect once the wait is over.
+        let _blocked = SuspendBlocked::new();
         let mut state = slot.state.lock().unwrap();
 
         if !state.pending {

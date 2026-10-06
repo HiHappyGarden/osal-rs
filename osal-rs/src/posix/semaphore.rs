@@ -37,41 +37,19 @@
 //! ```
 
 use core::cell::UnsafeCell;
-use core::ffi::c_long;
 use core::fmt::{Debug, Display};
 use core::ops::Deref;
 use core::time::Duration;
 
 use crate::posix::config::TICK_PERIOD_MS;
 use crate::posix::ffi::{
-	CLOCK_MONOTONIC, ETIMEDOUT, PTHREAD_PRIO_INHERIT, clock_gettime, pthread_cond_broadcast, pthread_cond_destroy, pthread_cond_init, pthread_cond_t, pthread_cond_timedwait, pthread_cond_wait,
-	pthread_condattr_init, pthread_condattr_setclock, pthread_condattr_t, pthread_mutex_destroy, pthread_mutex_init, pthread_mutex_lock, pthread_mutex_t, pthread_mutex_trylock, pthread_mutex_unlock, pthread_mutexattr_init,
-	pthread_mutexattr_setprotocol, pthread_mutexattr_t, timespec,
+	cond_init_monotonic, cond_timedwait_monotonic, monotonic_deadline, ETIMEDOUT, PTHREAD_PRIO_INHERIT, pthread_cond_broadcast, pthread_cond_destroy, pthread_cond_t, pthread_cond_wait,
+	pthread_mutex_destroy, pthread_mutex_init, pthread_mutex_lock, pthread_mutex_t, pthread_mutex_trylock, pthread_mutex_unlock, pthread_mutexattr_init,
+	pthread_mutexattr_setprotocol, pthread_mutexattr_t,
 };
 use crate::posix::types::{ClockMonotonicHandle, SemaphoreHandle, TickType, UBaseType};
 use crate::traits::{SemaphoreFn, ToTick};
 use crate::utils::{OsalRsBool, Result};
-
-/// Computes an absolute deadline `timeout` from now on the monotonic clock,
-/// for `pthread_cond_timedwait` (this module's condition variables are all
-/// created with `pthread_condattr_setclock(CLOCK_MONOTONIC)`, so its
-/// `abstime` is measured against that same clock).
-fn monotonic_deadline(timeout: Duration) -> timespec {
-	let mut now = timespec::default();
-	unsafe {
-		clock_gettime(CLOCK_MONOTONIC, &mut now);
-	}
-
-	let mut tv_sec = now.tv_sec + timeout.as_secs() as c_long;
-	let mut tv_nsec = now.tv_nsec + timeout.subsec_nanos() as c_long;
-
-	if tv_nsec >= 1_000_000_000 {
-		tv_sec += 1;
-		tv_nsec -= 1_000_000_000;
-	}
-
-	timespec { tv_sec, tv_nsec }
-}
 
 /// POSIX backend for [`SemaphoreFn`]. Built directly on a `pthread_mutex_t` +
 /// `pthread_cond_t` pair rather than `sem_t`, so `signal()` can be bounded by
@@ -104,15 +82,12 @@ impl Semaphore {
 		let mut mutex: pthread_mutex_t = Default::default();
 		let mut mutex_attr: pthread_mutexattr_t = Default::default();
 		let mut cond: pthread_cond_t = Default::default();
-		let mut cond_attr: pthread_condattr_t = Default::default();
 
 
 		unsafe {
-			// Bind the condvar to CLOCK_MONOTONIC so its absolute timeouts line
-			// up with the clock `monotonic_deadline` uses to build them.
-			pthread_condattr_init(&mut cond_attr);
-			pthread_condattr_setclock (&mut cond_attr, CLOCK_MONOTONIC);
-			pthread_cond_init (&mut cond, &cond_attr);
+			// Timed waits on this condvar are measured on the monotonic clock,
+			// the same one `monotonic_deadline` builds deadlines on.
+			cond_init_monotonic(&mut cond);
 			// Priority inheritance: a low-priority holder that blocks a
 			// higher-priority waiter gets temporarily boosted, avoiding
 			// priority inversion (same protocol as posix::mutex::RawMutex).
@@ -225,7 +200,7 @@ impl SemaphoreFn for Semaphore {
 		}
 
 		// `count > 0` is re-checked in a loop after every wake-up: both
-		// `pthread_cond_wait`/`pthread_cond_timedwait` may return spuriously,
+		// `pthread_cond_wait`/`cond_timedwait_monotonic` may return spuriously,
 		// and a woken thread isn't guaranteed to be the one that gets the
 		// unit of the semaphore another thread's `wait()` grabbed first.
 		let acquired = if ticks == TickType::MAX {
@@ -249,7 +224,7 @@ impl SemaphoreFn for Semaphore {
 				if unsafe { *self.count_ptr() } > 0 {
 					break true;
 				}
-				if unsafe { pthread_cond_timedwait(self.cond_ptr(), self.mutex_ptr(), &deadline) } == ETIMEDOUT {
+				if unsafe { cond_timedwait_monotonic(self.cond_ptr(), self.mutex_ptr(), &deadline) } == ETIMEDOUT {
 					break false;
 				}
 			}

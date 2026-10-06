@@ -53,7 +53,7 @@ use crate::os::types::ClockMonotonicHandle;
 use crate::posix::config::TICK_PERIOD_MS;
 use crate::posix::ffi::{
 	cond_init_monotonic, cond_timedwait_monotonic, monotonic_deadline, ETIMEDOUT, PTHREAD_PRIO_INHERIT, pthread_cond_broadcast, pthread_cond_destroy, pthread_cond_t, pthread_cond_wait,
-	pthread_mutex_destroy, pthread_mutex_init, pthread_mutex_lock, pthread_mutex_t, pthread_mutex_trylock, pthread_mutex_unlock,
+	pthread_mutex_destroy, pthread_mutex_init, pthread_mutex_lock, pthread_mutex_t, pthread_mutex_unlock,
 	pthread_mutexattr_init, pthread_mutexattr_setprotocol, pthread_mutexattr_t,
 };
 #[cfg(not(feature = "serde"))]
@@ -328,10 +328,9 @@ impl QueueFn for Queue {
 		if received { Ok(()) } else { Err(Error::Timeout) }
 	}
 
-	/// ISR-safe variant of [`Queue::fetch`]. POSIX has no interrupt context
-	/// of its own, so this never blocks (`trylock` instead of `lock`, and no
-	/// timeout parameter); it fails with [`Error::QueueFull`] if the mutex
-	/// is contended, or [`Error::Timeout`] if the queue is simply empty.
+	/// ISR-safe variant of [`Queue::fetch`]. Never waits for a message (no
+	/// timeout parameter): it fails with [`Error::Timeout`] if the queue is
+	/// empty.
 	///
 	/// # Examples
 	///
@@ -354,11 +353,13 @@ impl QueueFn for Queue {
 			return Err(Error::InvalidQueueSize);
 		}
 
-		// pthreads has no ISR context of its own; `trylock` keeps this
-		// non-blocking, as `_from_isr` callers expect. If the mutex is
-		// contended, bail out rather than blocking the "interrupt".
-		if unsafe { pthread_mutex_trylock(self.mutex_ptr()) } != 0 {
-			return Err(Error::QueueFull);
+		// pthreads has no ISR context of its own. The internal mutex only
+		// guards a few instructions of bookkeeping (waiters release it inside
+		// `pthread_cond_wait`), so taking it is bounded: unlike `trylock` it
+		// never fails just because another thread was in there, matching
+		// FreeRTOS where a `FromISR` call only fails for a real reason.
+		unsafe {
+			pthread_mutex_lock(self.mutex_ptr());
 		}
 
 		let received = unsafe { *self.count.get() } > 0;
@@ -459,10 +460,8 @@ impl QueueFn for Queue {
 		if sent { Ok(()) } else { Err(Error::Timeout) }
 	}
 
-	/// ISR-safe variant of [`Queue::post`]. POSIX has no interrupt context of
-	/// its own, so this never blocks (`trylock` instead of `lock`, and no
-	/// timeout parameter); it fails with [`Error::QueueFull`] both when the
-	/// mutex is contended and when the queue is actually full.
+	/// ISR-safe variant of [`Queue::post`]. Never waits for room (no timeout
+	/// parameter): it fails with [`Error::QueueFull`] if the queue is full.
 	///
 	/// # Examples
 	///
@@ -485,8 +484,9 @@ impl QueueFn for Queue {
 			return Err(Error::InvalidQueueSize);
 		}
 
-		if unsafe { pthread_mutex_trylock(self.mutex_ptr()) } != 0 {
-			return Err(Error::QueueFull);
+		// Bounded, never fails on contention: see `fetch_from_isr`
+		unsafe {
+			pthread_mutex_lock(self.mutex_ptr());
 		}
 
 		let sent = unsafe { *self.count.get() } < self.size;

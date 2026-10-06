@@ -50,7 +50,7 @@ use core::time::Duration;
 use crate::posix::config::TICK_PERIOD_MS;
 use crate::posix::ffi::{
 	cond_init_monotonic, cond_timedwait_monotonic, monotonic_deadline, ETIMEDOUT, PTHREAD_PRIO_INHERIT, pthread_cond_broadcast, pthread_cond_destroy, pthread_cond_t, pthread_cond_wait,
-	pthread_mutex_destroy, pthread_mutex_init, pthread_mutex_lock, pthread_mutex_t, pthread_mutex_trylock, pthread_mutex_unlock,
+	pthread_mutex_destroy, pthread_mutex_init, pthread_mutex_lock, pthread_mutex_t, pthread_mutex_unlock,
 	pthread_mutexattr_init, pthread_mutexattr_setprotocol, pthread_mutexattr_t,
 };
 use crate::posix::types::{ClockMonotonicHandle, EventBits, EventGroupHandle, TickType};
@@ -221,10 +221,8 @@ impl EventGroupFn for EventGroup {
 		new_bits
 	}
 
-	/// ISR-safe variant of [`EventGroup::set`]. POSIX has no interrupt
-	/// context of its own, so this never blocks (`trylock` instead of
-	/// `lock`); it fails with [`Error::QueueFull`] if the mutex happens to be
-	/// contended rather than waiting for it.
+	/// ISR-safe variant of [`EventGroup::set`]. Never waits on the bits; it
+	/// only fails on a deleted event group.
 	///
 	/// # Examples
 	///
@@ -240,12 +238,13 @@ impl EventGroupFn for EventGroup {
 			return Err(Error::NullPtr);
 		}
 
-		// pthreads has no ISR context of its own; `trylock` keeps this
-		// non-blocking, as `_from_isr` callers expect (mirrors
-		// `Semaphore::signal_from_isr`). If the mutex is contended, bail out
-		// rather than blocking the "interrupt".
-		if unsafe { pthread_mutex_trylock(self.mutex_ptr()) } != 0 {
-			return Err(Error::QueueFull);
+		// pthreads has no ISR context of its own. The internal mutex only
+		// guards a few instructions of bookkeeping (waiters release it inside
+		// `pthread_cond_wait`), so taking it is bounded: unlike `trylock` it
+		// never fails just because another thread was in there, matching
+		// FreeRTOS where a `FromISR` call only fails for a real reason.
+		unsafe {
+			pthread_mutex_lock(self.mutex_ptr());
 		}
 
 		unsafe {
@@ -301,10 +300,9 @@ impl EventGroupFn for EventGroup {
 			return 0;
 		}
 
-		if unsafe { pthread_mutex_trylock(self.mutex_ptr()) } != 0 {
-			// Contended: fall back to a racy read rather than blocking the
-			// "interrupt".
-			return unsafe { *self.bits_ptr() };
+		// Bounded, never fails on contention: see `set_from_isr`
+		unsafe {
+			pthread_mutex_lock(self.mutex_ptr());
 		}
 
 		unsafe {
@@ -352,7 +350,7 @@ impl EventGroupFn for EventGroup {
 	}
 
 	/// ISR-safe variant of [`EventGroup::clear`]. Fails with
-	/// [`Error::QueueFull`] instead of blocking if the mutex is contended.
+	/// an error only on a deleted event group.
 	///
 	/// # Examples
 	///
@@ -369,8 +367,9 @@ impl EventGroupFn for EventGroup {
 			return Err(Error::NullPtr);
 		}
 
-		if unsafe { pthread_mutex_trylock(self.mutex_ptr()) } != 0 {
-			return Err(Error::QueueFull);
+		// Bounded, never fails on contention: see `set_from_isr`
+		unsafe {
+			pthread_mutex_lock(self.mutex_ptr());
 		}
 
 		unsafe {

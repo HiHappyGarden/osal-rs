@@ -31,8 +31,8 @@
 //! as the guard lives, so a `trylock` from another thread is guaranteed to
 //! fail. The semaphore/queue/event-group internals only hold their mutex for
 //! a few instructions at a time (and release it inside
-//! `pthread_cond_wait`), so their contended `trylock` branches are not
-//! reproducible from the outside and are not asserted here.
+//! `pthread_cond_wait`), so their `_from_isr` variants just take it and never
+//! fail on contention.
 
 #![cfg(feature = "posix")]
 

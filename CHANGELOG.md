@@ -11,6 +11,8 @@ together.
 
 ## [Unreleased]
 
+## [1.4.0] - 2026-10-11
+
 ### Added
 
 - POSIX: macOS on Apple Silicon (`aarch64-apple-darwin`) support. The `posix`
@@ -64,6 +66,16 @@ together.
   suspend/resume signals are now blocked while those locks are held, so
   the thread parks only after releasing them and a resume sent meanwhile
   is not lost.
+- POSIX: the `_from_isr` methods of `EventGroup`, `Queue` and `Semaphore`
+  could fail just because another thread held the object's internal mutex
+  for a moment (`Error::QueueFull`, or a racy read for
+  `EventGroup::get_from_isr`). They now take the mutex with `lock` instead
+  of `trylock`; it only guards a few instructions, so the wait is bounded,
+  and as on FreeRTOS they fail only for a real reason (deleted object, full
+  or empty queue, semaphore not available).
+- FreeRTOS test `test_thread_notification_all_actions` failed on FreeRTOS
+  V11.2 and later, where `wait_notification` with a zero timeout skips the
+  entry clear; the test now waits 1 ms.
 - Test `test_system_thread_metadata` failed whenever `real_time` was on: it
   required a non-zero priority from the calling thread, which
   `get_all_thread()` lists although osal-rs did not create it.
@@ -446,7 +458,8 @@ hardware.
   components.
 - README rewritten around backend selection, feature flags and POSIX support.
 
-[Unreleased]: https://github.com/HiHappyGarden/osal-rs/compare/1.3.0...HEAD
+[Unreleased]: https://github.com/HiHappyGarden/osal-rs/compare/1.4.0...HEAD
+[1.4.0]: https://github.com/HiHappyGarden/osal-rs/compare/1.3.0...1.4.0
 [1.3.0]: https://github.com/HiHappyGarden/osal-rs/compare/1.2.2...1.3.0
 [1.2.2]: https://github.com/HiHappyGarden/osal-rs/compare/1.2.1...1.2.2
 [1.2.1]: https://github.com/HiHappyGarden/osal-rs/compare/1.2.0...1.2.1

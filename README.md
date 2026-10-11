@@ -269,13 +269,13 @@ To use OSAL-RS in your project with specific features (exactly one of `freertos`
 
 ```toml
 [dependencies]
-osal-rs = { version = "1.3", features = ["freertos"] }
+osal-rs = { version = "1.4", features = ["freertos"] }
 
 # Or for host development/testing
-osal-rs = { version = "1.3", features = ["posix"] }
+osal-rs = { version = "1.4", features = ["posix"] }
 
 # Or with serialization support
-osal-rs = { version = "1.3", features = ["freertos", "serde"] }
+osal-rs = { version = "1.4", features = ["freertos", "serde"] }
 ```
 
 ## 🧪 _EXPERIMENTAL_ Async/Await Support (feature `async`)
@@ -417,7 +417,7 @@ OSAL-RS is not linked on its own: your Rust code lives in an application crate b
 crate-type = ["staticlib"]
 
 [dependencies]
-osal-rs = { version = "1.3", features = ["freertos"] }
+osal-rs = { version = "1.4", features = ["freertos"] }
 
 [profile.dev]
 panic = "abort"

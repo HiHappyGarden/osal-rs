@@ -608,9 +608,10 @@ pub fn test_thread_notification_all_actions() -> Result<()> {
 
     // With nothing pending the entry clear does happen, but the wait then has
     // no notification to report, so it times out; the cleared value is what
-    // the next wait observes.
+    // the next wait observes. The wait must be able to block: since V11.2 the
+    // kernel skips the entry clear entirely when `xTicksToWait` is 0.
     assert!(matches!(
-        current.wait_notification(0b0001, 0, 0),
+        current.wait_notification(0b0001, 0, millis(1)),
         Err(Error::Timeout)
     ));
     current.notify(ThreadNotification::SetBits(0))?;

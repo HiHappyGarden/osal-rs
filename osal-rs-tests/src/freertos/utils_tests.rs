@@ -50,7 +50,7 @@ pub fn test_bytes_construction() -> Result<()> {
     assert_eq!(empty.size(), 16);
     assert_eq!(empty.capacity(), 16);
 
-    let from_str = Bytes::<16>::from_str("Hello");
+    let from_str = Bytes::<16>::from("Hello");
     assert_eq!(from_str.as_str(), "Hello");
     assert_eq!(from_str.len(), 5);
 
@@ -81,7 +81,7 @@ pub fn test_bytes_construction() -> Result<()> {
 pub fn test_bytes_str_conversion() -> Result<()> {
     log_info!(TAG, "Starting test_bytes_str_conversion");
 
-    let mut bytes = Bytes::<16>::from_str("Hello World");
+    let mut bytes = Bytes::<16>::from("Hello World");
     assert_eq!(bytes.as_str(), "Hello World");
     assert_eq!(bytes.len(), 11);
     assert!(!bytes.is_empty());
@@ -99,7 +99,7 @@ pub fn test_bytes_str_conversion() -> Result<()> {
     let c_str = bytes.as_cstr();
     assert_eq!(c_str.to_bytes(), b"Hello World");
 
-    let mut mutable = Bytes::<16>::from_str("Mutable");
+    let mut mutable = Bytes::<16>::from("Mutable");
     let c_str_mut = mutable.as_cstr_mut();
     assert_eq!(c_str_mut.to_bytes(), b"Mutable");
 
@@ -110,39 +110,39 @@ pub fn test_bytes_str_conversion() -> Result<()> {
 pub fn test_bytes_append_prepend() -> Result<()> {
     log_info!(TAG, "Starting test_bytes_append_prepend");
 
-    let mut bytes = Bytes::<16>::from_str("Hello");
+    let mut bytes = Bytes::<16>::from("Hello");
     bytes.append_str(" World");
     assert_eq!(bytes.as_str(), "Hello World");
 
-    let mut bytes2 = Bytes::<16>::from_str("Data: ");
+    let mut bytes2 = Bytes::<16>::from("Data: ");
     bytes2.append_bytes(&[0x41, 0x42, 0x43]);
     assert_eq!(bytes2.as_str(), "Data: ABC");
 
-    let mut bytes3 = Bytes::<16>::from_str("Hello");
-    let other = Bytes::<8>::from_str(" World");
+    let mut bytes3 = Bytes::<16>::from("Hello");
+    let other = Bytes::<8>::from(" World");
     bytes3.append(&other);
     assert_eq!(bytes3.as_str(), "Hello World");
 
-    let mut bytes4 = Bytes::<16>::from_str("Hello");
-    let suffix = Bytes::<8>::from_str(" World");
+    let mut bytes4 = Bytes::<16>::from("Hello");
+    let suffix = Bytes::<8>::from(" World");
     bytes4.append_as_sync_str(&suffix);
     assert_eq!(bytes4.as_str(), "Hello World");
 
-    let mut prepend1 = Bytes::<16>::from_str("World");
+    let mut prepend1 = Bytes::<16>::from("World");
     prepend1.prepend_str("Hello ");
     assert_eq!(prepend1.as_str(), "Hello World");
 
-    let mut prepend2 = Bytes::<16>::from_str("World");
+    let mut prepend2 = Bytes::<16>::from("World");
     prepend2.prepend_bytes(b"Hello ");
     assert_eq!(prepend2.as_str(), "Hello World");
 
-    let mut prepend3 = Bytes::<16>::from_str("World");
-    let prefix = Bytes::<8>::from_str("Hello ");
+    let mut prepend3 = Bytes::<16>::from("World");
+    let prefix = Bytes::<8>::from("Hello ");
     prepend3.prepend(&prefix);
     assert_eq!(prepend3.as_str(), "Hello World");
 
-    let mut prepend4 = Bytes::<16>::from_str("World");
-    let prefix2 = Bytes::<8>::from_str("Hello ");
+    let mut prepend4 = Bytes::<16>::from("World");
+    let prefix2 = Bytes::<8>::from("Hello ");
     prepend4.prepend_as_sync_str(&prefix2);
     assert_eq!(prepend4.as_str(), "Hello World");
 
@@ -153,13 +153,13 @@ pub fn test_bytes_append_prepend() -> Result<()> {
 pub fn test_bytes_mutation() -> Result<()> {
     log_info!(TAG, "Starting test_bytes_mutation");
 
-    let mut bytes = Bytes::<16>::from_str("Test");
+    let mut bytes = Bytes::<16>::from("Test");
     assert!(!bytes.is_empty());
     bytes.clear();
     assert!(bytes.is_empty());
     assert_eq!(bytes.len(), 0);
 
-    let mut hw = Bytes::<16>::from_str("Hello");
+    let mut hw = Bytes::<16>::from("Hello");
     assert_eq!(hw.pop(), Some(b'o'));
     assert_eq!(hw.as_str(), "Hell");
 
@@ -172,11 +172,11 @@ pub fn test_bytes_mutation() -> Result<()> {
     hw.push_char('o')?;
     assert_eq!(hw.as_str(), "Hello");
 
-    let mut replaced = Bytes::<16>::from_str("Hello World");
+    let mut replaced = Bytes::<16>::from("Hello World");
     replaced.replace(b"World", b"Rust!")?;
     assert_eq!(replaced.as_str(), "Hello Rust!");
 
-    let mut too_small = Bytes::<8>::from_str("Hello");
+    let mut too_small = Bytes::<8>::from("Hello");
     assert!(too_small.replace(b"Hello", b"Hello World").is_err());
 
     let mut formatted = Bytes::<32>::new();
@@ -300,7 +300,7 @@ pub fn test_bytes_trait_conversions() -> Result<()> {
     assert_eq!(default_bytes.to_bytes(), Bytes::<16>::new().to_bytes());
 
     // `FromStr` (via `parse`) and `From<&str>` (via `into`) must agree with
-    // the inherent `from_str`.
+    // the inherent `from`.
     let parsed: Bytes<16> = "Hello".parse().unwrap();
     let converted: Bytes<16> = "Hello".into();
     assert_eq!(parsed.as_str(), "Hello");
@@ -362,14 +362,14 @@ pub fn test_bytes_into_vec() -> Result<()> {
     assert_eq!(into_vec.len(), padded.len());
 
     // A completely filled buffer has no terminator: every byte is kept.
-    let full = Bytes::<5>::from_str("Hello");
+    let full = Bytes::<5>::from("Hello");
     let full_vec: Vec<u8> = full.into();
     assert_eq!(full_vec.len(), 5);
     assert_eq!(full_vec.as_slice(), b"Hello");
 
     // Truncating construction: only the first `SIZE` bytes survive, and none
     // of them is zero, so the whole buffer is converted.
-    let truncated: Vec<u8> = Bytes::<3>::from_str("Hello").into();
+    let truncated: Vec<u8> = Bytes::<3>::from("Hello").into();
     assert_eq!(truncated.as_slice(), b"Hel");
 
     // An empty buffer yields an empty vector.
@@ -444,7 +444,7 @@ pub fn test_bytes_truncating_constructors() -> Result<()> {
     let from_bytes = Bytes::<4>::from_bytes(b"abcdefgh");
     assert_eq!(from_bytes.as_raw_bytes(), b"abcd");
 
-    let from_str = Bytes::<3>::from_str("Hello");
+    let from_str = Bytes::<3>::from("Hello");
     assert_eq!(from_str.as_raw_bytes(), b"Hel");
 
     let from_sync = Bytes::<4>::from_as_sync_str(&"abcdefgh");
@@ -452,7 +452,7 @@ pub fn test_bytes_truncating_constructors() -> Result<()> {
 
     // Exactly SIZE: fills the buffer with no room for a null terminator, so
     // `len()` falls back to SIZE.
-    let exact = Bytes::<5>::from_str("Hello");
+    let exact = Bytes::<5>::from("Hello");
     assert_eq!(exact.len(), 5);
     assert!(!exact.is_empty());
     assert_eq!(exact.as_str(), "Hello");
@@ -465,46 +465,46 @@ pub fn test_bytes_append_prepend_truncation() -> Result<()> {
     log_info!(TAG, "Starting test_bytes_append_prepend_truncation");
 
     // Appending past capacity stops at SIZE instead of panicking.
-    let mut append_str = Bytes::<8>::from_str("Hello");
+    let mut append_str = Bytes::<8>::from("Hello");
     append_str.append_str(" World");
     assert_eq!(append_str.as_raw_bytes(), b"Hello Wo");
 
-    let mut append_bytes = Bytes::<8>::from_str("Hello");
+    let mut append_bytes = Bytes::<8>::from("Hello");
     append_bytes.append_bytes(b" World");
     assert_eq!(append_bytes.as_raw_bytes(), b"Hello Wo");
 
-    let mut append_other = Bytes::<8>::from_str("Hello");
-    append_other.append(&Bytes::<16>::from_str(" World"));
+    let mut append_other = Bytes::<8>::from("Hello");
+    append_other.append(&Bytes::<16>::from(" World"));
     assert_eq!(append_other.as_raw_bytes(), b"Hello Wo");
 
-    let mut append_sync = Bytes::<8>::from_str("Hello");
-    append_sync.append_as_sync_str(&Bytes::<16>::from_str(" World"));
+    let mut append_sync = Bytes::<8>::from("Hello");
+    append_sync.append_as_sync_str(&Bytes::<16>::from(" World"));
     assert_eq!(append_sync.as_raw_bytes(), b"Hello Wo");
 
     // Appending to a completely full buffer is a no-op.
-    let mut full = Bytes::<5>::from_str("Hello");
+    let mut full = Bytes::<5>::from("Hello");
     full.append_str("!!!");
     assert_eq!(full.as_raw_bytes(), b"Hello");
 
     // Prepending past capacity keeps the prefix and drops the tail.
-    let mut prepend_str = Bytes::<8>::from_str("World");
+    let mut prepend_str = Bytes::<8>::from("World");
     prepend_str.prepend_str("Hello ");
     assert_eq!(prepend_str.as_raw_bytes(), b"Hello Wo");
 
-    let mut prepend_bytes = Bytes::<8>::from_str("World");
+    let mut prepend_bytes = Bytes::<8>::from("World");
     prepend_bytes.prepend_bytes(b"Hello ");
     assert_eq!(prepend_bytes.as_raw_bytes(), b"Hello Wo");
 
-    let mut prepend_other = Bytes::<8>::from_str("end");
-    prepend_other.prepend(&Bytes::<32>::from_str("begin_"));
+    let mut prepend_other = Bytes::<8>::from("end");
+    prepend_other.prepend(&Bytes::<32>::from("begin_"));
     assert_eq!(prepend_other.as_raw_bytes(), b"begin_en");
 
-    let mut prepend_sync = Bytes::<8>::from_str("World");
-    prepend_sync.prepend_as_sync_str(&Bytes::<16>::from_str("Hello "));
+    let mut prepend_sync = Bytes::<8>::from("World");
+    prepend_sync.prepend_as_sync_str(&Bytes::<16>::from("Hello "));
     assert_eq!(prepend_sync.as_raw_bytes(), b"Hello Wo");
 
     // A prefix longer than the whole buffer replaces the content outright.
-    let mut swamped = Bytes::<4>::from_str("xy");
+    let mut swamped = Bytes::<4>::from("xy");
     swamped.prepend_str("abcdef");
     assert_eq!(swamped.as_raw_bytes(), b"abcd");
 
@@ -521,43 +521,43 @@ pub fn test_bytes_replace_variants() -> Result<()> {
     log_info!(TAG, "Starting test_bytes_replace_variants");
 
     // Same-length replacement: no shifting.
-    let mut same = Bytes::<16>::from_str("Hello World");
+    let mut same = Bytes::<16>::from("Hello World");
     same.replace(b"World", b"Rust!")?;
     assert_eq!(same.as_str(), "Hello Rust!");
 
     // Shorter replacement: the tail shifts left and the slack is zeroed.
-    let mut shorter = Bytes::<16>::from_str("Hello World");
+    let mut shorter = Bytes::<16>::from("Hello World");
     shorter.replace(b"World", b"Yo")?;
     assert_eq!(shorter.as_str(), "Hello Yo");
     assert_eq!(shorter.len(), 8);
 
     // Longer replacement that still fits: the tail shifts right.
-    let mut longer = Bytes::<24>::from_str("a-b");
+    let mut longer = Bytes::<24>::from("a-b");
     longer.replace(b"-", b"+++")?;
     assert_eq!(longer.as_str(), "a+++b");
 
     // Multiple occurrences are all replaced.
-    let mut repeated = Bytes::<16>::from_str("aXbXc");
+    let mut repeated = Bytes::<16>::from("aXbXc");
     repeated.replace(b"X", b"-")?;
     assert_eq!(repeated.as_str(), "a-b-c");
 
     // Pattern absent: content untouched.
-    let mut absent = Bytes::<16>::from_str("Hello");
+    let mut absent = Bytes::<16>::from("Hello");
     absent.replace(b"zzz", b"!")?;
     assert_eq!(absent.as_str(), "Hello");
 
     // Empty pattern: early return, nothing changes.
-    let mut empty_pattern = Bytes::<16>::from_str("Hello");
+    let mut empty_pattern = Bytes::<16>::from("Hello");
     empty_pattern.replace(b"", b"!")?;
     assert_eq!(empty_pattern.as_str(), "Hello");
 
     // Deletion via an empty replacement.
-    let mut deleted = Bytes::<16>::from_str("a-b-c");
+    let mut deleted = Bytes::<16>::from("a-b-c");
     deleted.replace(b"-", b"")?;
     assert_eq!(deleted.as_str(), "abc");
 
     // Does not fit: reported instead of overflowing.
-    let mut too_small = Bytes::<8>::from_str("Hello");
+    let mut too_small = Bytes::<8>::from("Hello");
     assert!(matches!(
         too_small.replace(b"Hello", b"Hello World"),
         Err(Error::StringConversionError)
@@ -598,7 +598,7 @@ pub fn test_bytes_push_pop_edges() -> Result<()> {
     assert_eq!(roomy.as_str(), "o");
 
     // Pop down to empty and back.
-    let mut word = Bytes::<8>::from_str("hi");
+    let mut word = Bytes::<8>::from("hi");
     assert_eq!(word.pop(), Some(b'i'));
     assert_eq!(word.pop_char(), Some('h'));
     assert_eq!(word.pop(), None);
@@ -618,7 +618,7 @@ pub fn test_bytes_invalid_utf8() -> Result<()> {
 
     // A buffer whose *content* is valid but whose zero padding is not part of
     // the string still reports as a string.
-    let valid = Bytes::<8>::from_str("ok");
+    let valid = Bytes::<8>::from("ok");
     assert!(valid.is_string());
 
     // `fill_str` fails on invalid UTF-8 rather than producing a bad `&str`.
@@ -631,7 +631,7 @@ pub fn test_bytes_invalid_utf8() -> Result<()> {
 
     // `fill_str` into a destination shorter than the buffer copies only what
     // fits.
-    let mut source = Bytes::<8>::from_str("abcdefgh");
+    let mut source = Bytes::<8>::from("abcdefgh");
     let mut short_dest = String::from("...");
     source.fill_str(short_dest.as_mut_str())?;
     assert_eq!(short_dest, "abc");
@@ -643,7 +643,7 @@ pub fn test_bytes_invalid_utf8() -> Result<()> {
 pub fn test_bytes_clear_and_capacity() -> Result<()> {
     log_info!(TAG, "Starting test_bytes_clear_and_capacity");
 
-    let mut bytes = Bytes::<16>::from_str("something");
+    let mut bytes = Bytes::<16>::from("something");
     assert_eq!(bytes.capacity(), 16);
     assert_eq!(bytes.size(), 16);
     assert_eq!(bytes.to_bytes().len(), 16);
@@ -668,7 +668,7 @@ pub fn test_bytes_format_and_write() -> Result<()> {
     use core::fmt::Write;
 
     // `format` replaces the whole content.
-    let mut buffer = Bytes::<32>::from_str("stale content");
+    let mut buffer = Bytes::<32>::from("stale content");
     buffer.format(format_args!("Hello {}", 42));
     assert_eq!(buffer.as_str(), "Hello 42");
 
@@ -682,7 +682,7 @@ pub fn test_bytes_format_and_write() -> Result<()> {
     assert_eq!(overflowing.as_raw_bytes(), b"much");
 
     // `core::fmt::Write` appends instead of replacing.
-    let mut written = Bytes::<16>::from_str("a=");
+    let mut written = Bytes::<16>::from("a=");
     write!(written, "{}", 7).unwrap();
     write!(written, ",b={}", 8).unwrap();
     assert_eq!(written.as_str(), "a=7,b=8");
@@ -737,6 +737,189 @@ pub fn test_hex_helper_edges() -> Result<()> {
     assert_eq!(round, data);
 
     log_info!(TAG, "test_hex_helper_edges PASSED");
+    Ok(())
+}
+
+pub fn test_bytes_from_str_with_nul() -> Result<()> {
+    log_info!(TAG, "Starting test_bytes_from_str_with_nul");
+
+    // Shorter than SIZE: same content as the plain `From<&str>` conversion.
+    let short = Bytes::<16>::from_str_with_nul("Hi");
+    assert_eq!(short.as_str(), "Hi");
+    assert_eq!(short.to_bytes(), Bytes::<16>::from("Hi").to_bytes());
+
+    // Exactly SIZE: the last byte is sacrificed for the terminator, so the
+    // buffer is always a valid C string.
+    let exact = Bytes::<5>::from_str_with_nul("Hello");
+    assert_eq!(exact.as_str(), "Hell");
+    assert_eq!(exact.len(), 4);
+    assert_eq!(exact.as_cstr().to_bytes(), b"Hell");
+    assert_eq!(exact[4], 0);
+
+    // Longer than SIZE: truncated to SIZE - 1.
+    let long = Bytes::<8>::from_str_with_nul("This is a very long string");
+    assert_eq!(long.as_str(), "This is");
+    assert_eq!(long.as_cstr().to_bytes(), b"This is");
+
+    // Degenerate sizes: no room for content at all.
+    assert!(Bytes::<1>::from_str_with_nul("abc").is_empty());
+    assert!(Bytes::<0>::from_str_with_nul("abc").is_empty());
+
+    log_info!(TAG, "test_bytes_from_str_with_nul PASSED");
+    Ok(())
+}
+
+pub fn test_bytes_full_buffer_c_string() -> Result<()> {
+    log_info!(TAG, "Starting test_bytes_full_buffer_c_string");
+
+    // A buffer filled up to SIZE has no `0` byte. Every accessor must stay
+    // inside the array instead of scanning past it for a terminator.
+    let full = Bytes::<5>::from("Hello");
+    assert_eq!(full.len(), 5);
+    assert_eq!(full.as_str(), "Hello");
+    assert_eq!(format!("{}", full), "Hello");
+
+    // No terminator, so no valid `CStr`: an empty one is returned.
+    assert!(full.as_cstr().is_empty());
+
+    // `as_cstr_mut` forces a terminator by overwriting the last byte.
+    let mut forced = full;
+    assert_eq!(forced.as_cstr_mut().to_bytes(), b"Hell");
+    assert_eq!(forced.as_str(), "Hell");
+    assert_eq!(forced.as_cstr().to_bytes(), b"Hell");
+
+    // Same for a buffer filled by hand through `DerefMut`.
+    let mut manual = Bytes::<4>::new();
+    manual.copy_from_slice(b"ABCD");
+    assert_eq!(format!("{}", manual), "ABCD");
+    assert!(manual.as_cstr().is_empty());
+    assert_eq!(manual.as_cstr_mut().to_bytes(), b"ABC");
+
+    // Invalid UTF-8 in a full buffer falls back to the diagnostic message.
+    let invalid = Bytes::<2>::from_bytes(&[0xFF, 0xFE]);
+    assert_eq!(format!("{}", invalid), "Bytes::fmt() Conversion error - invalid UTF-8");
+
+    log_info!(TAG, "test_bytes_full_buffer_c_string PASSED");
+    Ok(())
+}
+
+pub fn test_bytes_zero_size() -> Result<()> {
+    log_info!(TAG, "Starting test_bytes_zero_size");
+
+    // `Bytes<0>` is a valid type: every operation must be a no-op or report
+    // an error instead of underflowing `SIZE - 1`.
+    let c_string = CString::new("abc").unwrap();
+    let raw = *b"abc";
+
+    let mut zero = Bytes::<0>::from("abc");
+    assert!(zero.is_empty());
+    assert_eq!(zero.len(), 0);
+    assert_eq!(zero.size(), 0);
+    assert_eq!(zero.as_str(), "");
+    assert_eq!(format!("{}", zero), "");
+
+    assert!(Bytes::<0>::from_char_ptr(c_string.as_ptr()).is_empty());
+    assert!(Bytes::<0>::from_cstr(c_string.as_ptr()).is_empty());
+    assert!(Bytes::<0>::from_uchar_ptr(raw.as_ptr()).is_empty());
+    assert!(Bytes::<0>::from_bytes(b"abc").is_empty());
+    assert!(Bytes::<0>::from_as_sync_str(&"abc").is_empty());
+
+    zero.append_str("abc");
+    zero.append_bytes(b"abc");
+    zero.append(&Bytes::<4>::from("abc"));
+    zero.append_as_sync_str(&Bytes::<4>::from("abc"));
+    zero.prepend_str("abc");
+    zero.prepend_bytes(b"abc");
+    zero.prepend(&Bytes::<4>::from("abc"));
+    zero.format(format_args!("{}", 42));
+    assert!(zero.is_empty());
+
+    assert!(matches!(zero.push(b'a'), Err(Error::StringConversionError)));
+    assert_eq!(zero.pop(), None);
+    assert!(zero.as_cstr().is_empty());
+    assert!(zero.as_cstr_mut().is_empty());
+    assert!(zero.into_vec().is_empty());
+
+    log_info!(TAG, "test_bytes_zero_size PASSED");
+    Ok(())
+}
+
+pub fn test_bytes_slice_and_vec_conversions() -> Result<()> {
+    log_info!(TAG, "Starting test_bytes_slice_and_vec_conversions");
+
+    // `From<Vec<u8>>`: zero-filled when shorter, truncated when longer.
+    let from_vec = Bytes::<4>::from(Vec::from(&b"ab"[..]));
+    assert_eq!(from_vec.to_bytes(), &[b'a', b'b', 0, 0]);
+    let from_long_vec = Bytes::<2>::from(Vec::from(&b"abcd"[..]));
+    assert_eq!(from_long_vec.to_bytes(), b"ab");
+
+    // `From<&[u8]>` behaves exactly like `from_bytes`.
+    let from_slice = Bytes::<4>::from(&b"ab"[..]);
+    assert_eq!(from_slice.to_bytes(), Bytes::<4>::from_bytes(b"ab").to_bytes());
+    let from_long_slice = Bytes::<3>::from(&b"Hello"[..]);
+    assert_eq!(from_long_slice.to_bytes(), b"Hel");
+
+    // `&Bytes` -> `&[u8]` borrows the whole array, padding included.
+    let padded = Bytes::<4>::from("Hi");
+    let slice: &[u8] = (&padded).into();
+    assert_eq!(slice, &[b'H', b'i', 0, 0]);
+
+    // `&Bytes` -> `&str` stops at the terminator, like `as_str`.
+    let text: &str = (&padded).into();
+    assert_eq!(text, "Hi");
+
+    // Vec round-trip keeps the content (not the padding).
+    let round_trip = Bytes::<8>::from(Bytes::<8>::from("abc").into_vec());
+    assert_eq!(round_trip.as_str(), "abc");
+
+    log_info!(TAG, "test_bytes_slice_and_vec_conversions PASSED");
+    Ok(())
+}
+
+pub fn test_bytes_raw_pointer_semantics() -> Result<()> {
+    log_info!(TAG, "Starting test_bytes_raw_pointer_semantics");
+
+    // `from_uchar_ptr` copies exactly SIZE bytes and ignores embedded zeros...
+    let raw = *b"ab\0cd";
+    let from_uchar = Bytes::<5>::from_uchar_ptr(raw.as_ptr());
+    assert_eq!(from_uchar.to_bytes(), b"ab\0cd");
+    assert_eq!(from_uchar.as_str(), "ab");
+
+    // ...while the C string constructors stop at the first zero.
+    let c_string = CString::new("ab").unwrap();
+    assert_eq!(Bytes::<5>::from_char_ptr(c_string.as_ptr()).to_bytes(), b"ab\0\0\0");
+    assert_eq!(Bytes::<5>::from_cstr(c_string.as_ptr()).to_bytes(), b"ab\0\0\0");
+
+    // `pop_char` maps bytes to Latin-1, so a non-ASCII byte is not lost.
+    let mut latin1 = Bytes::<4>::from_bytes(&[b'a', 0xE9]);
+    assert_eq!(latin1.pop_char(), Some('\u{e9}'));
+    assert_eq!(latin1.pop_char(), Some('a'));
+    assert_eq!(latin1.pop_char(), None);
+
+    log_info!(TAG, "test_bytes_raw_pointer_semantics PASSED");
+    Ok(())
+}
+
+pub fn test_hex_helpers_consistency() -> Result<()> {
+    log_info!(TAG, "Starting test_hex_helpers_consistency");
+
+    // The allocating and the in-place encoder must agree on every byte value.
+    let all: Vec<u8> = (0..=255u8).collect();
+    let mut buffer = [0u8; 512];
+    assert_eq!(bytes_to_hex_into_slice(&all, &mut buffer), 512);
+    assert_eq!(&buffer[..], bytes_to_hex(&all).as_bytes());
+    assert_eq!(hex_to_bytes(&bytes_to_hex(&all))?, all);
+
+    // Non-ASCII input is rejected instead of panicking on a char boundary.
+    let mut out = [0u8; 4];
+    assert!(matches!(hex_to_bytes("\u{e9}0"), Err(Error::StringConversionError)));
+    assert!(matches!(
+        hex_to_bytes_into_slice("\u{e9}0", &mut out),
+        Err(Error::StringConversionError)
+    ));
+    assert!(hex_to_bytes("00\u{e9}0").is_err());
+
+    log_info!(TAG, "test_hex_helpers_consistency PASSED");
     Ok(())
 }
 
@@ -797,6 +980,12 @@ pub fn run_all_tests() -> Result<()> {
     test_bytes_clear_and_capacity()?;
     test_bytes_format_and_write()?;
     test_hex_helper_edges()?;
+    test_bytes_from_str_with_nul()?;
+    test_bytes_full_buffer_c_string()?;
+    test_bytes_zero_size()?;
+    test_bytes_slice_and_vec_conversions()?;
+    test_bytes_raw_pointer_semantics()?;
+    test_hex_helpers_consistency()?;
     #[cfg(feature = "serde")]
     test_bytes_serde_round_trip()?;
     log_info!(TAG, "========== All Utils Tests PASSED ==========");

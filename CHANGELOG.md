@@ -11,6 +11,51 @@ together.
 
 ## [Unreleased]
 
+### Added
+
+- `Bytes::from_str_with_nul`: like `Bytes::from(&str)`, but copies at most
+  `SIZE - 1` bytes so the buffer always stays a valid C string. Thread and
+  timer names are now built with it on both backends.
+- `Bytes` conversions: `From<Vec<u8>>` and `From<&[u8]>` (zero-filled or
+  truncated to `SIZE`), `From<&Bytes>` for `&[u8]` (the whole array,
+  padding included) and for `&str` (content up to the first `0`).
+- Tests, identical on FreeRTOS and POSIX: `Bytes::from_str_with_nul`, full
+  buffers without terminator, `Bytes<0>`, the new slice/`Vec` conversions,
+  raw pointer constructors, hex helpers on every byte value and on non-ASCII
+  input, and truncation of long thread names.
+
+### Changed
+
+- Thread and timer names are truncated to 15 characters (one less than
+  before) to leave room for the terminator. Before, a name filling all 16
+  bytes was handed to `xTaskCreate`/`xTimerCreate`/`pthread_setname_np`
+  without one.
+- `Bytes::as_cstr` returns an empty `CStr` when the buffer contains no `0`
+  byte, instead of reading past the end of the array.
+- `bytes_to_hex_into_slice` no longer allocates (it used `format!` for every
+  byte despite being documented as the no-alloc variant).
+- `utils` documentation reviewed: every public item has a runnable example,
+  and several wrong statements were corrected (`FromStr` pads with zeros, not
+  spaces; `MAX_DELAY` example did not use `MAX_DELAY`; `Bytes` has no default
+  `SIZE`; the `from_uchar_ptr` example read past its source array).
+
+### Deprecated
+
+- `Bytes::from_str` (inherent): use `Bytes::from(&str)`, `"...".into()` or
+  `"...".parse()` instead.
+
+### Fixed
+
+- `Display for Bytes` read past the end of the array when the buffer was
+  completely filled (no `0` terminator). It now stops at `SIZE`.
+- Log messages filling the whole formatting buffer were passed to
+  `printf_on_uart` without a terminator; the buffer is now always
+  terminated.
+- `hex_to_bytes` and `hex_to_bytes_into_slice` panicked on non-ASCII input
+  instead of returning `Error::StringConversionError`.
+- `Bytes<0>` panicked (`SIZE - 1` underflow) in the `from_*`, `append*` and
+  `as_cstr_mut` methods.
+
 ## [1.4.0] - 2026-10-11
 
 ### Added

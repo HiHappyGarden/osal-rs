@@ -73,9 +73,9 @@
 //!
 //! # Thread Safety
 //!
-//! The logging system uses a simple busy-wait lock to ensure thread-safe output:
+//! The logging system uses a simple atomic lock to ensure thread-safe output:
 //! - Only one thread can log at a time
-//! - Other threads spin-wait until the log is complete
+//! - Other threads block one tick at a time until the log is complete
 //! - No heap allocation during the lock
 //! - Suitable for task context only (see ISR Context below)
 //!
@@ -84,7 +84,7 @@
 //! **WARNING**: Do not use logging macros from interrupt service routines (ISRs).
 //! 
 //! Reasons:
-//! - Busy-wait lock can cause priority inversion
+//! - Waiting for the lock calls `System::delay`, which cannot block in an ISR
 //! - String formatting allocates memory
 //! - UART operations may block
 //! - Can significantly delay interrupt response
@@ -170,6 +170,7 @@ pub mod ffi {
 
 #[cfg(not(feature = "posix"))]
 use core::ffi::c_char;
+use core::sync::atomic::{AtomicBool, Ordering};
 
 #[cfg(not(feature = "posix"))]
 use crate::log::ffi::printf_on_uart;
@@ -319,30 +320,31 @@ pub mod log_levels {
 /// beyond temporarily incorrect filter settings.
 static mut MASK: u8 = log_levels::LEVEL_DEBUG | log_levels::FLAG_COLOR_ON | log_levels::FLAG_STATE_ON;
 
-/// Simple busy flag for thread-safe logging (0 = free, non-zero = busy).
-///
-/// Used as a spinlock to ensure only one thread logs at a time:
-/// - 0 = Lock is free, logging available
-/// - Non-zero = Lock is held, other threads must wait
+/// Lock that serializes `sys_log` output (`false` = free, `true` = held).
 ///
 /// # Synchronization
 ///
-/// Uses a basic busy-wait (spinlock) pattern:
-/// 1. Wait until BUSY == 0
-/// 2. Set BUSY = 1
-/// 3. Perform logging
-/// 4. Set BUSY = 0
+/// 1. Try `compare_exchange(false, true, Acquire)`; on failure block for one
+///    tick with [`System::delay`] and retry
+/// 2. Perform logging
+/// 3. `store(false, Release)`
+///
+/// It has to be an atomic: with a plain `static mut` the compiler may hoist
+/// the load out of the wait loop, and on an SMP kernel a task waiting on one
+/// core then never observes the release made on the other core.
+///
+/// Waiting with `System::delay` instead of busy-spinning lets the holder run
+/// even when it has a lower priority than the waiter on the same core.
 ///
 /// # Limitations
 ///
-/// - Not a true atomic operation (no memory barriers)
-/// - Priority inversion possible (low-priority task holds lock)
-/// - Wastes CPU cycles during contention
-/// - **Never use from ISR context** - can deadlock
+/// - A waiter retries at tick granularity, so contended logs are delayed by
+///   at least one tick
+/// - **Never use from ISR context** - `System::delay` cannot block there
 ///
 /// This simple approach is sufficient for most embedded use cases where
 /// logging contention is infrequent.
-static mut BUSY: u8 = 0;
+static BUSY: AtomicBool = AtomicBool::new(false);
 
 /// Prints formatted text without a newline.
 ///
@@ -581,13 +583,12 @@ pub fn set_enable_color(enabled: bool) {
 ///
 /// # Thread Safety
 ///
-/// Uses a busy-wait lock (BUSY flag) to ensure only one thread logs at a time:
-/// 1. Spins until BUSY == 0
-/// 2. Sets BUSY = 1
-/// 3. Formats and outputs the message
-/// 4. Sets BUSY = 0
+/// Uses an atomic lock (BUSY flag) to ensure only one thread logs at a time:
+/// 1. Atomically flips BUSY from `false` to `true`, blocking one tick per retry
+/// 2. Formats and outputs the message
+/// 3. Sets BUSY back to `false`
 ///
-/// Other threads will spin-wait during this time.
+/// Other threads block one tick at a time during this time.
 ///
 /// # Output Format
 ///
@@ -618,12 +619,16 @@ pub fn set_enable_color(enabled: bool) {
 ///
 /// # Warning
 ///
-/// **Never call from ISR context** - the busy-wait can cause deadlock if a
-/// higher-priority ISR preempts a task that holds the lock.
+/// **Never call from ISR context** - waiting for the lock calls
+/// `System::delay`, which cannot block inside an ISR.
 pub fn sys_log(tag: &str, log_type: u8, to_print: &str) {
     unsafe {
-        while BUSY != 0 {}
-        BUSY = 1;
+        while BUSY
+            .compare_exchange_weak(false, true, Ordering::Acquire, Ordering::Relaxed)
+            .is_err()
+        {
+            System::delay(1);
+        }
 
         let mut color_reset = COLOR_RESET;
         let color = if MASK & log_levels::FLAG_COLOR_ON == log_levels::FLAG_COLOR_ON {
@@ -657,7 +662,7 @@ pub fn sys_log(tag: &str, log_type: u8, to_print: &str) {
             std::println!("{color}({}ms)[{tag}] {to_print}{color_reset}", now.as_millis());
         }
 
-        BUSY = 0;
+        BUSY.store(false, Ordering::Release);
     }
 }
 

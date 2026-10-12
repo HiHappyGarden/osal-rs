@@ -55,6 +55,14 @@ together.
   instead of returning `Error::StringConversionError`.
 - `Bytes<0>` panicked (`SIZE - 1` underflow) in the `from_*`, `append*` and
   `as_cstr_mut` methods.
+- `sys_log` (and every `log_*!` macro) could hang forever on SMP FreeRTOS
+  when two cores logged at the same time: the lock was a plain `static mut`
+  flag, so the waiting core could spin on a stale value and never see the
+  release (and two tasks could also enter together). It is now an
+  `AtomicBool` taken with `compare_exchange`, and a waiter blocks one tick
+  with `System::delay` instead of busy-spinning, so a lower-priority holder
+  on the same core can still finish. Seen as a hang in
+  `test_thread_spawn_simple` on RP2350.
 
 ## [1.4.0] - 2026-10-11
 

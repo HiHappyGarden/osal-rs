@@ -197,6 +197,20 @@ impl<'a> Display for Error<'a> {
     ///
     /// Provides human-readable error messages suitable for logging or
     /// presentation to users.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use osal_rs::utils::Error;
+    ///
+    /// assert_eq!(Error::OutOfMemory.to_string(), "Out of memory");
+    /// assert_eq!(Error::ReturnWithCode(-5).to_string(), "Return with code: -5");
+    /// assert_eq!(Error::WriteError("disk full").to_string(), "Write error occurred: disk full");
+    ///
+    /// // Works with any formatting macro
+    /// let msg = format!("init failed: {}", Error::Timeout);
+    /// assert_eq!(msg, "init failed: Operation timeout");
+    /// ```
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
         use Error::*;
 
@@ -405,11 +419,13 @@ pub enum OsalRsBool {
 /// # Examples
 ///
 /// ```
-/// use osal_rs::os::{Mutex, MutexFn};
-/// use osal_rs::utils::MAX_DELAY;
-/// 
-/// let mutex = Mutex::new(0);
-/// let guard = mutex.lock();  // Blocks forever if needed
+/// use osal_rs::os::{Semaphore, SemaphoreFn};
+/// use osal_rs::utils::{MAX_DELAY, OsalRsBool};
+///
+/// let sem = Semaphore::new(1, 1).unwrap();
+///
+/// // Blocks until the semaphore is available, without any timeout
+/// assert_eq!(sem.wait(MAX_DELAY), OsalRsBool::True);
 /// ```
 pub const MAX_DELAY: Duration = Duration::from_millis(usize::MAX as u64);
 
@@ -437,16 +453,56 @@ pub type Result<T, E = Error<'static>> = core::result::Result<T, E>;
 /// Pointer to pointer type for C FFI.
 ///
 /// Equivalent to `void**` in C. Used for double indirection in FFI calls.
+///
+/// # Examples
+///
+/// ```
+/// use osal_rs::utils::{DoublePtr, Ptr};
+///
+/// // Out-parameter pattern: the callee stores a pointer through `out`
+/// fn get_handle(out: DoublePtr) {
+///     unsafe { *out = 0x1234 as Ptr; }
+/// }
+///
+/// let mut handle: Ptr = core::ptr::null_mut();
+/// get_handle(&mut handle);
+/// assert_eq!(handle as usize, 0x1234);
+/// ```
 pub type DoublePtr = *mut *mut c_void;
 
 /// Mutable pointer type for C FFI.
 ///
 /// Equivalent to `void*` in C. Used for generic mutable data pointers.
+///
+/// # Examples
+///
+/// ```
+/// use osal_rs::utils::Ptr;
+///
+/// let mut value: u32 = 7;
+/// let ptr: Ptr = &mut value as *mut u32 as Ptr;
+///
+/// // Cast back to the concrete type before dereferencing
+/// unsafe { *(ptr as *mut u32) += 1; }
+/// assert_eq!(value, 8);
+/// ```
 pub type Ptr = *mut c_void;
 
 /// Const pointer type for C FFI.
 ///
 /// Equivalent to `const void*` in C. Used for generic immutable data pointers.
+///
+/// # Examples
+///
+/// ```
+/// use osal_rs::utils::ConstPtr;
+///
+/// let value: u32 = 42;
+/// let ptr: ConstPtr = &value as *const u32 as ConstPtr;
+///
+/// let read = unsafe { *(ptr as *const u32) };
+/// assert_eq!(read, 42);
+/// ```
 pub type ConstPtr = *const c_void;
 
 
@@ -502,7 +558,7 @@ pub const fn register_bit_size() -> CpuRegisterSize {
 ///
 /// ```
 /// use osal_rs::thread_extract_param;
-/// use osal_rs::utils::Result;
+/// use osal_rs::utils::{Error, Result};
 /// use core::any::Any;
 /// 
 /// struct TaskConfig {
@@ -510,14 +566,20 @@ pub const fn register_bit_size() -> CpuRegisterSize {
 ///     stack_size: usize,
 /// }
 /// 
-/// fn task_entry(param: Option<Box<dyn Any>>) -> Result<()> {
+/// fn task_entry(param: Option<Box<dyn Any>>) -> Result<usize> {
 ///     let config = thread_extract_param!(param, TaskConfig);
-///     
-///     println!("Priority: {}", config.priority);
-///     println!("Stack: {}", config.stack_size);
-///     
-///     Ok(())
+///     assert_eq!(config.priority, 3);
+///     Ok(config.stack_size)
 /// }
+///
+/// let param: Option<Box<dyn Any>> = Some(Box::new(TaskConfig { priority: 3, stack_size: 1024 }));
+/// assert_eq!(task_entry(param), Ok(1024));
+///
+/// // Missing parameter
+/// assert_eq!(task_entry(None), Err(Error::NullPtr));
+///
+/// // Wrong parameter type
+/// assert_eq!(task_entry(Some(Box::new(42u32))), Err(Error::InvalidType));
 /// ```
 #[macro_export]
 macro_rules! thread_extract_param {
@@ -629,9 +691,11 @@ macro_rules! access_static_option {
 /// }
 /// 
 /// // Can be safely shared across threads
-/// fn use_in_thread(item: &dyn AsSyncStr) {
-///     println!("Name: {}", item.as_str());
+/// fn name_len(item: &dyn AsSyncStr) -> usize {
+///     item.as_str().len()
 /// }
+///
+/// assert_eq!(name_len(&ThreadSafeName { name: "worker" }), 6);
 /// ```
 pub trait AsSyncStr : Sync + Send { 
     /// Returns a string slice reference.
@@ -642,24 +706,74 @@ pub trait AsSyncStr : Sync + Send {
     /// # Returns
     ///
     /// A reference to a string slice with lifetime tied to `self`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use osal_rs::utils::{AsSyncStr, Bytes};
+    ///
+    /// let name = Bytes::<16>::from("sensor");
+    /// assert_eq!(AsSyncStr::as_str(&name), "sensor");
+    /// ```
     fn as_str(&self) -> &str;
 }
 
 impl PartialEq for dyn AsSyncStr + '_ {
+    /// Compares two `AsSyncStr` trait objects by their string content.
+    ///
+    /// The concrete types do not need to match: only the result of
+    /// [`as_str`](AsSyncStr::as_str) is compared.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use osal_rs::utils::{AsSyncStr, Bytes};
+    ///
+    /// let a = Bytes::<8>::from("abc");
+    /// let b = Bytes::<32>::from("abc");
+    /// let c = Bytes::<8>::from("xyz");
+    ///
+    /// assert!(&a as &dyn AsSyncStr == &b as &dyn AsSyncStr);
+    /// assert!(&a as &dyn AsSyncStr != &c as &dyn AsSyncStr);
+    /// ```
     fn eq(&self, other: &(dyn AsSyncStr + '_)) -> bool {
         self.as_str() == other.as_str()
     }
 }
 
+/// String equality on `AsSyncStr` trait objects is reflexive, symmetric and
+/// transitive, so `dyn AsSyncStr` is also [`Eq`].
 impl Eq for dyn AsSyncStr + '_ {}
 
 impl Debug for dyn AsSyncStr + '_ {
+    /// Formats the trait object as its plain string content (no quotes).
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use osal_rs::utils::{AsSyncStr, Bytes};
+    ///
+    /// let name = Bytes::<16>::from("task");
+    /// let obj: &dyn AsSyncStr = &name;
+    /// assert_eq!(format!("{:?}", obj), "task");
+    /// ```
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
         write!(f, "{}", self.as_str())
     }
 }
 
 impl Display for dyn AsSyncStr + '_ {
+    /// Formats the trait object as its string content.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use osal_rs::utils::{AsSyncStr, Bytes};
+    ///
+    /// let name = Bytes::<16>::from("task");
+    /// let obj: &dyn AsSyncStr = &name;
+    /// assert_eq!(obj.to_string(), "task");
+    /// ```
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
         write!(f, "{}", self.as_str())
     }
@@ -676,7 +790,7 @@ impl Display for dyn AsSyncStr + '_ {
 ///
 /// # Type Parameters
 ///
-/// * `SIZE` - The size of the internal byte array (default: 0)
+/// * `SIZE` - The size of the internal byte array, in bytes
 ///
 /// # Examples
 ///
@@ -684,15 +798,17 @@ impl Display for dyn AsSyncStr + '_ {
 /// use osal_rs::utils::Bytes;
 /// 
 /// // Create an empty 32-byte buffer
-/// let mut buffer = Bytes::<32>::new();
-/// 
+/// let buffer = Bytes::<32>::new();
+/// assert!(buffer.is_empty());
+///
 /// // Create a buffer from a string
-/// let name = Bytes::<16>::from_str("TaskName");
-/// println!("{}", name); // Prints "TaskName"
-/// 
+/// let name = Bytes::<16>::from("TaskName");
+/// assert_eq!(name.to_string(), "TaskName");
+///
 /// // Create from any type that implements ToString
 /// let number = 42;
 /// let num_bytes = Bytes::<8>::from_as_sync_str(&number);
+/// assert_eq!(num_bytes.as_str(), "42");
 /// ```
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct Bytes<const SIZE: usize> (pub [u8; SIZE]);
@@ -709,7 +825,7 @@ impl<const SIZE: usize> Deref for Bytes<SIZE> {
     /// ```
     /// use osal_rs::utils::Bytes;
     /// 
-    /// let bytes = Bytes::<8>::from_str("test");
+    /// let bytes = Bytes::<8>::from("test");
     /// assert_eq!(bytes[0], b't');
     /// ```
     fn deref(&self) -> &Self::Target {
@@ -742,30 +858,32 @@ impl<const SIZE: usize> Display for Bytes<SIZE> {
     /// Formats the byte array as a C-style null-terminated string.
     ///
     /// This implementation treats the byte array as a C string and converts it
-    /// to a Rust string for display. If the conversion fails, it displays
-    /// "Conversion error".
+    /// to a Rust string for display. If the content is not valid UTF-8, it displays
+    /// `"Bytes::fmt() Conversion error - invalid UTF-8"`.
     ///
-    /// # Safety
-    ///
-    /// This method assumes the byte array contains valid UTF-8 data and is
-    /// null-terminated. Invalid data may result in the error message being displayed.
+    /// The buffer is read up to the first `0` byte; a buffer completely filled
+    /// with non-zero bytes is displayed in full.
     ///
     /// # Examples
     ///
     /// ```
     /// use osal_rs::utils::Bytes;
-    /// 
-    /// let bytes = Bytes::<16>::from_str("Hello");
-    /// println!("{}", bytes); // Prints "Hello"
+    ///
+    /// let bytes = Bytes::<16>::from("Hello");
+    /// assert_eq!(format!("{}", bytes), "Hello");
+    ///
+    /// // A full buffer has no terminator but is still displayed correctly
+    /// assert_eq!(Bytes::<5>::from("Hello").to_string(), "Hello");
+    ///
+    /// let mut invalid = Bytes::<4>::new();
+    /// invalid[0] = 0xFF;
+    /// assert_eq!(invalid.to_string(), "Bytes::fmt() Conversion error - invalid UTF-8");
     /// ```
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
-        let str = unsafe {
-            CStr::from_ptr(self.0.as_ptr() as *const c_char)
-            .to_str()
-            .unwrap_or("Bytes::fmt() Conversion error - invalid UTF-8")
-        };
-        
-        write!(f, "{}", str.to_string())
+        let str = from_utf8(self.as_raw_bytes())
+            .unwrap_or("Bytes::fmt() Conversion error - invalid UTF-8");
+
+        f.write_str(str)
     }
 }
 
@@ -775,45 +893,226 @@ impl<const SIZE: usize> FromStr for Bytes<SIZE> {
     /// Creates a `Bytes` instance from a string slice.
     ///
     /// This implementation allows for easy conversion from string literals or
-    /// string slices to the `Bytes` type, filling the internal byte array
-    /// with the string data and padding with spaces if necessary.
+    /// string slices to the `Bytes` type via [`str::parse`], filling the internal
+    /// byte array with the string data and zero-padding the remaining bytes.
+    /// Strings longer than `SIZE` are truncated, so the conversion never fails.
     ///
     /// # Examples
+    ///
     /// ```
     /// use osal_rs::utils::Bytes;
     ///
     /// let bytes: Bytes<16> = "Hello".parse().unwrap();
-    /// println!("{}", bytes); // Prints "Hello"
+    /// assert_eq!(bytes.as_str(), "Hello");
+    ///
+    /// let truncated: Bytes<3> = "Hello".parse().unwrap();
+    /// assert_eq!(truncated.as_str(), "Hel");
     /// ```
     #[inline]
     fn from_str(s: &str) -> core::result::Result<Self, Self::Err> {
-        Ok(Self::from_str(s))
+        Ok(Self::from(s))
     }
 }
 
 impl<const SIZE: usize> From<&str> for Bytes<SIZE> {
-    /// Creates a `Bytes` instance from a string slice.
+    /// Creates a new `Bytes` instance from a string slice.
     ///
-    /// This implementation allows for easy conversion from string literals or
-    /// string slices to the `Bytes` type, filling the internal byte array
-    /// with the string data and padding with spaces if necessary.
+    /// Copies the bytes from the input string into the fixed-size array.
+    /// If the string is shorter than `SIZE`, the remaining bytes are zero-filled.
+    /// If the string is longer, it is truncated to fit.
+    ///
+    /// # Parameters
+    ///
+    /// * `s` - The source string to convert
+    ///
+    /// # Returns
+    ///
+    /// A `Bytes` instance containing the string data.
     ///
     /// # Examples
     ///
     /// ```
     /// use osal_rs::utils::Bytes;
-    /// 
-    /// let bytes: Bytes<16> = "Hello".into();
-    /// println!("{}", bytes); // Prints "Hello"
+    ///
+    /// let short = Bytes::<4>::from("Hi");
+    /// assert_eq!(short.0, [b'H', b'i', 0, 0]);
+    ///
+    /// let exact = Bytes::<5>::from("Hello");
+    /// assert_eq!(&exact.0, b"Hello");
+    ///
+    /// let long = Bytes::<3>::from("Hello");
+    /// assert_eq!(&long.0, b"Hel"); // truncated
     /// ```
     #[inline]
     fn from(s: &str) -> Self {
-        Self::from_str(s)
+        
+        let mut array = [0u8; SIZE];
+
+        let mut i = 0usize ;
+        for byte in s.as_bytes() {
+            if i >= SIZE {
+                break;
+            }
+            array[i] = *byte;
+            i += 1;
+        }
+
+        Self( array )
+    }
+}
+
+impl<'a, const SIZE: usize> From<&'a Bytes<SIZE>> for &'a str {
+    /// Converts a `Bytes<SIZE>` instance into a string slice reference.
+    ///
+    /// # Parameters
+    ///
+    /// * `bytes` - The `Bytes` instance to convert
+    ///
+    /// # Returns
+    ///
+    /// A reference to a string slice with lifetime tied to the input `Bytes` instance.
+    /// # Examples
+    ///
+    /// ```
+    /// use osal_rs::utils::Bytes;
+    ///
+    /// let bytes: Bytes<5> = "Hello".parse().unwrap();
+    /// let s: &str = (&bytes).into();
+    /// assert_eq!(s, "Hello");
+    /// ```
+    #[inline]
+    fn from(bytes: &'a Bytes<SIZE>) -> Self {
+        bytes.as_str()
+    }
+}
+
+impl<const SIZE: usize> From<Vec<u8>> for Bytes<SIZE> {
+
+    /// Creates a new `Bytes` instance from a `Vec<u8>`.
+    ///
+    /// Copies the bytes from the vector into the fixed-size array.
+    /// If the vector is shorter than `SIZE`, the remaining bytes are zero-filled.
+    /// If the vector is longer, it is truncated to fit.
+    ///
+    /// # Parameters
+    ///
+    /// * `vec` - The source vector to convert
+    ///
+    /// # Returns
+    ///
+    /// A `Bytes` instance containing the vector data.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use osal_rs::utils::Bytes;
+    ///
+    /// let short = Bytes::<4>::from(vec![1u8, 2]);
+    /// assert_eq!(short.0, [1, 2, 0, 0]);
+    ///
+    /// let exact = Bytes::<3>::from(vec![1u8, 2, 3]);
+    /// assert_eq!(exact.0, [1, 2, 3]);
+    ///
+    /// let long = Bytes::<2>::from(vec![1u8, 2, 3, 4]);
+    /// assert_eq!(long.0, [1, 2]); // truncated
+    /// ```
+    fn from(vec: Vec<u8>) -> Self {
+        let mut array = [0u8; SIZE];
+        let len = vec.len().min(SIZE);
+        array[..len].copy_from_slice(&vec[..len]);
+        Self(array)
+    }
+}
+
+impl<const SIZE: usize> From<&[u8]> for Bytes<SIZE> {
+
+    /// Creates a new `Bytes` instance from a byte slice.
+    ///
+    /// Copies the bytes from the slice into the fixed-size array.
+    /// If the slice is shorter than `SIZE`, the remaining bytes are zero-filled.
+    /// If the slice is longer, it is truncated to fit.
+    ///
+    /// # Parameters
+    ///
+    /// * `slice` - The source byte slice to convert
+    ///
+    /// # Returns
+    ///
+    /// A `Bytes` instance containing the slice data.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use osal_rs::utils::Bytes;
+    ///
+    /// let short = Bytes::<4>::from(&b"Hi"[..]);
+    /// assert_eq!(short.0, [b'H', b'i', 0, 0]);
+    ///
+    /// let exact = Bytes::<5>::from(&b"Hello"[..]);
+    /// assert_eq!(&exact.0, b"Hello");
+    ///
+    /// let long = Bytes::<3>::from(&b"Hello"[..]);
+    /// assert_eq!(&long.0, b"Hel"); // truncated
+    /// ```
+    fn from(slice: &[u8]) -> Self {
+        let mut array = [0u8; SIZE];
+        let len = slice.len().min(SIZE);
+        array[..len].copy_from_slice(&slice[..len]);
+        Self(array)
+    }
+}
+
+impl<'a, const SIZE: usize> From<&'a Bytes<SIZE>> for &'a [u8] {
+    /// Borrows the whole internal byte array of a `Bytes<SIZE>` as a slice.
+    ///
+    /// The returned slice always has length `SIZE`, trailing zero padding included.
+    ///
+    /// # Parameters
+    ///
+    /// * `bytes` - The `Bytes` instance to borrow
+    ///
+    /// # Returns
+    ///
+    /// A `&[u8]` view over the internal array, with the same lifetime as `bytes`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use osal_rs::utils::Bytes;
+    ///
+    /// let bytes = Bytes::<4>::from("Hi");
+    /// let slice: &[u8] = (&bytes).into();
+    /// assert_eq!(slice, &[b'H', b'i', 0, 0]);
+    /// assert_eq!(slice.len(), 4);
+    /// ```
+    #[inline]
+    fn from(bytes: &'a Bytes<SIZE>) -> Self {
+        &bytes.0
     }
 }
 
 impl<const SIZE: usize> Write for Bytes<SIZE> {
     /// Appends a string slice to the buffer, truncating if the content exceeds `SIZE`.
+    ///
+    /// This makes `Bytes` usable as a target for [`write!`] and [`writeln!`]
+    /// without any heap allocation. Truncation is silent: the call always
+    /// returns `Ok(())`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use core::fmt::Write;
+    /// use osal_rs::utils::Bytes;
+    ///
+    /// let mut buf = Bytes::<16>::from("T=");
+    /// write!(buf, "{}C", 21).unwrap();
+    /// assert_eq!(buf.as_str(), "T=21C");
+    ///
+    /// // Content beyond SIZE is dropped
+    /// let mut small = Bytes::<4>::new();
+    /// write!(small, "{}", 123456).unwrap();
+    /// assert_eq!(small.as_str(), "1234");
+    /// ```
     #[inline]
     fn write_str(&mut self, s: &str) -> core::fmt::Result {
         self.append_str(s);
@@ -830,6 +1129,18 @@ impl<const SIZE: usize> AsSyncStr for Bytes<SIZE> {
     /// # Returns
     ///
     /// A reference to a string slice with lifetime tied to `self`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use osal_rs::utils::{AsSyncStr, Bytes};
+    ///
+    /// fn describe(item: &impl AsSyncStr) -> usize {
+    ///     item.as_str().len()
+    /// }
+    ///
+    /// assert_eq!(describe(&Bytes::<16>::from("pump")), 4);
+    /// ```
     #[inline]
     fn as_str(&self) -> &str {
         self.as_str()
@@ -900,7 +1211,17 @@ impl<const SIZE: usize> Serialize for Bytes<SIZE> {
     ///
     /// # Returns
     ///
-    /// A reference to the internal byte array.
+    /// A reference to the internal byte array (all `SIZE` bytes, padding included).
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use osal_rs::os::Serialize;
+    /// use osal_rs::utils::Bytes;
+    ///
+    /// let bytes = Bytes::<4>::from("Hi");
+    /// assert_eq!(<Bytes<4> as Serialize>::to_bytes(&bytes), &[b'H', b'i', 0, 0]);
+    /// ```
     #[inline]
     fn to_bytes(&self) -> &[u8] {
         &self.0
@@ -1036,7 +1357,7 @@ impl<const SIZE: usize> From<Bytes<SIZE>> for Vec<u8> {
     /// ```
     /// use osal_rs::utils::Bytes;
     ///
-    /// let bytes = Bytes::<5>::from_str("Hello");
+    /// let bytes = Bytes::<5>::from("Hello");
     /// let vec = Vec::from(bytes);
     ///
     /// assert_eq!(vec, vec![b'H', b'e', b'l', b'l', b'o']);
@@ -1109,9 +1430,20 @@ impl<const SIZE: usize> Bytes<SIZE> {
 
     /// Creates a new `Bytes` instance from a string slice.
     ///
-    /// Copies the bytes from the input string into the fixed-size array.
-    /// If the string is shorter than `SIZE`, the remaining bytes are zero-filled.
-    /// If the string is longer, it is truncated to fit.
+    /// This method is deprecated. Use `Bytes::from` instead.
+    #[deprecated(since = "1.5.0", note = "Use `Bytes::from` instead")]
+    #[inline]
+    pub fn from_str(str: &str) -> Self {
+        Self::from(str)
+    }
+
+    /// Creates a new `Bytes` instance from a string slice, always keeping a
+    /// trailing `0` byte.
+    ///
+    /// Unlike the [`From<&str>`](#impl-From%3C%26str%3E-for-Bytes%3CSIZE%3E)
+    /// conversion, at most `SIZE - 1` bytes are copied, so the buffer is a valid
+    /// C string and [`as_cstr`](Self::as_cstr) never falls back to an empty
+    /// string. Use it for names and messages handed to C APIs.
     ///
     /// # Parameters
     ///
@@ -1119,36 +1451,24 @@ impl<const SIZE: usize> Bytes<SIZE> {
     ///
     /// # Returns
     ///
-    /// A `Bytes` instance containing the string data.
+    /// A `Bytes` instance containing at most `SIZE - 1` bytes of `str`,
+    /// followed by zeros.
     ///
     /// # Examples
     ///
     /// ```
     /// use osal_rs::utils::Bytes;
     ///
-    /// let short = Bytes::<16>::from_str("Hi");
-    /// // Internal array: [b'H', b'i', 0, 0, 0, ...]
+    /// let name = Bytes::<5>::from_str_with_nul("Hello");
+    /// assert_eq!(name.as_str(), "Hell");
+    /// assert_eq!(name.as_cstr().to_bytes(), b"Hell");
     ///
-    /// let exact = Bytes::<5>::from_str("Hello");
-    /// // Internal array: [b'H', b'e', b'l', b'l', b'o']
-    ///
-    /// let long = Bytes::<3>::from_str("Hello");
-    /// // Internal array: [b'H', b'e', b'l'] (truncated)
+    /// let short = Bytes::<16>::from_str_with_nul("Hi");
+    /// assert_eq!(short.as_str(), "Hi");
     /// ```
-    pub fn from_str(str: &str) -> Self {
-
-        let mut array = [0u8; SIZE];
-
-        let mut i = 0usize ;
-        for byte in str.as_bytes() {
-            if i > SIZE - 1{
-                break;
-            }
-            array[i] = *byte;
-            i += 1;
-        }
-
-        Self( array )
+    pub fn from_str_with_nul(str: &str) -> Self {
+        let len = str.len().min(SIZE.saturating_sub(1));
+        Self::from_bytes(&str.as_bytes()[..len])
     }
 
     /// Creates a new `Bytes` instance from a C string pointer.
@@ -1182,15 +1502,16 @@ impl<const SIZE: usize> Bytes<SIZE> {
     /// // From a CString
     /// let c_string = CString::new("Hello").unwrap();
     /// let bytes = Bytes::<16>::from_char_ptr(c_string.as_ptr());
+    /// assert_eq!(bytes.as_str(), "Hello");
     ///
-    /// // From a null pointer
+    /// // From a null pointer: returns zero-initialized Bytes
     /// let null_bytes = Bytes::<16>::from_char_ptr(core::ptr::null());
-    /// // Returns zero-initialized Bytes
+    /// assert!(null_bytes.is_empty());
     ///
-    /// // Truncation example
+    /// // Truncation: only the first 8 bytes are copied
     /// let long_string = CString::new("This is a very long string").unwrap();
     /// let short_bytes = Bytes::<8>::from_char_ptr(long_string.as_ptr());
-    /// // Only first 8 bytes are copied
+    /// assert_eq!(short_bytes.as_str(), "This is ");
     /// ```
     pub fn from_char_ptr(ptr: *const c_char) -> Self {
         if ptr.is_null() {
@@ -1201,7 +1522,7 @@ impl<const SIZE: usize> Bytes<SIZE> {
 
         let mut i = 0usize ;
         for byte in unsafe { CStr::from_ptr(ptr) }.to_bytes() {
-            if i > SIZE - 1{
+            if i >= SIZE {
                 break;
             }
             array[i] = *byte;
@@ -1214,7 +1535,10 @@ impl<const SIZE: usize> Bytes<SIZE> {
 
     /// Creates a new `Bytes` instance from a C unsigned char pointer.
     /// 
-    /// Safely converts a pointer to an array of unsigned chars into a `Bytes` instance. If the pointer is null, returns a zero-initialized `Bytes`. The function copies bytes from the source pointer into the fixed-size array, truncating if the source is longer than `SIZE`.
+    /// Converts a pointer to an array of unsigned chars into a `Bytes` instance. If the pointer is null, returns a zero-initialized `Bytes`.
+    ///
+    /// Unlike [`from_char_ptr`](Self::from_char_ptr), this function does **not** stop at a
+    /// null terminator: it always reads exactly `SIZE` bytes from `ptr`.
     /// 
     /// # Parameters
     /// * `ptr` - A pointer to an array of unsigned chars (`*const c_uchar`)
@@ -1231,18 +1555,19 @@ impl<const SIZE: usize> Bytes<SIZE> {
     /// ```
     /// use osal_rs::utils::Bytes;
     ///
-    /// // From a C unsigned char pointer
-    /// let data = [b'H', b'e', b'l', b'l', b'o', 0];
-    /// let bytes = Bytes::<16>::from_uchar_ptr(data.as_ptr());
-    /// 
-    /// // From a null pointer
-    /// let null_bytes = Bytes::<16>::from_uchar_ptr(core::ptr::null());  
-    /// // Returns zero-initialized Bytes
-    /// 
-    /// // Truncation example
-    /// let long_data = [b'T', b'h', b'i', b's', b' ', b'i', b's', b' ', b'v', b'e', b'r', b'y', b' ', b'l', b'o', b'n', b'g', 0];
+    /// // From a C unsigned char pointer: the source must hold at least SIZE bytes
+    /// let data = *b"Hello\0\0\0";
+    /// let bytes = Bytes::<8>::from_uchar_ptr(data.as_ptr());
+    /// assert_eq!(bytes.as_str(), "Hello");
+    ///
+    /// // From a null pointer: returns zero-initialized Bytes
+    /// let null_bytes = Bytes::<16>::from_uchar_ptr(core::ptr::null());
+    /// assert!(null_bytes.is_empty());
+    ///
+    /// // Truncation: only the first 8 bytes are copied
+    /// let long_data = *b"This is very long\0";
     /// let short_bytes = Bytes::<8>::from_uchar_ptr(long_data.as_ptr());
-    /// // Only first 8 bytes are copied
+    /// assert_eq!(&short_bytes.0, b"This is ");
     /// ```
     pub fn from_uchar_ptr(ptr: *const c_uchar) -> Self {
         if ptr.is_null() {
@@ -1253,7 +1578,7 @@ impl<const SIZE: usize> Bytes<SIZE> {
 
         let mut i = 0usize ;
         for byte in unsafe { core::slice::from_raw_parts(ptr, SIZE) } {
-            if i > SIZE - 1{
+            if i >= SIZE {
                 break;
             }
             array[i] = *byte;
@@ -1265,8 +1590,9 @@ impl<const SIZE: usize> Bytes<SIZE> {
 
     /// Creates a new `Bytes` instance from any type implementing `ToString`.
     ///
-    /// This is a convenience wrapper around [`from_str`](Self::from_str)
-    /// that first converts the input to a string.
+    /// This is a convenience wrapper around the [`From<&str>`](#impl-From%3C%26str%3E-for-Bytes%3CSIZE%3E)
+    /// conversion that first converts the input to a string. Despite the name,
+    /// the input only needs `ToString` (e.g. via `Display`), not [`AsSyncStr`].
     ///
     /// # Parameters
     ///
@@ -1283,24 +1609,26 @@ impl<const SIZE: usize> Bytes<SIZE> {
     ///
     /// // From integer
     /// let num_bytes = Bytes::<8>::from_as_sync_str(&42);
+    /// assert_eq!(num_bytes.as_str(), "42");
     ///
     /// // From String
     /// let string = String::from("Task");
     /// let str_bytes = Bytes::<16>::from_as_sync_str(&string);
+    /// assert_eq!(str_bytes.as_str(), "Task");
     ///
-    /// // From custom type with ToString
-    /// #[derive(Debug)]
+    /// // From custom type implementing Display (and therefore ToString)
     /// struct TaskId(u32);
-    /// impl ToString for TaskId {
-    ///     fn to_string(&self) -> String {
-    ///         format!("Task-{}", self.0)
+    /// impl core::fmt::Display for TaskId {
+    ///     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+    ///         write!(f, "Task-{}", self.0)
     ///     }
     /// }
     /// let task_bytes = Bytes::<16>::from_as_sync_str(&TaskId(5));
+    /// assert_eq!(task_bytes.as_str(), "Task-5");
     /// ```
     #[inline]
     pub fn from_as_sync_str(str: &impl ToString) -> Self {
-        Self::from_str(&str.to_string())
+        Self::from(str.to_string().as_str())
     }
 
     /// Creates a new `Bytes` instance from a byte slice.
@@ -1317,9 +1645,12 @@ impl<const SIZE: usize> Bytes<SIZE> {
     /// ```
     /// use osal_rs::utils::Bytes;
     /// 
-    /// let data = b"Hello";
-    /// let bytes = Bytes::<16>::from_bytes(data);
-    /// // Result: [b'H', b'e', b'l', b'l', b'o', 0, 0, 0, ...]
+    /// let bytes = Bytes::<8>::from_bytes(b"Hello");
+    /// assert_eq!(&bytes.0, b"Hello\0\0\0");
+    ///
+    /// // Truncation
+    /// let short = Bytes::<2>::from_bytes(b"Hello");
+    /// assert_eq!(&short.0, b"He");
     /// ```
     pub fn from_bytes(bytes: &[u8]) -> Self {
         let mut array = [0u8; SIZE];
@@ -1347,7 +1678,7 @@ impl<const SIZE: usize> Bytes<SIZE> {
     /// ```
     /// use osal_rs::utils::Bytes;
     ///
-    /// let mut bytes = Bytes::<16>::from_str("Hello World");
+    /// let mut bytes = Bytes::<16>::from("Hello World");
     ///
     /// let mut output = String::from("                "); // 16 spaces
     /// bytes.fill_str(output.as_mut_str());
@@ -1381,7 +1712,8 @@ impl<const SIZE: usize> Bytes<SIZE> {
     /// - If not null, the pointer points to a valid null-terminated C string
     /// - The memory the pointer references remains valid for the duration of the call
     ///
-    /// - The byte array can be safely interpreted as UTF-8 if the conversion is expected to succeed. If the byte array contains invalid UTF-8, the resulting `Bytes` instance will contain the raw bytes, and the `Display` implementation will show "Conversion error" when attempting to display it as a string.
+    /// The bytes are copied as-is: invalid UTF-8 is not rejected, but
+    /// [`as_str`](Self::as_str) and `Display` will then return an error message instead of the content.
     ///
     /// # Returns
     ///
@@ -1396,15 +1728,16 @@ impl<const SIZE: usize> Bytes<SIZE> {
     /// // From a CString
     /// let c_string = CString::new("Hello").unwrap();
     /// let bytes = Bytes::<16>::from_cstr(c_string.as_ptr());
+    /// assert_eq!(bytes.as_str(), "Hello");
     ///
-    /// // From a null pointer
+    /// // From a null pointer: returns zero-initialized Bytes
     /// let null_bytes = Bytes::<16>::from_cstr(core::ptr::null());
-    /// // Returns zero-initialized Bytes
+    /// assert!(null_bytes.is_empty());
     ///
-    /// // Truncation example
+    /// // Truncation: only the first 8 bytes are copied
     /// let long_string = CString::new("This is a very long string").unwrap();
     /// let short_bytes = Bytes::<8>::from_cstr(long_string.as_ptr());
-    /// // Only first 8 bytes are copied
+    /// assert_eq!(short_bytes.as_str(), "This is ");
     /// ```
     #[inline]
     pub fn from_cstr(str: *const c_char) -> Self {
@@ -1421,40 +1754,37 @@ impl<const SIZE: usize> Bytes<SIZE> {
     /// a null-terminated C string. This is useful for passing strings to C FFI
     /// functions that expect `*const c_char` or `&CStr`.
     ///
-    /// # Safety
-    ///
-    /// This method assumes the byte array is already null-terminated. All
-    /// constructors (`new()`, `from_str()`, `from_char_ptr()`, etc.) guarantee
-    /// this property by initializing with `[0u8; SIZE]`.
-    ///
-    /// However, if you've manually modified the array via `DerefMut`,
-    /// you must ensure the last byte remains 0.
+    /// A `CStr` must end with a `0` byte, which a buffer filled up to `SIZE`
+    /// bytes (e.g. `Bytes::<5>::from("Hello")`, or after writes via `DerefMut`)
+    /// does not have. In that case an empty `CStr` is returned. Build buffers
+    /// meant for C with [`from_str_with_nul`](Self::from_str_with_nul), or call
+    /// [`as_cstr_mut`](Self::as_cstr_mut), to always keep room for the terminator.
     ///
     /// # Returns
     ///
-    /// A reference to a `CStr` with lifetime tied to `self`.
+    /// A reference to a `CStr` with lifetime tied to `self`, or an empty `CStr`
+    /// if the buffer contains no `0` byte.
     ///
     /// # Examples
     ///
-    /// ```no_run
+    /// ```
     /// use osal_rs::utils::Bytes;
     ///
-    /// let bytes = Bytes::<16>::from_str("Hello");
+    /// let bytes = Bytes::<16>::from("Hello");
     /// let c_str = bytes.as_cstr();
+    /// assert_eq!(c_str.to_bytes(), b"Hello");
     ///
-    /// unsafe extern "C" {
-    ///     fn print_string(s: *const core::ffi::c_char);
-    /// }
+    /// // Pass it to a C function expecting `const char*`
+    /// let ptr: *const core::ffi::c_char = c_str.as_ptr();
+    /// assert!(!ptr.is_null());
     ///
-    /// unsafe {
-    ///     print_string(c_str.as_ptr());
-    /// }
+    /// // No terminator: empty string instead of reading past the buffer
+    /// let full = Bytes::<5>::from("Hello");
+    /// assert!(full.as_cstr().is_empty());
     /// ```
     #[inline]
     pub fn as_cstr(&self) -> &CStr {
-        unsafe {
-            CStr::from_ptr(self.0.as_ptr() as *const c_char)
-        }
+        CStr::from_bytes_until_nul(&self.0).unwrap_or(c"")
     }
 
     /// Converts the byte array to a C string reference, ensuring null-termination.
@@ -1462,6 +1792,9 @@ impl<const SIZE: usize> Bytes<SIZE> {
     /// This is a safer version of `as_cstr()` that explicitly guarantees
     /// null-termination by modifying the last byte. Use this if you've
     /// manually modified the array and want to ensure it's null-terminated.
+    ///
+    /// Note that on a completely filled buffer the last content byte is
+    /// overwritten with `0`, so the resulting string is one byte shorter.
     ///
     /// # Returns
     ///
@@ -1477,13 +1810,18 @@ impl<const SIZE: usize> Bytes<SIZE> {
     /// bytes[1] = b'i';
     /// // After manual modification, ensure null-termination
     /// let c_str = bytes.as_cstr_mut();
+    /// assert_eq!(c_str.to_bytes(), b"Hi");
+    ///
+    /// // A full buffer loses its last byte
+    /// let mut full = Bytes::<5>::from("Hello");
+    /// assert_eq!(full.as_cstr_mut().to_bytes(), b"Hell");
     /// ```
     #[inline]
     pub fn as_cstr_mut(&mut self) -> &CStr {
-        unsafe {
-            self.0[SIZE - 1] = 0; // Ensure null-termination
-            CStr::from_ptr(self.0.as_ptr() as *const c_char)
+        if let Some(last) = self.0.last_mut() {
+            *last = 0;
         }
+        self.as_cstr()
     }
 
     /// Appends a string slice to the existing content in the `Bytes` buffer.
@@ -1502,12 +1840,12 @@ impl<const SIZE: usize> Bytes<SIZE> {
     /// ```
     /// use osal_rs::utils::Bytes;
     ///
-    /// let mut bytes = Bytes::<16>::from_str("Hello");
+    /// let mut bytes = Bytes::<16>::from("Hello");
     /// bytes.append_str(" World");
     /// assert_eq!(bytes.as_str(), "Hello World");
     ///
     /// // Truncation when exceeding buffer size
-    /// let mut small_bytes = Bytes::<8>::from_str("Hi");
+    /// let mut small_bytes = Bytes::<8>::from("Hi");
     /// small_bytes.append_str(" there friend");
     /// assert_eq!(small_bytes.as_str(), "Hi there");
     /// ```
@@ -1515,7 +1853,7 @@ impl<const SIZE: usize> Bytes<SIZE> {
         let current_len = self.0.iter().position(|&b| b == 0).unwrap_or(SIZE);
         let mut i = current_len;
         for byte in str.as_bytes() {
-            if i > SIZE - 1{
+            if i >= SIZE {
                 break;
             }
             self.0[i] = *byte;
@@ -1539,8 +1877,8 @@ impl<const SIZE: usize> Bytes<SIZE> {
     /// ```
     /// use osal_rs::utils::Bytes;
     ///
-    /// let mut bytes = Bytes::<16>::from_str("Hello");
-    /// let other_bytes = Bytes::<8>::from_str(" World");
+    /// let mut bytes = Bytes::<16>::from("Hello");
+    /// let other_bytes = Bytes::<8>::from(" World");
     /// bytes.append_as_sync_str(&other_bytes);
     /// assert_eq!(bytes.as_str(), "Hello World");
     /// ```
@@ -1548,7 +1886,7 @@ impl<const SIZE: usize> Bytes<SIZE> {
         let current_len = self.0.iter().position(|&b| b == 0).unwrap_or(SIZE);
         let mut i = current_len;
         for byte in c_str.as_str().as_bytes() {
-            if i > SIZE - 1{
+            if i >= SIZE {
                 break;
             }
             self.0[i] = *byte;
@@ -1572,12 +1910,12 @@ impl<const SIZE: usize> Bytes<SIZE> {
     /// ```
     /// use osal_rs::utils::Bytes;
     ///
-    /// let mut bytes = Bytes::<16>::from_str("Hello");
+    /// let mut bytes = Bytes::<16>::from("Hello");
     /// bytes.append_bytes(b" World");
     /// assert_eq!(bytes.as_str(), "Hello World");
     ///
     /// // Appending arbitrary bytes
-    /// let mut data = Bytes::<16>::from_str("Data: ");
+    /// let mut data = Bytes::<16>::from("Data: ");
     /// data.append_bytes(&[0x41, 0x42, 0x43]);
     /// assert_eq!(data.as_str(), "Data: ABC");
     /// ```
@@ -1585,7 +1923,7 @@ impl<const SIZE: usize> Bytes<SIZE> {
         let current_len = self.0.iter().position(|&b| b == 0).unwrap_or(SIZE);
         let mut i = current_len;
         for byte in bytes {
-            if i > SIZE - 1{
+            if i >= SIZE {
                 break;
             }
             self.0[i] = *byte;
@@ -1596,7 +1934,7 @@ impl<const SIZE: usize> Bytes<SIZE> {
     /// Appends the content of another `Bytes` instance to this buffer.
     ///
     /// This method allows appending content from a `Bytes` instance of a different
-    /// size (specified by the generic parameter `OHTER_SIZE`). The method finds the
+    /// size (specified by the generic parameter `OTHER_SIZE`). The method finds the
     /// current end of the content (first null byte) and appends the content from the
     /// other `Bytes` instance. If the buffer is already full or if the appended content
     /// would exceed the buffer size, the content is truncated to fit within the `SIZE` limit.
@@ -1614,14 +1952,14 @@ impl<const SIZE: usize> Bytes<SIZE> {
     /// ```
     /// use osal_rs::utils::Bytes;
     ///
-    /// let mut bytes = Bytes::<16>::from_str("Hello");
-    /// let other = Bytes::<8>::from_str(" World");
+    /// let mut bytes = Bytes::<16>::from("Hello");
+    /// let other = Bytes::<8>::from(" World");
     /// bytes.append(&other);
     /// assert_eq!(bytes.as_str(), "Hello World");
     ///
     /// // Appending from a larger buffer
-    /// let mut small = Bytes::<8>::from_str("Hi");
-    /// let large = Bytes::<32>::from_str(" there friend");
+    /// let mut small = Bytes::<8>::from("Hi");
+    /// let large = Bytes::<32>::from(" there friend");
     /// small.append(&large);
     /// assert_eq!(small.as_str(), "Hi there");
     /// ```
@@ -1629,7 +1967,7 @@ impl<const SIZE: usize> Bytes<SIZE> {
         let current_len = self.0.iter().position(|&b| b == 0).unwrap_or(SIZE);
         let mut i = current_len;
         for &byte in other.0.iter() {
-            if i > SIZE - 1{
+            if i >= SIZE {
                 break;
             }
             self.0[i] = byte;
@@ -1653,12 +1991,12 @@ impl<const SIZE: usize> Bytes<SIZE> {
     /// ```
     /// use osal_rs::utils::Bytes;
     ///
-    /// let mut bytes = Bytes::<16>::from_str("World");
+    /// let mut bytes = Bytes::<16>::from("World");
     /// bytes.prepend_str("Hello ");
     /// assert_eq!(bytes.as_str(), "Hello World");
     ///
     /// // Truncation when exceeding buffer size
-    /// let mut small = Bytes::<8>::from_str("World");
+    /// let mut small = Bytes::<8>::from("World");
     /// small.prepend_str("Hello ");
     /// assert_eq!(small.as_str(), "Hello Wo");
     /// ```
@@ -1692,8 +2030,8 @@ impl<const SIZE: usize> Bytes<SIZE> {
     /// ```
     /// use osal_rs::utils::Bytes;
     ///
-    /// let mut bytes = Bytes::<16>::from_str("World");
-    /// let prefix = Bytes::<8>::from_str("Hello ");
+    /// let mut bytes = Bytes::<16>::from("World");
+    /// let prefix = Bytes::<8>::from("Hello ");
     /// bytes.prepend_as_sync_str(&prefix);
     /// assert_eq!(bytes.as_str(), "Hello World");
     /// ```
@@ -1716,12 +2054,12 @@ impl<const SIZE: usize> Bytes<SIZE> {
     /// ```
     /// use osal_rs::utils::Bytes;
     ///
-    /// let mut bytes = Bytes::<16>::from_str("World");
+    /// let mut bytes = Bytes::<16>::from("World");
     /// bytes.prepend_bytes(b"Hello ");
     /// assert_eq!(bytes.as_str(), "Hello World");
     ///
     /// // Prepending arbitrary bytes
-    /// let mut data = Bytes::<16>::from_str("BC");
+    /// let mut data = Bytes::<16>::from("BC");
     /// data.prepend_bytes(&[0x41]); // 'A'
     /// assert_eq!(data.as_str(), "ABC");
     /// ```
@@ -1759,14 +2097,14 @@ impl<const SIZE: usize> Bytes<SIZE> {
     /// ```
     /// use osal_rs::utils::Bytes;
     ///
-    /// let mut bytes = Bytes::<16>::from_str("World");
-    /// let prefix = Bytes::<8>::from_str("Hello ");
+    /// let mut bytes = Bytes::<16>::from("World");
+    /// let prefix = Bytes::<8>::from("Hello ");
     /// bytes.prepend(&prefix);
     /// assert_eq!(bytes.as_str(), "Hello World");
     ///
     /// // Prepending from a larger buffer with truncation
-    /// let mut small = Bytes::<8>::from_str("end");
-    /// let large = Bytes::<32>::from_str("begin_");
+    /// let mut small = Bytes::<8>::from("end");
+    /// let large = Bytes::<32>::from("begin_");
     /// small.prepend(&large);
     /// assert_eq!(small.as_str(), "begin_en");
     /// ```
@@ -1786,7 +2124,7 @@ impl<const SIZE: usize> Bytes<SIZE> {
     /// ```
     /// use osal_rs::utils::Bytes;
     ///
-    /// let mut bytes = Bytes::<16>::from_str("Hello");
+    /// let mut bytes = Bytes::<16>::from("Hello");
     /// assert!(!bytes.is_empty());
     ///
     /// bytes.clear();
@@ -1815,7 +2153,7 @@ impl<const SIZE: usize> Bytes<SIZE> {
     /// ```
     /// use osal_rs::utils::Bytes;
     ///
-    /// let bytes = Bytes::<16>::from_str("Hello");
+    /// let bytes = Bytes::<16>::from("Hello");
     /// assert_eq!(bytes.len(), 5);
     ///
     /// let empty = Bytes::<16>::new();
@@ -1845,13 +2183,13 @@ impl<const SIZE: usize> Bytes<SIZE> {
     /// ```
     /// use osal_rs::utils::Bytes;
     /// 
-    /// let bytes = Bytes::<16>::from_str("Hello");
+    /// let bytes = Bytes::<16>::from("Hello");
     /// assert_eq!(bytes.as_raw_bytes(), b"Hello");
     /// 
     /// let empty = Bytes::<16>::new();
     /// assert_eq!(empty.as_raw_bytes(), b"");
     /// 
-    /// let full = Bytes::<4>::from_str("ABCD");
+    /// let full = Bytes::<4>::from("ABCD");
     /// assert_eq!(full.as_raw_bytes(), b"ABCD");
     /// ``` 
     #[inline]
@@ -1884,7 +2222,7 @@ impl<const SIZE: usize> Bytes<SIZE> {
     /// ```
     /// use osal_rs::utils::Bytes;
     ///
-    /// let bytes = Bytes::<16>::from_str("Hello");
+    /// let bytes = Bytes::<16>::from("Hello");
     ///
     /// // No type annotation needed.
     /// let vec = bytes.into_vec();
@@ -1905,7 +2243,7 @@ impl<const SIZE: usize> Bytes<SIZE> {
     /// ```
     /// use osal_rs::utils::Bytes;
     ///
-    /// assert_eq!(Bytes::<5>::from_str("Hello").into_vec().len(), 5);
+    /// assert_eq!(Bytes::<5>::from("Hello").into_vec().len(), 5);
     /// assert!(Bytes::<8>::new().into_vec().is_empty());
     /// ```
     #[inline]
@@ -1928,7 +2266,7 @@ impl<const SIZE: usize> Bytes<SIZE> {
     /// let bytes = Bytes::<32>::new();
     /// assert_eq!(bytes.size(), 32);
     /// 
-    /// let other = Bytes::<128>::from_str("Hello");
+    /// let other = Bytes::<128>::from("Hello");
     /// assert_eq!(other.size(), 128);
     /// ```
     #[inline]
@@ -1953,10 +2291,10 @@ impl<const SIZE: usize> Bytes<SIZE> {
     /// let empty = Bytes::<16>::new();
     /// assert!(empty.is_empty());
     ///
-    /// let bytes = Bytes::<16>::from_str("Hello");
+    /// let bytes = Bytes::<16>::from("Hello");
     /// assert!(!bytes.is_empty());
     ///
-    /// let mut cleared = Bytes::<16>::from_str("Test");
+    /// let mut cleared = Bytes::<16>::from("Test");
     /// cleared.clear();
     /// assert!(cleared.is_empty());
     /// ```
@@ -1983,7 +2321,7 @@ impl<const SIZE: usize> Bytes<SIZE> {
     /// let bytes = Bytes::<32>::new();
     /// assert_eq!(bytes.capacity(), 32);
     ///
-    /// let other = Bytes::<128>::from_str("Hello");
+    /// let other = Bytes::<128>::from("Hello");
     /// assert_eq!(other.capacity(), 128);
     /// ```
     #[inline]
@@ -2022,27 +2360,27 @@ impl<const SIZE: usize> Bytes<SIZE> {
     /// use osal_rs::utils::Bytes;
     ///
     /// // Same length replacement
-    /// let mut bytes = Bytes::<16>::from_str("Hello World");
+    /// let mut bytes = Bytes::<16>::from("Hello World");
     /// bytes.replace(b"World", b"Rust!").unwrap();
     /// assert_eq!(bytes.as_str(), "Hello Rust!");
     ///
     /// // Shorter replacement
-    /// let mut bytes2 = Bytes::<16>::from_str("aabbcc");
+    /// let mut bytes2 = Bytes::<16>::from("aabbcc");
     /// bytes2.replace(b"bb", b"X").unwrap();
     /// assert_eq!(bytes2.as_str(), "aaXcc");
     ///
     /// // Longer replacement
-    /// let mut bytes3 = Bytes::<16>::from_str("Hi");
+    /// let mut bytes3 = Bytes::<16>::from("Hi");
     /// bytes3.replace(b"Hi", b"Hello").unwrap();
     /// assert_eq!(bytes3.as_str(), "Hello");
     ///
     /// // Multiple occurrences
-    /// let mut bytes4 = Bytes::<32>::from_str("foo bar foo");
+    /// let mut bytes4 = Bytes::<32>::from("foo bar foo");
     /// bytes4.replace(b"foo", b"baz").unwrap();
     /// assert_eq!(bytes4.as_str(), "baz bar baz");
     ///
     /// // Buffer overflow error
-    /// let mut small = Bytes::<8>::from_str("Hello");
+    /// let mut small = Bytes::<8>::from("Hello");
     /// assert!(small.replace(b"Hello", b"Hello World").is_err());
     /// ```
     pub fn replace(&mut self, find: &[u8], replace: &[u8]) -> Result<()> {
@@ -2115,7 +2453,7 @@ impl<const SIZE: usize> Bytes<SIZE> {
     /// ```
     /// use osal_rs::utils::Bytes;
     ///
-    /// let bytes = Bytes::<8>::from_str("example");
+    /// let bytes = Bytes::<8>::from("example");
     /// let byte_slice = bytes.to_bytes();
     /// assert_eq!(byte_slice, b"example\0");
     /// ```
@@ -2138,7 +2476,7 @@ impl<const SIZE: usize> Bytes<SIZE> {
     /// ```
     /// use osal_rs::utils::Bytes;
     ///
-    /// let mut bytes = Bytes::<16>::from_str("Hello");
+    /// let mut bytes = Bytes::<16>::from("Hello");
     /// assert_eq!(bytes.pop(), Some(b'o'));
     /// assert_eq!(bytes.as_str(), "Hell");
     /// 
@@ -2174,11 +2512,15 @@ impl<const SIZE: usize> Bytes<SIZE> {
     /// # Examples
     ///
     /// ```
-    /// use osal_rs::utils::Bytes;
+    /// use osal_rs::utils::{Bytes, Error};
     ///
-    /// let mut bytes = Bytes::<16>::from_str("Hello");
+    /// let mut bytes = Bytes::<16>::from("Hello");
     /// assert_eq!(bytes.push(b'!'), Ok(()));
     /// assert_eq!(bytes.as_str(), "Hello!");
+    ///
+    /// // A full buffer rejects the byte
+    /// let mut full = Bytes::<2>::from("Hi");
+    /// assert_eq!(full.push(b'!'), Err(Error::StringConversionError));
     /// ```
     pub fn push(&mut self, byte: u8) -> Result<()> {
         let len = self.len();
@@ -2193,18 +2535,21 @@ impl<const SIZE: usize> Bytes<SIZE> {
     /// Pops the last byte from the buffer and returns it as a character.
     ///
     /// This method removes the last byte of content (before the first null terminator)
-    /// and attempts to convert it to a `char`. If the buffer is empty or if the byte cannot be converted to a valid `char`, it returns `None`. After popping, the last byte is set to zero to maintain the null-terminated property.
+    /// and converts it to a `char`. Every byte maps to the Unicode code point with the same
+    /// value (Latin-1), so non-ASCII bytes do not fail: a multi-byte UTF-8 character is
+    /// popped one byte at a time. After popping, the last byte is set to zero to maintain
+    /// the null-terminated property.
     ///
     /// # Returns
     ///
-    /// * `Some(char)` - The last byte of content as a character if the buffer is not empty and the byte is a valid character
-    /// * `None` - If the buffer is empty or if the byte cannot be converted to a valid character
+    /// * `Some(char)` - The last byte of content as a character
+    /// * `None` - If the buffer is empty
     ///
     /// # Examples
     /// ```
     /// use osal_rs::utils::Bytes;
     ///
-    /// let mut bytes = Bytes::<16>::from_str("Hello");
+    /// let mut bytes = Bytes::<16>::from("Hello");
     /// assert_eq!(bytes.pop_char(), Some('o'));
     /// assert_eq!(bytes.as_str(), "Hell");
     /// 
@@ -2237,7 +2582,7 @@ impl<const SIZE: usize> Bytes<SIZE> {
     /// ```
     /// use osal_rs::utils::Bytes;
     ///
-    /// let mut bytes = Bytes::<16>::from_str("Hello");
+    /// let mut bytes = Bytes::<16>::from("Hello");
     /// assert_eq!(bytes.push_char('!'), Ok(()));
     /// assert_eq!(bytes.as_str(), "Hello!");
     /// 
@@ -2265,7 +2610,7 @@ impl<const SIZE: usize> Bytes<SIZE> {
     /// ```
     /// use osal_rs::utils::Bytes;
     ///
-    /// let valid_bytes = Bytes::<16>::from_str("Hello");
+    /// let valid_bytes = Bytes::<16>::from("Hello");
     /// assert!(valid_bytes.is_string());
     /// 
     /// let mut invalid_bytes = Bytes::<16>::new();
@@ -2279,10 +2624,28 @@ impl<const SIZE: usize> Bytes<SIZE> {
 
     /// Returns the buffer content as a UTF-8 string slice.
     ///
-    /// Interprets the byte array as a null-terminated C string and returns
-    /// a `&str`. If the bytes contain invalid UTF-8, returns `"Conversion error"`.
+    /// Returns the bytes up to the first `0` (or all `SIZE` bytes if there is
+    /// none) as a `&str`. If they contain invalid UTF-8, returns
+    /// `"Bytes::as_str() Conversion error - invalid UTF-8"`.
     ///
     /// This is an inherent method (no trait import required at the call site).
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use osal_rs::utils::Bytes;
+    ///
+    /// let bytes = Bytes::<16>::from("Hello");
+    /// assert_eq!(bytes.as_str(), "Hello");
+    ///
+    /// // A full buffer without terminator is still handled
+    /// let full = Bytes::<5>::from("Hello");
+    /// assert_eq!(full.as_str(), "Hello");
+    ///
+    /// let mut invalid = Bytes::<4>::new();
+    /// invalid[0] = 0xFF;
+    /// assert_eq!(invalid.as_str(), "Bytes::as_str() Conversion error - invalid UTF-8");
+    /// ```
     #[inline]
     pub fn as_str(&self) -> &str {
         from_utf8(self.as_raw_bytes()).unwrap_or("Bytes::as_str() Conversion error - invalid UTF-8")
@@ -2387,20 +2750,27 @@ pub fn bytes_to_hex(bytes: &[u8]) -> String {
 /// let written = bytes_to_hex_into_slice(data, &mut buffer);
 /// assert_eq!(written, 6);
 /// assert_eq!(&buffer, b"01abff");
-/// 
-/// // Will panic - buffer too small
-/// // let mut small = [0u8; 4];
-/// // bytes_to_hex_into_slice(data, &mut small);
+/// ```
+///
+/// A buffer that is too small panics:
+///
+/// ```should_panic
+/// use osal_rs::utils::bytes_to_hex_into_slice;
+///
+/// let mut small = [0u8; 4];
+/// bytes_to_hex_into_slice(&[0x01, 0xAB, 0xFF], &mut small);
 /// ```
 pub fn bytes_to_hex_into_slice(bytes: &[u8], output: &mut [u8]) -> usize {
+    const HEX_DIGITS: &[u8; 16] = b"0123456789abcdef";
+
     assert!(output.len() >= bytes.len() * 2, "Buffer too small for hex conversion");
     let mut i = 0;
     for &b in bytes {
-        let hex = format!("{:02x}", b);
-        output[i..i+2].copy_from_slice(hex.as_bytes());
+        output[i] = HEX_DIGITS[(b >> 4) as usize];
+        output[i + 1] = HEX_DIGITS[(b & 0x0F) as usize];
         i += 2;
     }
-    i 
+    i
 }
 
 /// Converts a hexadecimal string to a vector of bytes.
@@ -2441,9 +2811,13 @@ pub fn bytes_to_hex_into_slice(bytes: &[u8], output: &mut [u8]) -> usize {
 /// 
 /// // Invalid character - error
 /// assert!(hex_to_bytes("0G").is_err());
+///
+/// // Non-ASCII input - error, not a panic
+/// assert!(hex_to_bytes("é0").is_err());
 /// ```
 pub fn hex_to_bytes(hex: &str) -> Result<Vec<u8>> {
-    if hex.len() % 2 != 0 {
+    // Slicing by byte pairs below would panic inside a multi-byte character
+    if hex.len() % 2 != 0 || !hex.is_ascii() {
         return Err(Error::StringConversionError);
     }
 
@@ -2493,9 +2867,13 @@ pub fn hex_to_bytes(hex: &str) -> Result<Vec<u8>> {
 /// 
 /// // Odd length string
 /// assert!(hex_to_bytes_into_slice("ABC", &mut buffer).is_err());
+///
+/// // Non-ASCII input - error, not a panic
+/// assert!(hex_to_bytes_into_slice("é0", &mut buffer).is_err());
 /// ```
 pub fn hex_to_bytes_into_slice(hex: &str, output: &mut [u8]) -> Result<usize> {
-    if hex.len() % 2 != 0 || output.len() < hex.len() / 2 {
+    // Slicing by byte pairs below would panic inside a multi-byte character
+    if hex.len() % 2 != 0 || !hex.is_ascii() || output.len() < hex.len() / 2 {
         return Err(Error::StringConversionError);
     }
 

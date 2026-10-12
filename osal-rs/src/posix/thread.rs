@@ -526,7 +526,7 @@ impl Thread {
     pub fn new(name: &str, stack_depth: StackType, priority: UBaseType) -> Self {
         Self {
             handle: 0,
-            name: Bytes::from_str(name),
+            name: Bytes::from_str_with_nul(name),
             stack_depth,
             priority,
             callback: None,
@@ -554,7 +554,7 @@ impl Thread {
 
         Ok(Self {
             handle,
-            name: Bytes::from_str(name),
+            name: Bytes::from_str_with_nul(name),
             stack_depth,
             priority,
             callback: None,
@@ -635,7 +635,7 @@ impl Thread {
             },
             None => ThreadMetadata {
                 thread: handle,
-                name: Bytes::from_str("thread"),
+                name: Bytes::from_str_with_nul("thread"),
                 stack_depth: 0,
                 priority: 0,
                 thread_number: 0,
@@ -1124,7 +1124,7 @@ impl ThreadFn for Thread {
         // reason).
         Self {
             handle: unsafe { pthread_self() },
-            name: Bytes::from_str("current"),
+            name: Bytes::from_str_with_nul("current"),
             stack_depth: 0,
             priority: 0,
             callback: None,

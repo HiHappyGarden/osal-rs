@@ -220,7 +220,7 @@ impl Thread {
     {
         Self { 
             handle: null_mut(), 
-            name: Bytes::from_str(name),
+            name: Bytes::from_str_with_nul(name),
             stack_depth, 
             priority, 
             callback: None,
@@ -240,7 +240,7 @@ impl Thread {
         }
         Ok(Self { 
             handle, 
-            name: Bytes::from_str(name), 
+            name: Bytes::from_str_with_nul(name), 
             stack_depth, 
             priority, 
             callback: None,
@@ -270,7 +270,7 @@ impl Thread {
     {
         Self { 
             handle: null_mut(), 
-            name: Bytes::from_str(name), 
+            name: Bytes::from_str_with_nul(name), 
             stack_depth, 
             priority: priority.to_priority(), 
             callback: None,
@@ -307,7 +307,7 @@ impl Thread {
         }
         Ok(Self { 
             handle, 
-            name: Bytes::from_str(name),
+            name: Bytes::from_str_with_nul(name),
             stack_depth, 
             priority: priority.to_priority(), 
             callback: None,

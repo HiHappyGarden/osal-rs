@@ -402,7 +402,7 @@ pub fn print_args(args: core::fmt::Arguments<'_>) {
         buf.format(args);
         ffi::printf_on_uart(
             b"%s\0".as_ptr() as *const core::ffi::c_char,
-            buf.as_cstr().as_ptr(),
+            buf.as_cstr_mut().as_ptr(),
         );
     }
 }
@@ -649,7 +649,7 @@ pub fn sys_log(tag: &str, log_type: u8, to_print: &str) {
         {
             let mut buf = Bytes::<512>::new();
             buf.format(format_args!("{color}({millis}ms)[{tag}] {to_print}{color_reset}{RETURN}", millis=now.as_millis()));
-            printf_on_uart(b"%s\0".as_ptr() as *const c_char, buf.as_cstr().as_ptr());
+            printf_on_uart(b"%s\0".as_ptr() as *const c_char, buf.as_cstr_mut().as_ptr());
         }
 
         #[cfg(feature = "posix")]

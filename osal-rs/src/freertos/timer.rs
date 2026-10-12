@@ -214,9 +214,9 @@ struct TimerShared {
     /// The buffer whose address is handed to `xTimerCreate`, which *stores
     /// the pointer* instead of copying the string - so it has to live at a
     /// stable address for as long as the timer does, which is exactly the
-    /// lifetime of this block. `Bytes::from_str` zero-fills, so the name is
-    /// NUL-terminated unless it fills the buffer exactly, in which case it is
-    /// truncated to fit like every other name in this crate.
+    /// lifetime of this block. `Bytes::from_str_with_nul` always keeps a
+    /// trailing `0`, truncating names that would fill the buffer, like every
+    /// other name in this crate.
     name: Bytes<MAX_TASK_NAME_LEN>,
     /// Callback to run when the timer expires.
     callback: Option<Arc<TimerFnPtr>>,
@@ -612,7 +612,7 @@ impl Timer {
             // `xTimerCreate` keeps the name pointer it is given rather than
             // copying the string, so the name has to be NUL-terminated (a
             // `&str` is not) and live at an address that outlives the timer.
-            let name = Bytes::<MAX_TASK_NAME_LEN>::from_str(name);
+            let name = Bytes::<MAX_TASK_NAME_LEN>::from_str_with_nul(name);
 
             let shared = Arc::new(TimerShared {
                 handle: AtomicPtr::new(null_mut()),

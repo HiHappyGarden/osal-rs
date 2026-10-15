@@ -269,6 +269,11 @@ unsafe extern "C" {
     #[cfg(feature = "real_time")]
     pub(super) fn sched_get_priority_min(policy: c_int) -> c_int;
 
+    /// Highest priority valid for scheduling `policy` (`sched_get_priority_max(2)`):
+    /// 99 for `SCHED_FIFO` on Linux, 47 on macOS.
+    #[cfg(feature = "real_time")]
+    pub(super) fn sched_get_priority_max(policy: c_int) -> c_int;
+
     /// Create a new thread running `start_routine(arg)`, writing its ID to `thread`.
     pub(super) fn pthread_create(
         thread: *mut ThreadHandle,

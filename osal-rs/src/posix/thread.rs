@@ -57,7 +57,7 @@ use alloc::sync::Arc;
 use crate::os::{Mutex, MutexFn, MutexGuard, ThreadSimpleFnPtr};
 use crate::posix::config::TICK_PERIOD_MS;
 #[cfg(feature = "real_time")]
-use crate::posix::ffi::{EPERM, PTHREAD_EXPLICIT_SCHED, SCHED_FIFO, pthread_attr_setinheritsched, pthread_attr_setschedparam, pthread_attr_setschedpolicy, sched_param};
+use crate::posix::ffi::{EPERM, PTHREAD_EXPLICIT_SCHED, SCHED_FIFO, pthread_attr_setinheritsched, pthread_attr_setschedparam, pthread_attr_setschedpolicy, sched_get_priority_max, sched_get_priority_min, sched_param};
 use crate::posix::ffi::{
 	_SC_PAGESIZE, cond_init_monotonic, cond_timedwait_monotonic, monotonic_deadline, ETIMEDOUT, PTHREAD_ONCE_INIT, PTHREAD_STACK_MIN, pthread_attr_init, pthread_attr_setstacksize, pthread_attr_t,
 	pthread_cond_broadcast, pthread_cond_destroy, pthread_cond_t, pthread_cond_wait, pthread_create, pthread_detach, pthread_join, pthread_kill, pthread_once, pthread_once_t, pthread_self, resume_signal, set_current_thread_name, pthread_sigmask, SIG_BLOCK, SIG_SETMASK, sigaction, sigaddset, sigdelset, sigemptyset, sigfillset, sigset_t, signal,
@@ -476,7 +476,13 @@ impl Thread {
         #[cfg(feature = "real_time")]
         if real_time {
             unsafe {
-                let fifo_param = sched_param::new(self.priority as core::ffi::c_int);
+                // SCHED_FIFO only accepts priorities in [min, max] (1..=99 on
+                // Linux, 15..=47 on macOS): anything outside, e.g. the common
+                // 0, makes pthread_create fail with EINVAL, so clamp it.
+                let min = sched_get_priority_min(SCHED_FIFO);
+                let max = sched_get_priority_max(SCHED_FIFO);
+                let priority = (self.priority.min(c_int::MAX as UBaseType) as c_int).clamp(min, max.max(min));
+                let fifo_param = sched_param::new(priority);
                 pthread_attr_setinheritsched(&mut attr, PTHREAD_EXPLICIT_SCHED);
                 pthread_attr_setschedpolicy(&mut attr, SCHED_FIFO);
                 pthread_attr_setschedparam(&mut attr, &fifo_param);

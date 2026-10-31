@@ -86,10 +86,14 @@ use core::str::{FromStr, from_utf8, from_utf8_mut};
 use core::fmt::{Arguments, Debug, Display, Formatter, Write, write}; 
 use core::ops::{Deref, DerefMut};
 use core::time::Duration;
+use core::ptr::null_mut;
+use core::sync::atomic::{AtomicPtr, Ordering};
 
 use alloc::format;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
+use alloc::boxed::Box;
+
 
 #[cfg(not(feature = "serde"))]
 use crate::os::{Deserialize, Serialize};
@@ -2883,4 +2887,137 @@ pub fn hex_to_bytes_into_slice(hex: &str, output: &mut [u8]) -> Result<usize> {
     }
 
     Ok(hex.len() / 2)
+}
+
+/// Lazily initialized, lock-free, write-once cell for `static` items.
+///
+/// The value is built on first access by [`OnceBox::get_or_try_init`] and
+/// stored on the heap; after that every caller gets a shared reference to the
+/// same value for the lifetime of the cell. Unlike a mutex-based once-cell it
+/// never blocks: concurrent initializers may each build a value, exactly one
+/// is published and the others are dropped. This makes it safe to use from
+/// FreeRTOS tasks of different priorities, where waiting on a lower-priority
+/// initializer could deadlock.
+///
+/// Because of that race the initializer may run more than once, so it must
+/// not have side effects that rely on being executed only once (e.g. registering
+/// a callback or taking ownership of a hardware resource).
+///
+/// # Examples
+///
+/// ```
+/// use osal_rs::utils::{OnceBox, Result};
+/// use core::sync::atomic::{AtomicUsize, Ordering};
+///
+/// static COUNTER: OnceBox<AtomicUsize> = OnceBox::new();
+///
+/// fn counter() -> Result<&'static AtomicUsize> {
+///     COUNTER.get_or_try_init(|| Ok(AtomicUsize::new(0)))
+/// }
+///
+/// counter().unwrap().fetch_add(1, Ordering::Relaxed);
+/// assert_eq!(counter().unwrap().load(Ordering::Relaxed), 1);
+/// ```
+pub struct OnceBox<T> {
+    ptr: AtomicPtr<T>,
+}
+
+// SAFETY: sharing a `OnceBox` hands out `&T` to every thread and lets any of
+// them build (and possibly drop) a `T`, so `T` must be both `Send` and `Sync`.
+unsafe impl<T: Send + Sync> Sync for OnceBox<T> {}
+
+// SAFETY: moving a `OnceBox` moves ownership of the boxed `T`.
+unsafe impl<T: Send> Send for OnceBox<T> {}
+
+impl<T> OnceBox<T> {
+
+    /// Creates a new, uninitialized `OnceBox`.
+    ///
+    /// It is `const`, so it can be used to initialize a `static`; nothing is
+    /// allocated until the first [`get_or_try_init`](Self::get_or_try_init).
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use osal_rs::utils::OnceBox;
+    ///
+    /// static CELL: OnceBox<u32> = OnceBox::new();
+    /// ```
+    pub const fn new() -> Self {
+        Self { ptr: AtomicPtr::new(null_mut()) }
+    }
+
+    /// Returns the value if it has already been initialized, `None` otherwise.
+    ///
+    /// Never runs an initializer.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use osal_rs::utils::OnceBox;
+    ///
+    /// static CELL: OnceBox<u32> = OnceBox::new();
+    /// assert!(CELL.get().is_none());
+    /// ```
+    pub fn get(&self) -> Option<&T> {
+        let ptr = self.ptr.load(Ordering::Acquire);
+        // SAFETY: once published the pointer is never changed nor freed until drop
+        unsafe { ptr.as_ref() }
+    }
+
+    /// Returns the value, initializing it with `f` if the cell is still empty.
+    ///
+    /// If the cell is already initialized `f` is not called. Otherwise `f` is
+    /// run and its result is published, unless another thread published a
+    /// value first: in that case the freshly built value is dropped and the
+    /// published one is returned. `f` may therefore run on several threads at
+    /// once, but only one result is ever kept.
+    ///
+    /// # Errors
+    ///
+    /// Returns the error produced by `f`. The cell stays uninitialized, so a
+    /// later call can retry.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use osal_rs::utils::{Error, OnceBox};
+    ///
+    /// static CELL: OnceBox<u32> = OnceBox::new();
+    ///
+    /// assert!(CELL.get_or_try_init(|| Err(Error::Unhandled("not ready"))).is_err());
+    /// assert!(CELL.get().is_none());
+    ///
+    /// let value = CELL.get_or_try_init(|| Ok::<_, Error>(42)).unwrap();
+    /// assert_eq!(*value, 42);
+    /// ```
+    pub fn get_or_try_init<E>(&self, f: impl FnOnce() -> Result<T, E>) -> Result<&T, E> {
+        if let Some(value) = self.get() {
+            return Ok(value);
+        }
+
+        let new = Box::into_raw(Box::new(f()?));
+        match self.ptr.compare_exchange(null_mut(), new, Ordering::AcqRel, Ordering::Acquire) {
+            // SAFETY: we just published `new`
+            Ok(_) => Ok(unsafe { &*new }),
+            Err(winner) => {
+                // SAFETY: `new` was never shared, reclaim it; `winner` is the published value
+                drop(unsafe { Box::from_raw(new) });
+                Ok(unsafe { &*winner })
+            }
+        }
+    }
+}
+
+/// Drops the contained value, if any, and frees its allocation.
+///
+/// A `static` cell is never dropped, so its value lives for the whole program.
+impl<T> Drop for OnceBox<T> {
+    fn drop(&mut self) {
+        let ptr = *self.ptr.get_mut();
+        if !ptr.is_null() {
+            // SAFETY: `&mut self` means no reference handed out by `get` is alive
+            drop(unsafe { Box::from_raw(ptr) });
+        }
+    }
 }

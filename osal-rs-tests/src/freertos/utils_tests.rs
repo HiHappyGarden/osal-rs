@@ -18,7 +18,8 @@
  *
  ***************************************************************************/
 
-//! Tests for `osal_rs::utils` (`Bytes<SIZE>` and the hex helper functions).
+//! Tests for `osal_rs::utils` (`Bytes<SIZE>`, the hex helper functions and
+//! `OnceBox`).
 //! These are backend-independent (no FreeRTOS/POSIX calls), so the same
 //! content is duplicated in `osal-rs/tests/std_utils_tests.rs` - keep the two
 //! in sync. The `osal-rs-serde` round-trip at the end needs the
@@ -27,16 +28,21 @@
 extern crate alloc;
 
 use core::ptr::null;
+use core::sync::atomic::{AtomicUsize, Ordering};
+use core::time::Duration;
 
 use alloc::ffi::CString;
+use alloc::sync::Arc;
 use alloc::format;
 use alloc::string::String;
 use alloc::vec::Vec;
 
 use osal_rs::utils::{
     bytes_to_hex, bytes_to_hex_into_slice, hex_to_bytes, hex_to_bytes_into_slice,
-    register_bit_size, AsSyncStr, Bytes, CpuRegisterSize, Error, OsalRsBool, Result, MAX_DELAY,
+    register_bit_size, AsSyncStr, Bytes, CpuRegisterSize, Error, OnceBox, OsalRsBool, Result,
+    MAX_DELAY,
 };
+use osal_rs::os::*;
 use osal_rs::{log_debug, log_info};
 
 const TAG: &str = "UtilsTests";
@@ -923,6 +929,181 @@ pub fn test_hex_helpers_consistency() -> Result<()> {
     Ok(())
 }
 
+/// Counts how many values were built and how many were dropped, so the tests
+/// can check that `OnceBox` publishes exactly one and reclaims the losers.
+struct Tracked {
+    value: u32,
+    drops: &'static AtomicUsize,
+}
+
+impl Drop for Tracked {
+    fn drop(&mut self) {
+        self.drops.fetch_add(1, Ordering::SeqCst);
+    }
+}
+
+pub fn test_once_box_get_before_init() -> Result<()> {
+    log_info!(TAG, "Starting test_once_box_get_before_init");
+
+    let cell = OnceBox::<u32>::new();
+    assert!(cell.get().is_none());
+    assert!(cell.get().is_none());
+
+    log_info!(TAG, "test_once_box_get_before_init PASSED");
+    Ok(())
+}
+
+pub fn test_once_box_init_once() -> Result<()> {
+    log_info!(TAG, "Starting test_once_box_init_once");
+
+    let cell = OnceBox::<u32>::new();
+    let calls = AtomicUsize::new(0);
+
+    let first = cell.get_or_try_init(|| {
+        calls.fetch_add(1, Ordering::SeqCst);
+        Ok::<_, Error<'static>>(42)
+    })?;
+    assert_eq!(*first, 42);
+
+    // Already initialized: the closure must not run again and the same
+    // allocation is handed back.
+    let second = cell.get_or_try_init(|| {
+        calls.fetch_add(1, Ordering::SeqCst);
+        Ok::<_, Error<'static>>(7)
+    })?;
+    assert_eq!(*second, 42);
+    assert!(core::ptr::eq(first, second));
+    assert!(core::ptr::eq(first, cell.get().unwrap()));
+    assert_eq!(calls.load(Ordering::SeqCst), 1);
+
+    log_info!(TAG, "test_once_box_init_once PASSED");
+    Ok(())
+}
+
+pub fn test_once_box_init_error() -> Result<()> {
+    log_info!(TAG, "Starting test_once_box_init_error");
+
+    let cell = OnceBox::<u32>::new();
+
+    // A failing initializer propagates its error and publishes nothing.
+    let err = cell.get_or_try_init(|| Err(Error::Unhandled("init failed")));
+    assert!(matches!(err, Err(Error::Unhandled("init failed"))));
+    assert!(cell.get().is_none());
+
+    // A later attempt can still succeed.
+    assert_eq!(*cell.get_or_try_init(|| Ok::<_, Error<'static>>(5))?, 5);
+    assert_eq!(cell.get().copied(), Some(5));
+
+    log_info!(TAG, "test_once_box_init_error PASSED");
+    Ok(())
+}
+
+pub fn test_once_box_drop() -> Result<()> {
+    log_info!(TAG, "Starting test_once_box_drop");
+
+    static DROPS: AtomicUsize = AtomicUsize::new(0);
+    let drops = &DROPS;
+
+    // Dropping an uninitialized cell frees nothing.
+    drop(OnceBox::<Tracked>::new());
+    assert_eq!(drops.load(Ordering::SeqCst), 0);
+
+    // Dropping an initialized cell frees the value exactly once; a rejected
+    // second initializer never builds a value, so nothing extra is dropped.
+    {
+        let cell = OnceBox::<Tracked>::new();
+        let value = cell.get_or_try_init(|| {
+            Ok::<_, Error<'static>>(Tracked { value: 9, drops })
+        })?;
+        assert_eq!(value.value, 9);
+        let again = cell.get_or_try_init(|| {
+            Ok::<_, Error<'static>>(Tracked { value: 10, drops })
+        })?;
+        assert_eq!(again.value, 9);
+        assert_eq!(drops.load(Ordering::SeqCst), 0);
+    }
+    assert_eq!(drops.load(Ordering::SeqCst), 1);
+
+    log_info!(TAG, "test_once_box_drop PASSED");
+    Ok(())
+}
+
+pub fn test_once_box_static() -> Result<()> {
+    log_info!(TAG, "Starting test_once_box_static");
+
+    static CELL: OnceBox<AtomicUsize> = OnceBox::new();
+
+    let counter = CELL.get_or_try_init(|| Ok::<_, Error<'static>>(AtomicUsize::new(0)))?;
+    counter.fetch_add(3, Ordering::SeqCst);
+    assert_eq!(CELL.get().unwrap().load(Ordering::SeqCst), 3);
+
+    log_info!(TAG, "test_once_box_static PASSED");
+    Ok(())
+}
+
+/// Several threads race on the same `static` cell: every one of them must see
+/// the same published value, and every losing value must be dropped.
+pub fn test_once_box_concurrent_init() -> Result<()> {
+    log_info!(TAG, "Starting test_once_box_concurrent_init");
+
+    const THREADS: usize = 4;
+
+    static CELL: OnceBox<Tracked> = OnceBox::new();
+    static INITS: AtomicUsize = AtomicUsize::new(0);
+    static DONE: AtomicUsize = AtomicUsize::new(0);
+    static DROPS: AtomicUsize = AtomicUsize::new(0);
+    static SEEN: AtomicUsize = AtomicUsize::new(0);
+    static MISMATCH: AtomicUsize = AtomicUsize::new(0);
+
+
+    fn worker() {
+        let value = CELL
+            .get_or_try_init(|| {
+                let n = INITS.fetch_add(1, Ordering::SeqCst) as u32;
+                Ok::<_, Error<'static>>(Tracked { value: n, drops: &DROPS })
+            })
+            .unwrap();
+
+        // First thread to finish records the address, the others compare.
+        let addr = value as *const Tracked as usize;
+        if let Err(prev) = SEEN.compare_exchange(0, addr, Ordering::SeqCst, Ordering::SeqCst) {
+            if prev != addr {
+                MISMATCH.fetch_add(1, Ordering::SeqCst);
+            }
+        }
+        DONE.fetch_add(1, Ordering::SeqCst);
+    }
+
+    let mut spawned = Vec::new();
+    for i in 0..THREADS {
+        let mut thread = Thread::new(&format!("once_box_{}", i), 1024, 5);
+        spawned.push(thread.spawn(None, |_thread, param| {
+            worker();
+            Ok(param.unwrap_or_else(|| Arc::new(())))
+        })?);
+    }
+
+    let mut waited = 0;
+    while DONE.load(Ordering::SeqCst) < THREADS && waited < 100 {
+        System::delay(Duration::from_millis(10).to_ticks());
+        waited += 1;
+    }
+    for thread in spawned {
+        thread.delete();
+    }
+
+    let inits = INITS.load(Ordering::SeqCst);
+    log_debug!(TAG, "{} initializers ran for {} threads", inits, THREADS);
+    assert_eq!(DONE.load(Ordering::SeqCst), THREADS);
+    assert_eq!(MISMATCH.load(Ordering::SeqCst), 0);
+    assert!((1..=THREADS).contains(&inits));
+    assert_eq!(DROPS.load(Ordering::SeqCst), inits - 1);
+    assert_eq!(SEEN.load(Ordering::SeqCst), CELL.get().unwrap() as *const Tracked as usize);
+
+    log_info!(TAG, "test_once_box_concurrent_init PASSED");
+    Ok(())
+}
+
 /// `Bytes<SIZE>` implements `osal-rs-serde`'s `Serialize`/`Deserialize` when
 /// the `serde` feature is on (and the plain byte-slice `Serialize` from
 /// `osal_rs::traits` when it is off). These cover the former; the latter is
@@ -986,6 +1167,12 @@ pub fn run_all_tests() -> Result<()> {
     test_bytes_slice_and_vec_conversions()?;
     test_bytes_raw_pointer_semantics()?;
     test_hex_helpers_consistency()?;
+    test_once_box_get_before_init()?;
+    test_once_box_init_once()?;
+    test_once_box_init_error()?;
+    test_once_box_drop()?;
+    test_once_box_static()?;
+    test_once_box_concurrent_init()?;
     #[cfg(feature = "serde")]
     test_bytes_serde_round_trip()?;
     log_info!(TAG, "========== All Utils Tests PASSED ==========");

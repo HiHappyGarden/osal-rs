@@ -215,7 +215,8 @@ where
 ///
 /// The mutex is automatically unlocked when the guard goes out of scope,
 /// ensuring locks are always properly released even if a panic occurs.
-pub trait MutexGuard<'a, T: ?Sized + 'a> {
+pub trait MutexGuard<'a, T> 
+where T: ?Sized + 'a {
     /// Updates the value protected by the mutex guard.
     ///
     /// Clones the provided value and replaces the current value
@@ -288,7 +289,8 @@ pub trait MutexGuard<'a, T: ?Sized + 'a> {
 ///     assert_eq!(*guard, 1);
 /// } // Lock released here
 /// ```
-pub trait Mutex<T: ?Sized> {
+pub trait Mutex<T> 
+where T: ?Sized {
     /// The guard type for normal mutex locks
     type Guard<'a>: MutexGuard<'a, T> where Self: 'a, T: 'a;
     /// The guard type for ISR-context mutex locks
@@ -437,7 +439,8 @@ pub trait Mutex<T: ?Sized> {
 /// ```
 pub struct RawMutexGuard<M: RawMutex + 'static>(&'static M, bool);
 
-impl<M: RawMutex + 'static> RawMutexGuard<M> {
+impl<M> RawMutexGuard<M>
+where M: RawMutex + 'static {
     /// Locks `mutex` and returns a guard that unlocks it on drop.
     pub fn acquire(mutex: &'static M) -> Self {
         mutex.lock();
@@ -454,7 +457,8 @@ impl<M: RawMutex + 'static> RawMutexGuard<M> {
     }
 }
 
-impl<M: RawMutex + 'static> Drop for RawMutexGuard<M> {
+impl<M> Drop for RawMutexGuard<M> 
+where M: RawMutex + 'static {
     fn drop(&mut self) {
         if self.1 {
             self.0.unlock();

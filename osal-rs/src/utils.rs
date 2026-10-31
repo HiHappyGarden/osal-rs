@@ -2965,6 +2965,42 @@ impl<T> OnceBox<T> {
         unsafe { ptr.as_ref() }
     }
 
+    /// Returns a mutable reference to the value if it has already been
+    /// initialized, `None` otherwise.
+    ///
+    /// Never runs an initializer.
+    ///
+    /// Because this method takes `&mut self`, the borrow checker guarantees that
+    /// no other reference — shared or mutable — to the cell (and therefore to the
+    /// inner value) exists for the lifetime of the returned `&mut T`. This makes
+    /// it safe to mutate the value in place without interior-mutability wrappers.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use osal_rs::utils::OnceBox;
+    ///
+    /// let mut cell: OnceBox<u32> = OnceBox::new();
+    /// cell.set(7);
+    ///
+    /// *cell.get_mut().unwrap() += 1;
+    /// assert_eq!(*cell.get().unwrap(), 8);
+    /// ```
+    ///
+    /// Returns `None` when the cell is still empty:
+    ///
+    /// ```
+    /// use osal_rs::utils::OnceBox;
+    ///
+    /// let mut cell: OnceBox<u32> = OnceBox::new();
+    /// assert!(cell.get_mut().is_none());
+    /// ```
+    pub fn get_mut(&mut self) -> Option<&mut T> {
+        let ptr = self.ptr.load(Ordering::Acquire);
+        // SAFETY: once published the pointer is never changed nor freed until drop
+        unsafe { ptr.as_mut() }
+    }
+
     /// Returns the value, initializing it with `f` if the cell is still empty.
     ///
     /// If the cell is already initialized `f` is not called. Otherwise `f` is

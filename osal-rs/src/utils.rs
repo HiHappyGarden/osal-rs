@@ -3007,6 +3007,55 @@ impl<T> OnceBox<T> {
             }
         }
     }
+
+    /// Overwrites the cell with `t`, replacing any previously stored value.
+    ///
+    /// Because this method takes `&mut self`, it requires exclusive access to the
+    /// cell — no other reference (shared or mutable) can exist at the same time.
+    /// The old value, if any, is dropped before the call returns.
+    ///
+    /// This is useful when the cell is initialized during a single-threaded boot
+    /// phase (before any task or interrupt can observe it) and you want to avoid
+    /// the allocation and compare-exchange path of
+    /// [`get_or_try_init`](Self::get_or_try_init).
+    ///
+    /// # Panics
+    ///
+    /// Does not panic. Dropping the old value follows the same rules as any
+    /// `Drop` implementation; a panicking `Drop` propagates normally.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use osal_rs::utils::OnceBox;
+    ///
+    /// static CELL: OnceBox<u32> = OnceBox::new();
+    ///
+    /// // During single-threaded init, exclusive access is available.
+    /// CELL.set(42);
+    /// assert_eq!(*CELL.get().unwrap(), 42);
+    /// ```
+    ///
+    /// Replacing a value:
+    ///
+    /// ```
+    /// use osal_rs::utils::OnceBox;
+    ///
+    /// let mut cell: OnceBox<u32> = OnceBox::new();
+    /// cell.set(1);
+    /// cell.set(2);
+    /// assert_eq!(*cell.get().unwrap(), 2);
+    /// ```
+    pub fn swap(&mut self, t: T) {
+        let new = Box::into_raw(Box::new(t));
+        
+        let old = self.ptr.swap(new, Ordering::AcqRel);
+        if !old.is_null() {
+            // SAFETY: we have exclusive access, so no other references exist
+            drop(unsafe { Box::from_raw(old) });
+        }
+    }
+
 }
 
 /// Drops the contained value, if any, and frees its allocation.

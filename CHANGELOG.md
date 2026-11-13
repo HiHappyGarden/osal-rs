@@ -11,8 +11,25 @@ together.
 
 ## [Unreleased]
 
+## [1.5.0] - 2026-11-13
+
 ### Added
 
+- `utils::OnceBox<T>`: lock-free, write-once cell for `static` items, with a
+  `const fn new()`. `get_or_try_init` builds the value on first access and
+  never blocks: concurrent initializers may each build a value, only one is
+  published and the others are dropped (so the initializer must tolerate
+  running more than once). Safe across FreeRTOS tasks of different
+  priorities, where waiting on a lower-priority initializer could deadlock.
+  If the initializer fails the cell stays empty and a later call can retry.
+  `get` returns the value without initializing it.
+- `OnceBox::swap(&mut self, t)` replaces the stored value (dropping the old
+  one) without the allocation race of `get_or_try_init`, and
+  `OnceBox::get_mut` gives `&mut T` to an initialized value. Both need
+  exclusive access, so they work on owned cells, not on a plain `static`.
+- Tests, identical on FreeRTOS and POSIX: `OnceBox` before init, single
+  initialization, initializer error and retry, drop of the value, use as a
+  `static`, and concurrent initialization from several threads.
 - `QueueStreamed::new_from_type(size)` on both backends: the item size is
   taken from `size_of::<T>()` instead of being passed by hand. It only fits
   types whose serialized length (`BytesHasLen::len`) equals their in-memory
@@ -45,6 +62,9 @@ together.
   and several wrong statements were corrected (`FromStr` pads with zeros, not
   spaces; `MAX_DELAY` example did not use `MAX_DELAY`; `Bytes` has no default
   `SIZE`; the `from_uchar_ptr` example read past its source array).
+- Documentation: fixed an unterminated code block in the FreeRTOS
+  `Thread::spawn` docs and broken intra-doc links in the FreeRTOS thread and
+  timer docs, POSIX `System` and the `utils` module overview.
 
 ### Deprecated
 
@@ -70,6 +90,10 @@ together.
   with `System::delay` instead of busy-spinning, so a lower-priority holder
   on the same core can still finish. Seen as a hang in
   `test_thread_spawn_simple` on RP2350.
+- POSIX `real_time`: the thread priority is now clamped to the range
+  accepted by `SCHED_FIFO` (`sched_get_priority_min`..=`sched_get_priority_max`,
+  1..=99 on Linux, 15..=47 on macOS). Before, a priority outside it, such as
+  the common `0`, made `pthread_create` fail with `EINVAL`.
 
 ## [1.4.0] - 2026-10-11
 
@@ -518,7 +542,8 @@ hardware.
   components.
 - README rewritten around backend selection, feature flags and POSIX support.
 
-[Unreleased]: https://github.com/HiHappyGarden/osal-rs/compare/1.4.0...HEAD
+[Unreleased]: https://github.com/HiHappyGarden/osal-rs/compare/1.5.0...HEAD
+[1.5.0]: https://github.com/HiHappyGarden/osal-rs/compare/1.4.0...1.5.0
 [1.4.0]: https://github.com/HiHappyGarden/osal-rs/compare/1.3.0...1.4.0
 [1.3.0]: https://github.com/HiHappyGarden/osal-rs/compare/1.2.2...1.3.0
 [1.2.2]: https://github.com/HiHappyGarden/osal-rs/compare/1.2.1...1.2.2

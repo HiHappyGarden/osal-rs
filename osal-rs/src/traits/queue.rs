@@ -348,7 +348,7 @@ pub trait Queue {
 ///     }
 /// }
 ///
-/// let queue = QueueStreamed::<SensorData>::new(10, SENSOR_DATA_LEN as _).unwrap();
+/// let queue = QueueStreamed::<SensorData>::new_from_type(10).unwrap();
 ///
 /// // Producer
 /// let data = SensorData::new(1, 235, 65);
@@ -404,7 +404,7 @@ where
     /// #         Ok(Self(bytes[..4].try_into().unwrap()))
     /// #     }
     /// # }
-    /// let queue = QueueStreamed::<Message>::new(4, 4).unwrap();
+    /// let queue = QueueStreamed::<Message>::new_from_type(4).unwrap();
     /// queue.post(&Message::new(42), 100).unwrap();
     ///
     /// let mut msg = Message::default();
@@ -450,7 +450,7 @@ where
     /// #         Ok(Self(bytes[..4].try_into().unwrap()))
     /// #     }
     /// # }
-    /// let queue = QueueStreamed::<Message>::new(4, 4).unwrap();
+    /// let queue = QueueStreamed::<Message>::new_from_type(4).unwrap();
     /// queue.post(&Message::new(7), 100).unwrap();
     ///
     /// // In interrupt handler
@@ -505,7 +505,7 @@ where
     /// #     }
     /// # }
     /// // Room for a single message.
-    /// let queue = QueueStreamed::<Message>::new(1, 4).unwrap();
+    /// let queue = QueueStreamed::<Message>::new_from_type(1).unwrap();
     /// let msg = Message::new(42);
     ///
     /// match queue.post(&msg, 1000) {
@@ -552,7 +552,7 @@ where
     /// #         Ok(Self(bytes[..4].try_into().unwrap()))
     /// #     }
     /// # }
-    /// let queue = QueueStreamed::<Message>::new(1, 4).unwrap();
+    /// let queue = QueueStreamed::<Message>::new_from_type(1).unwrap();
     ///
     /// // In interrupt handler
     /// let msg = Message::new(1);
@@ -592,7 +592,7 @@ where
     /// #         Ok(Self(bytes[..4].try_into().unwrap()))
     /// #     }
     /// # }
-    /// let mut queue = QueueStreamed::<Message>::new(10, core::mem::size_of::<Message>() as _).unwrap();
+    /// let mut queue = QueueStreamed::<Message>::new_from_type(10).unwrap();
     ///
     /// // Use queue...
     /// queue.post(&Message::new(1), 100).unwrap();

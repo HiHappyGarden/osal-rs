@@ -841,6 +841,8 @@ fn test_queue_streamed_deserialization_failure() -> Result<()> {
 
     log_info!(TAG, "Starting test_queue_streamed_deserialization_failure");
 
+    // Explicit 1-byte item size to match `BytesHasLen::len`, not
+    // `size_of::<NeverDecodes>()`, hence the explicit size.
     let queue = QueueStreamed::<NeverDecodes>::new(2, 1)?;
 
     // Encoding works, so the message really does reach the queue...
@@ -869,6 +871,8 @@ fn test_queue_streamed_serialization_failure() -> Result<()> {
 
     log_info!(TAG, "Starting test_queue_streamed_serialization_failure");
 
+    // Explicit 1-byte item size to match `BytesHasLen::len`, not
+    // `size_of::<UnderReportsLen>()`, hence the explicit size.
     let queue = QueueStreamed::<UnderReportsLen>::new(2, 1)?;
 
     // The scratch buffer is sized from `BytesHasLen::len()`, which is a byte

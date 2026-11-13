@@ -553,7 +553,8 @@ impl Display for Queue {
 ///
 /// # Type Parameters
 ///
-/// * `T` - The message type. Must implement `ToBytes`, `BytesHasLen`, and `FromBytes`
+/// * `T` - The message type. Must implement `Serialize`, `BytesHasLen`, and `Deserialize`
+///   (see [`StructSerde`])
 ///
 /// # Examples
 ///
@@ -566,11 +567,13 @@ impl Display for Queue {
 /// #[derive(Debug, Clone, Copy)]
 /// struct Message {
 ///     id: u32,
-///     value: i16,
+///     value: i32,
 /// }
 /// 
-/// // Assuming Message implements the required traits
-/// let queue: QueueStreamed<Message> = QueueStreamed::new(10, size_of::<Message>()).unwrap();
+/// // Assuming Message implements the required traits and serializes to
+/// // exactly `size_of::<Message>()` = 8 bytes (no padding between fields),
+/// // which is what `new_from_type` uses as the item size.
+/// let queue: QueueStreamed<Message> = QueueStreamed::new_from_type(10).unwrap();
 /// 
 /// // Send a message
 /// let msg = Message { id: 1, value: 42 };
@@ -595,7 +598,7 @@ impl Display for Queue {
 ///     SetValue(u32),
 /// }
 /// 
-/// let cmd_queue = Arc::new(QueueStreamed::<Command>::new(10, 8).unwrap());
+/// let cmd_queue = Arc::new(QueueStreamed::<Command>::new_from_type(10).unwrap());
 /// let queue_clone = cmd_queue.clone();
 /// 
 /// let handler = Thread::new("handler", 2048, 5, move || {
@@ -619,20 +622,113 @@ unsafe impl<T: StructSerde> Sync for QueueStreamed<T> {}
 impl<T> QueueStreamed<T> 
 where 
     T: StructSerde {
-    /// Creates a new type-safe queue.
+    /// Creates a new type-safe queue with an explicit item size.
+    ///
+    /// Use this when the serialized length of `T` ([`BytesHasLen::len`])
+    /// differs from `size_of::<T>()`, e.g. a struct with padding between its
+    /// fields (`struct { a: u32, b: u8 }` is 8 bytes in memory but 5 on the
+    /// wire). When the two match, [`new_from_type`](Self::new_from_type) is
+    /// shorter and cannot get the size wrong.
     ///
     /// # Parameters
     ///
     /// * `size` - Maximum number of messages
-    /// * `message_size` - Size of each message (typically `size_of::<T>()`)
+    /// * `message_size` - Size in bytes of each message; must equal the
+    ///   value's [`BytesHasLen::len`], since `post` rejects shorter payloads
     ///
     /// # Returns
     ///
     /// * `Ok(Self)` - Successfully created queue
-    /// * `Err(Error)` - Creation failed
+    /// * `Err(Error::InvalidQueueSize)` - `size` or `message_size` is zero
+    /// * `Err(Error::OutOfMemory)` - The FreeRTOS heap could not hold the queue
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// use osal_rs::os::*;
+    /// # use osal_rs::utils::{Error, Result};
+    /// # #[derive(Clone, Copy, Debug, Default, PartialEq)]
+    /// # struct Message([u8; 4]);
+    /// # impl Message {
+    /// #     fn new(id: u32) -> Self { Self(id.to_le_bytes()) }
+    /// #     fn id(&self) -> u32 { u32::from_le_bytes(self.0) }
+    /// # }
+    /// # impl BytesHasLen for Message { fn len(&self) -> usize { 4 } }
+    /// # impl Serialize for Message { fn to_bytes(&self) -> &[u8] { &self.0 } }
+    /// # impl Deserialize for Message {
+    /// #     fn from_bytes(bytes: &[u8]) -> Result<Self> {
+    /// #         if bytes.len() < 4 { return Err(Error::OutOfIndex); }
+    /// #         Ok(Self(bytes[..4].try_into().unwrap()))
+    /// #     }
+    /// # }
+    /// // 8 messages of 4 bytes each: the item size is the wire length
+    /// let queue = QueueStreamed::<Message>::new(8, 4).unwrap();
+    ///
+    /// // `Message` has no padding, so this builds the same queue
+    /// let queue = QueueStreamed::<Message>::new_from_type(8).unwrap();
+    /// ```
     #[inline]
     pub fn new (size: UBaseType, message_size: UBaseType) -> Result<Self> {
         Ok(Self (Queue::new(size, message_size)?, PhantomData))
+    }
+
+    /// Creates a new type-safe queue whose item size is `size_of::<T>()`.
+    ///
+    /// The caller only chooses how many messages the queue holds; the
+    /// per-item size comes from the type itself.
+    ///
+    /// The item size is the in-memory size of `T`, while `post` checks the
+    /// *serialized* length ([`BytesHasLen::len`]) against it. The two must
+    /// match: a type with padding (e.g. `struct { a: u32, b: u8 }`, 8 bytes in
+    /// memory but 5 on the wire) makes every `post` fail with
+    /// `Error::InvalidQueueSize`; use [`new`](Self::new) with the wire length
+    /// for those. Byte arrays and newtypes over them are safe.
+    ///
+    /// # Parameters
+    ///
+    /// * `size` - Maximum number of messages the queue can hold
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(Self)` - Successfully created queue
+    /// * `Err(Error::InvalidQueueSize)` - `size` is zero, or `T` is zero-sized
+    /// * `Err(Error::OutOfMemory)` - The FreeRTOS heap could not hold the queue
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// use osal_rs::os::*;
+    /// use core::time::Duration;
+    /// # use osal_rs::utils::{Error, Result};
+    /// # #[derive(Clone, Copy, Debug, Default, PartialEq)]
+    /// # struct Message([u8; 4]);
+    /// # impl Message {
+    /// #     fn new(id: u32) -> Self { Self(id.to_le_bytes()) }
+    /// #     fn id(&self) -> u32 { u32::from_le_bytes(self.0) }
+    /// # }
+    /// # impl BytesHasLen for Message { fn len(&self) -> usize { 4 } }
+    /// # impl Serialize for Message { fn to_bytes(&self) -> &[u8] { &self.0 } }
+    /// # impl Deserialize for Message {
+    /// #     fn from_bytes(bytes: &[u8]) -> Result<Self> {
+    /// #         if bytes.len() < 4 { return Err(Error::OutOfIndex); }
+    /// #         Ok(Self(bytes[..4].try_into().unwrap()))
+    /// #     }
+    /// # }
+    /// // Room for 8 messages of `size_of::<Message>()` = 4 bytes each
+    /// let queue = QueueStreamed::<Message>::new_from_type(8).unwrap();
+    ///
+    /// queue.post(&Message::new(42), Duration::from_millis(100).to_ticks()).unwrap();
+    ///
+    /// let mut received = Message::default();
+    /// queue.fetch(&mut received, Duration::from_millis(100).to_ticks()).unwrap();
+    /// assert_eq!(received.id(), 42);
+    ///
+    /// // A zero capacity is rejected instead of tripping a FreeRTOS assert
+    /// assert!(QueueStreamed::<Message>::new_from_type(0).is_err());
+    /// ```
+    #[inline]
+    pub fn new_from_type (size: UBaseType) -> Result<Self> {
+        Ok(Self (Queue::new(size, core::mem::size_of::<T>() as UBaseType)?, PhantomData))
     }
 
     /// Receives a typed message with a convertible timeout.
@@ -655,7 +751,7 @@ where
     /// use osal_rs::os::QueueStreamed;
     /// use core::time::Duration;
     /// 
-    /// let queue: QueueStreamed<MyMessage> = QueueStreamed::new(5, size_of::<MyMessage>()).unwrap();
+    /// let queue: QueueStreamed<MyMessage> = QueueStreamed::new_from_type(5).unwrap();
     /// let mut msg = MyMessage::default();
     /// queue.fetch_with_to_tick(&mut msg, Duration::from_millis(100))?;
     /// ```
@@ -685,7 +781,7 @@ where
     /// use osal_rs::os::QueueStreamed;
     /// use core::time::Duration;
     /// 
-    /// let queue: QueueStreamed<MyMessage> = QueueStreamed::new(5, size_of::<MyMessage>()).unwrap();
+    /// let queue: QueueStreamed<MyMessage> = QueueStreamed::new_from_type(5).unwrap();
     /// let msg = MyMessage { id: 1, value: 42 };
     /// queue.post_with_to_tick(&msg, Duration::from_millis(100))?;
     /// ```

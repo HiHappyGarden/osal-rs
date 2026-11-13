@@ -13,6 +13,13 @@ together.
 
 ### Added
 
+- `QueueStreamed::new_from_type(size)` on both backends: the item size is
+  taken from `size_of::<T>()` instead of being passed by hand. It only fits
+  types whose serialized length (`BytesHasLen::len`) equals their in-memory
+  size; a padded struct keeps using `QueueStreamed::new` with the wire length.
+- Tests, identical on FreeRTOS and POSIX: `new_from_type` at full capacity
+  (FIFO order, overflow rejected) and with zero capacity, and `new` with an
+  explicit item size.
 - `Bytes::from_str_with_nul`: like `Bytes::from(&str)`, but copies at most
   `SIZE - 1` bytes so the buffer always stays a valid C string. Thread and
   timer names are now built with it on both backends.

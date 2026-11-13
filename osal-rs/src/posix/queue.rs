@@ -625,7 +625,7 @@ impl Display for Queue {
 ///     }
 /// }
 ///
-/// let queue = QueueStreamed::<Reading>::new(4, 4).unwrap();
+/// let queue = QueueStreamed::<Reading>::new_from_type(4).unwrap();
 /// queue.post(&Reading(42), 100).unwrap();
 ///
 /// let mut out = Reading(0);
@@ -645,10 +645,93 @@ where
 	/// `message_size` bytes each - same capacity semantics as
 	/// [`Queue::new`], just typed as `T` instead of raw bytes.
 	///
-	/// See the [type-level example](Self) for a complete, testable usage.
+	/// Use this when the serialized length of `T` ([`BytesHasLen::len`])
+	/// differs from `size_of::<T>()` (padding between fields); otherwise
+	/// [`new_from_type`](Self::new_from_type) derives the same size on its own.
+	///
+	/// # Examples
+	///
+	#[cfg_attr(not(feature = "serde"), doc = "```")]
+	#[cfg_attr(feature = "serde", doc = "```ignore")]
+	/// use osal_rs::os::*;
+	/// # use osal_rs::utils::{Error, Result};
+	/// # #[derive(Clone, Copy, Debug, Default, PartialEq)]
+	/// # struct Message([u8; 4]);
+	/// # impl Message {
+	/// #     fn new(id: u32) -> Self { Self(id.to_le_bytes()) }
+	/// #     fn id(&self) -> u32 { u32::from_le_bytes(self.0) }
+	/// # }
+	/// # impl BytesHasLen for Message { fn len(&self) -> usize { 4 } }
+	/// # impl Serialize for Message { fn to_bytes(&self) -> &[u8] { &self.0 } }
+	/// # impl Deserialize for Message {
+	/// #     fn from_bytes(bytes: &[u8]) -> Result<Self> {
+	/// #         if bytes.len() < 4 { return Err(Error::OutOfIndex); }
+	/// #         Ok(Self(bytes[..4].try_into().unwrap()))
+	/// #     }
+	/// # }
+	/// // 8 messages of 4 bytes each: the item size is the wire length
+	/// let queue = QueueStreamed::<Message>::new(8, 4).unwrap();
+	/// queue.post(&Message::new(7), 100).unwrap();
+	///
+	/// // `Message` has no padding, so this builds the same queue
+	/// let queue = QueueStreamed::<Message>::new_from_type(8).unwrap();
+	/// queue.post(&Message::new(7), 100).unwrap();
+	/// ```
 	#[inline]
 	pub fn new(size: UBaseType, message_size: UBaseType) -> Result<Self> {
 		Ok(Self(Queue::new(size, message_size)?, PhantomData))
+	}
+
+	/// Creates a streamed queue holding up to `size` messages of
+	/// `size_of::<T>()` bytes each - the POSIX twin of
+	/// `freertos::QueueStreamed::new_from_type`.
+	///
+	/// The item size is the in-memory size of `T`, while `post` checks the
+	/// *serialized* length ([`BytesHasLen::len`]) against it, so the two must
+	/// match: a type with padding (e.g. `struct { a: u32, b: u8 }`, 8 bytes in
+	/// memory but 5 on the wire) makes every `post` fail with
+	/// [`Error::InvalidQueueSize`]; use [`new`](Self::new) with the wire
+	/// length for those. Byte arrays and newtypes over them are safe.
+	///
+	/// # Returns
+	///
+	/// * `Ok(Self)` - Successfully created queue
+	/// * `Err(Error::InvalidQueueSize)` - `size` is zero, or `T` is zero-sized
+	///
+	/// # Examples
+	///
+	#[cfg_attr(not(feature = "serde"), doc = "```")]
+	#[cfg_attr(feature = "serde", doc = "```ignore")]
+	/// use osal_rs::os::*;
+	/// # use osal_rs::utils::{Error, Result};
+	/// # #[derive(Clone, Copy, Debug, Default, PartialEq)]
+	/// # struct Message([u8; 4]);
+	/// # impl Message {
+	/// #     fn new(id: u32) -> Self { Self(id.to_le_bytes()) }
+	/// #     fn id(&self) -> u32 { u32::from_le_bytes(self.0) }
+	/// # }
+	/// # impl BytesHasLen for Message { fn len(&self) -> usize { 4 } }
+	/// # impl Serialize for Message { fn to_bytes(&self) -> &[u8] { &self.0 } }
+	/// # impl Deserialize for Message {
+	/// #     fn from_bytes(bytes: &[u8]) -> Result<Self> {
+	/// #         if bytes.len() < 4 { return Err(Error::OutOfIndex); }
+	/// #         Ok(Self(bytes[..4].try_into().unwrap()))
+	/// #     }
+	/// # }
+	/// // Room for 8 messages of `size_of::<Message>()` = 4 bytes each
+	/// let queue = QueueStreamed::<Message>::new_from_type(8).unwrap();
+	///
+	/// queue.post(&Message::new(42), 100).unwrap();
+	///
+	/// let mut received = Message::default();
+	/// queue.fetch(&mut received, 100).unwrap();
+	/// assert_eq!(received.id(), 42);
+	///
+	/// assert!(QueueStreamed::<Message>::new_from_type(0).is_err());
+	/// ```
+	#[inline]
+	pub fn new_from_type(size: UBaseType) -> Result<Self> {
+		Ok(Self(Queue::new(size, core::mem::size_of::<T>() as UBaseType)?, PhantomData))
 	}
 
 	#[allow(dead_code)]

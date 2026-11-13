@@ -30,7 +30,6 @@ use osal_rs::{log_debug, log_info};
 #[cfg(not(feature = "serde"))]
 use osal_rs::os::{Deserialize, Serialize};
 
-#[cfg(not(feature = "serde"))]
 use osal_rs::utils::Error;
 
 #[cfg(not(feature = "serde"))]
@@ -68,6 +67,19 @@ impl Deserialize for QueueMessage {
 
 #[cfg(feature = "serde")]
 type QueueMessage = [u8; 4];
+
+/// Message whose 4 bytes are all `n`, to tell FIFO entries apart.
+fn message_with(n: u8) -> QueueMessage {
+    #[cfg(not(feature = "serde"))]
+    {
+        QueueMessage { bytes: [n; 4] }
+    }
+
+    #[cfg(feature = "serde")]
+    {
+        [n; 4]
+    }
+}
 
 fn sample_message() -> QueueMessage {
     #[cfg(not(feature = "serde"))]
@@ -195,7 +207,7 @@ pub fn test_queue_with_to_tick() -> Result<()> {
 
 pub fn test_queue_streamed() -> Result<()> {
     log_info!(TAG, "Starting test_queue_streamed");
-    let mut streamed = QueueStreamed::<QueueMessage>::new(4, size_of::<QueueMessage>() as UBaseType)?;
+    let mut streamed = QueueStreamed::<QueueMessage>::new_from_type(4)?;
 
     let message = sample_message();
     streamed.post(&message, Duration::from_millis(100).to_ticks())?;
@@ -213,6 +225,64 @@ pub fn test_queue_streamed() -> Result<()> {
 
     streamed.delete();
     log_info!(TAG, "test_queue_streamed PASSED");
+    Ok(())
+}
+
+pub fn test_queue_streamed_new_from_type() -> Result<()> {
+    log_info!(TAG, "Starting test_queue_streamed_new_from_type");
+    const CAPACITY: u8 = 3;
+    let mut streamed = QueueStreamed::<QueueMessage>::new_from_type(CAPACITY as UBaseType)?;
+    log_debug!(TAG, "Item size derived from type: {} bytes", size_of::<QueueMessage>());
+
+    // Item size is `size_of::<QueueMessage>()`, which equals the serialized
+    // length, so a full queue's worth of messages fits.
+    for n in 0..CAPACITY {
+        streamed.post(&message_with(n), Duration::from_millis(100).to_ticks())?;
+    }
+
+    // `size` is a message count, not a byte count: one more does not fit.
+    let overflow = streamed.post(&message_with(CAPACITY), 0);
+    log_debug!(TAG, "Post on full queue: {:?}", overflow);
+    assert!(matches!(overflow, Err(Error::Timeout)));
+
+    for n in 0..CAPACITY {
+        let mut received = QueueMessage::default();
+        streamed.fetch(&mut received, Duration::from_millis(100).to_ticks())?;
+        assert_eq!(received, message_with(n));
+    }
+    log_debug!(TAG, "QueueStreamed::new_from_type kept FIFO order at full capacity");
+
+    streamed.delete();
+    log_info!(TAG, "test_queue_streamed_new_from_type PASSED");
+    Ok(())
+}
+
+pub fn test_queue_streamed_new_from_type_zero_size() -> Result<()> {
+    log_info!(TAG, "Starting test_queue_streamed_new_from_type_zero_size");
+    let result = QueueStreamed::<QueueMessage>::new_from_type(0);
+    log_debug!(TAG, "new_from_type(0) is_err: {}", result.is_err());
+    assert!(matches!(result, Err(Error::InvalidQueueSize)));
+    log_info!(TAG, "test_queue_streamed_new_from_type_zero_size PASSED");
+    Ok(())
+}
+
+pub fn test_queue_streamed_new_explicit_size() -> Result<()> {
+    log_info!(TAG, "Starting test_queue_streamed_new_explicit_size");
+    // Explicit item size equal to the wire length.
+    let mut streamed = QueueStreamed::<QueueMessage>::new(4, size_of::<QueueMessage>() as UBaseType)?;
+
+    let message = sample_message();
+    streamed.post(&message, Duration::from_millis(100).to_ticks())?;
+
+    let mut received = QueueMessage::default();
+    streamed.fetch(&mut received, Duration::from_millis(100).to_ticks())?;
+    assert_eq!(received, message);
+
+    let zero = QueueStreamed::<QueueMessage>::new(0, size_of::<QueueMessage>() as UBaseType);
+    assert!(matches!(zero, Err(Error::InvalidQueueSize)));
+
+    streamed.delete();
+    log_info!(TAG, "test_queue_streamed_new_explicit_size PASSED");
     Ok(())
 }
 
@@ -239,6 +309,9 @@ pub fn test_queue_streamed_tuple_struct() -> Result<()> {
     use tuple_payload::SensorSample;
 
     log_info!(TAG, "Starting test_queue_streamed_tuple_struct");
+    // Explicit item size on purpose: `SensorSample` is 8 bytes in memory
+    // (padding after the `u8`) but 7 on the wire, so `new_from_type` would
+    // size items at 8 and every `post` would be rejected as too short.
     let mut streamed = QueueStreamed::<SensorSample>::new(4, SensorSample::default().len() as UBaseType)?;
 
     let samples = [SensorSample(-100, 42, 0xDEADBEEF), SensorSample(i16::MAX, u8::MAX, 0)];
@@ -282,6 +355,9 @@ pub fn run_all_tests() -> Result<()> {
     test_queue_from_isr()?;
     test_queue_with_to_tick()?;
     test_queue_streamed()?;
+    test_queue_streamed_new_from_type()?;
+    test_queue_streamed_new_from_type_zero_size()?;
+    test_queue_streamed_new_explicit_size()?;
     #[cfg(feature = "serde")]
     test_queue_streamed_tuple_struct()?;
     test_queue_drop()?;

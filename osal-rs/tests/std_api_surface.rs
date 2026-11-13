@@ -168,7 +168,9 @@ fn std_backend_exports_core_api_surface() {
     queue.delete();
 
     let message = sample_message();
-    let mut streamed_queue = QueueStreamed::<QueueMessage>::new(2, size_of::<QueueMessage>() as types::UBaseType).unwrap();
+    let mut explicit_size_queue = QueueStreamed::<QueueMessage>::new(2, size_of::<QueueMessage>() as types::UBaseType).unwrap();
+    explicit_size_queue.delete();
+    let mut streamed_queue = QueueStreamed::<QueueMessage>::new_from_type(2).unwrap();
     let streamed_handle: &types::QueueHandle = &streamed_queue;
     let _ = streamed_handle;
     streamed_queue.post(&message, 0).unwrap();

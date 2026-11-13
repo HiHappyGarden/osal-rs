@@ -181,7 +181,7 @@ use super::types::{TickType};
 pub struct Timer {
     /// FreeRTOS timer handle, exposed for diagnostics (`Debug`/`Display`).
     /// Reset to `null` by [`TimerFn::delete`]; the handle the operations
-    /// below actually use lives in [`TimerShared`], so that clones see a
+    /// below actually use lives in `TimerShared`, so that clones see a
     /// deletion performed through any other handle.
     pub handle: TimerHandle,
     /// Timer name, in the same fixed-size buffer every other named object in

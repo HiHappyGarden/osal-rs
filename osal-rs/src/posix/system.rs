@@ -101,8 +101,7 @@ impl Deref for SystemState {
 }
 
 /// Namespace for system-level operations (scheduler control, timing, thread
-/// introspection) - see the [module docs](self) for an overview and a
-/// runnable example. Zero-sized: never instantiated, only used as
+/// introspection). Zero-sized: never instantiated, only used as
 /// `System::function(...)`.
 pub struct System;
 

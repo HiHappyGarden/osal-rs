@@ -59,8 +59,8 @@
 //!
 //! ## Parameter Handling
 //!
-//! - [`thread_extract_param!`] - Extract typed parameter from thread entry point
-//! - [`access_static_option!`] - Access static Option variable (panics if None)
+//! - [`thread_extract_param!`](crate::thread_extract_param) - Extract typed parameter from thread entry point
+//! - [`access_static_option!`](crate::access_static_option) - Access static Option variable (panics if None)
 //!
 //! # Helper Functions
 //!
@@ -2961,7 +2961,8 @@ impl<T> OnceBox<T> {
     /// ```
     pub fn get(&self) -> Option<&T> {
         let ptr = self.ptr.load(Ordering::Acquire);
-        // SAFETY: once published the pointer is never changed nor freed until drop
+        // SAFETY: a published pointer is only replaced or freed through
+        // `&mut self` (`swap`, `drop`), which cannot overlap this `&self` borrow
         unsafe { ptr.as_ref() }
     }
 
@@ -2981,7 +2982,7 @@ impl<T> OnceBox<T> {
     /// use osal_rs::utils::OnceBox;
     ///
     /// let mut cell: OnceBox<u32> = OnceBox::new();
-    /// cell.set(7);
+    /// cell.swap(7);
     ///
     /// *cell.get_mut().unwrap() += 1;
     /// assert_eq!(*cell.get().unwrap(), 8);
@@ -2997,7 +2998,8 @@ impl<T> OnceBox<T> {
     /// ```
     pub fn get_mut(&mut self) -> Option<&mut T> {
         let ptr = self.ptr.load(Ordering::Acquire);
-        // SAFETY: once published the pointer is never changed nor freed until drop
+        // SAFETY: `&mut self` rules out any other reference to the value, and
+        // the pointer stays valid until the next `swap` or `drop`
         unsafe { ptr.as_mut() }
     }
 
@@ -3065,22 +3067,31 @@ impl<T> OnceBox<T> {
     /// ```
     /// use osal_rs::utils::OnceBox;
     ///
-    /// static CELL: OnceBox<u32> = OnceBox::new();
-    ///
-    /// // During single-threaded init, exclusive access is available.
-    /// CELL.set(42);
-    /// assert_eq!(*CELL.get().unwrap(), 42);
+    /// // Owned cell (e.g. a field of a struct built during init): `&mut`
+    /// // access is available, so no compare-exchange is needed.
+    /// let mut cell: OnceBox<u32> = OnceBox::new();
+    /// cell.swap(42);
+    /// assert_eq!(*cell.get().unwrap(), 42);
     /// ```
     ///
-    /// Replacing a value:
+    /// Replacing a value drops the old one:
     ///
     /// ```
     /// use osal_rs::utils::OnceBox;
     ///
     /// let mut cell: OnceBox<u32> = OnceBox::new();
-    /// cell.set(1);
-    /// cell.set(2);
+    /// cell.swap(1);
+    /// cell.swap(2);
     /// assert_eq!(*cell.get().unwrap(), 2);
+    /// ```
+    ///
+    /// A plain `static` only gives `&self`, so it cannot call `swap`:
+    ///
+    /// ```compile_fail
+    /// use osal_rs::utils::OnceBox;
+    ///
+    /// static CELL: OnceBox<u32> = OnceBox::new();
+    /// CELL.swap(42);
     /// ```
     pub fn swap(&mut self, t: T) {
         let new = Box::into_raw(Box::new(t));

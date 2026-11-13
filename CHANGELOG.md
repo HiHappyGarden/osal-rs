@@ -11,6 +11,90 @@ together.
 
 ## [Unreleased]
 
+## [1.5.0] - 2026-11-13
+
+### Added
+
+- `utils::OnceBox<T>`: lock-free, write-once cell for `static` items, with a
+  `const fn new()`. `get_or_try_init` builds the value on first access and
+  never blocks: concurrent initializers may each build a value, only one is
+  published and the others are dropped (so the initializer must tolerate
+  running more than once). Safe across FreeRTOS tasks of different
+  priorities, where waiting on a lower-priority initializer could deadlock.
+  If the initializer fails the cell stays empty and a later call can retry.
+  `get` returns the value without initializing it.
+- `OnceBox::swap(&mut self, t)` replaces the stored value (dropping the old
+  one) without the allocation race of `get_or_try_init`, and
+  `OnceBox::get_mut` gives `&mut T` to an initialized value. Both need
+  exclusive access, so they work on owned cells, not on a plain `static`.
+- Tests, identical on FreeRTOS and POSIX: `OnceBox` before init, single
+  initialization, initializer error and retry, drop of the value, use as a
+  `static`, and concurrent initialization from several threads.
+- `QueueStreamed::new_from_type(size)` on both backends: the item size is
+  taken from `size_of::<T>()` instead of being passed by hand. It only fits
+  types whose serialized length (`BytesHasLen::len`) equals their in-memory
+  size; a padded struct keeps using `QueueStreamed::new` with the wire length.
+- Tests, identical on FreeRTOS and POSIX: `new_from_type` at full capacity
+  (FIFO order, overflow rejected) and with zero capacity, and `new` with an
+  explicit item size.
+- `Bytes::from_str_with_nul`: like `Bytes::from(&str)`, but copies at most
+  `SIZE - 1` bytes so the buffer always stays a valid C string. Thread and
+  timer names are now built with it on both backends.
+- `Bytes` conversions: `From<Vec<u8>>` and `From<&[u8]>` (zero-filled or
+  truncated to `SIZE`), `From<&Bytes>` for `&[u8]` (the whole array,
+  padding included) and for `&str` (content up to the first `0`).
+- Tests, identical on FreeRTOS and POSIX: `Bytes::from_str_with_nul`, full
+  buffers without terminator, `Bytes<0>`, the new slice/`Vec` conversions,
+  raw pointer constructors, hex helpers on every byte value and on non-ASCII
+  input, and truncation of long thread names.
+
+### Changed
+
+- Thread and timer names are truncated to 15 characters (one less than
+  before) to leave room for the terminator. Before, a name filling all 16
+  bytes was handed to `xTaskCreate`/`xTimerCreate`/`pthread_setname_np`
+  without one.
+- `Bytes::as_cstr` returns an empty `CStr` when the buffer contains no `0`
+  byte, instead of reading past the end of the array.
+- `bytes_to_hex_into_slice` no longer allocates (it used `format!` for every
+  byte despite being documented as the no-alloc variant).
+- `utils` documentation reviewed: every public item has a runnable example,
+  and several wrong statements were corrected (`FromStr` pads with zeros, not
+  spaces; `MAX_DELAY` example did not use `MAX_DELAY`; `Bytes` has no default
+  `SIZE`; the `from_uchar_ptr` example read past its source array).
+- Documentation: fixed an unterminated code block in the FreeRTOS
+  `Thread::spawn` docs and broken intra-doc links in the FreeRTOS thread and
+  timer docs, POSIX `System` and the `utils` module overview.
+
+### Deprecated
+
+- `Bytes::from_str` (inherent): use `Bytes::from(&str)`, `"...".into()` or
+  `"...".parse()` instead.
+
+### Fixed
+
+- `Display for Bytes` read past the end of the array when the buffer was
+  completely filled (no `0` terminator). It now stops at `SIZE`.
+- Log messages filling the whole formatting buffer were passed to
+  `printf_on_uart` without a terminator; the buffer is now always
+  terminated.
+- `hex_to_bytes` and `hex_to_bytes_into_slice` panicked on non-ASCII input
+  instead of returning `Error::StringConversionError`.
+- `Bytes<0>` panicked (`SIZE - 1` underflow) in the `from_*`, `append*` and
+  `as_cstr_mut` methods.
+- `sys_log` (and every `log_*!` macro) could hang forever on SMP FreeRTOS
+  when two cores logged at the same time: the lock was a plain `static mut`
+  flag, so the waiting core could spin on a stale value and never see the
+  release (and two tasks could also enter together). It is now an
+  `AtomicBool` taken with `compare_exchange`, and a waiter blocks one tick
+  with `System::delay` instead of busy-spinning, so a lower-priority holder
+  on the same core can still finish. Seen as a hang in
+  `test_thread_spawn_simple` on RP2350.
+- POSIX `real_time`: the thread priority is now clamped to the range
+  accepted by `SCHED_FIFO` (`sched_get_priority_min`..=`sched_get_priority_max`,
+  1..=99 on Linux, 15..=47 on macOS). Before, a priority outside it, such as
+  the common `0`, made `pthread_create` fail with `EINVAL`.
+
 ## [1.4.0] - 2026-10-11
 
 ### Added
@@ -458,7 +542,8 @@ hardware.
   components.
 - README rewritten around backend selection, feature flags and POSIX support.
 
-[Unreleased]: https://github.com/HiHappyGarden/osal-rs/compare/1.4.0...HEAD
+[Unreleased]: https://github.com/HiHappyGarden/osal-rs/compare/1.5.0...HEAD
+[1.5.0]: https://github.com/HiHappyGarden/osal-rs/compare/1.4.0...1.5.0
 [1.4.0]: https://github.com/HiHappyGarden/osal-rs/compare/1.3.0...1.4.0
 [1.3.0]: https://github.com/HiHappyGarden/osal-rs/compare/1.2.2...1.3.0
 [1.2.2]: https://github.com/HiHappyGarden/osal-rs/compare/1.2.1...1.2.2

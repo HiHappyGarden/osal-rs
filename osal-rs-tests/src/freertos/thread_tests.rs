@@ -401,6 +401,26 @@ pub fn test_thread_join() -> Result<()> {
     Ok(())
 }
 
+pub fn test_thread_long_name_truncated() -> Result<()> {
+    log_info!(TAG, "Starting test_thread_long_name_truncated");
+
+    // Names are handed to C as NUL-terminated strings, so at most 15 of the
+    // 16 bytes reserved for them hold text. Not spawned: the metadata reports
+    // the name exactly as stored by `new()` on both backends.
+    let long = Thread::new("a_very_long_thread_name", 1024, 5);
+    assert_eq!(long.get_metadata().name.as_str(), "a_very_long_thr");
+
+    let exact = Thread::new("exactly_16_chars", 1024, 5);
+    assert_eq!(exact.get_metadata().name.as_str(), "exactly_16_char");
+    assert_eq!(exact.get_metadata().name.as_cstr().to_bytes(), b"exactly_16_char");
+
+    let short = Thread::new("short", 1024, 5);
+    assert_eq!(short.get_metadata().name.as_str(), "short");
+
+    log_info!(TAG, "test_thread_long_name_truncated PASSED");
+    Ok(())
+}
+
 pub fn run_all_tests() -> Result<()> {
     log_info!(TAG, "========== Running Thread Tests ==========");
     test_thread_creation()?;
@@ -417,6 +437,7 @@ pub fn run_all_tests() -> Result<()> {
     test_thread_get_current()?;
     test_thread_spawn_simple()?;
     test_thread_spawn_simple_with_shared_data()?;
+    test_thread_long_name_truncated()?;
     log_info!(TAG, "========== All Thread Tests PASSED ==========");
     Ok(())
 }

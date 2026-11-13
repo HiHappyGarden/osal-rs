@@ -449,7 +449,7 @@ impl Timer {
             thread: Mutex::new(None),
         });
 
-        let name = Bytes::<MAX_TASK_NAME_LEN>::from_str(name);
+        let name = Bytes::<MAX_TASK_NAME_LEN>::from_str_with_nul(name);
 
         let mut timer = Self {
             handle: Arc::as_ptr(&shared) as TimerHandle,

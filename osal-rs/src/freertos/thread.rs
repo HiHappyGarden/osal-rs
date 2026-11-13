@@ -220,7 +220,7 @@ impl Thread {
     {
         Self { 
             handle: null_mut(), 
-            name: Bytes::from_str(name),
+            name: Bytes::from_str_with_nul(name),
             stack_depth, 
             priority, 
             callback: None,
@@ -240,7 +240,7 @@ impl Thread {
         }
         Ok(Self { 
             handle, 
-            name: Bytes::from_str(name), 
+            name: Bytes::from_str_with_nul(name), 
             stack_depth, 
             priority, 
             callback: None,
@@ -270,7 +270,7 @@ impl Thread {
     {
         Self { 
             handle: null_mut(), 
-            name: Bytes::from_str(name), 
+            name: Bytes::from_str_with_nul(name), 
             stack_depth, 
             priority: priority.to_priority(), 
             callback: None,
@@ -307,7 +307,7 @@ impl Thread {
         }
         Ok(Self { 
             handle, 
-            name: Bytes::from_str(name),
+            name: Bytes::from_str_with_nul(name),
             stack_depth, 
             priority: priority.to_priority(), 
             callback: None,
@@ -537,7 +537,7 @@ impl ThreadFn for Thread {
     ///     *guard += 1;
     ///     Ok(Arc::new(()))
     /// });
-    /// ``
+    /// ```
     fn spawn<F>(&mut self, param: Option<ThreadParam>, callback: F) -> Result<Self> 
         where 
         F: Fn(Box<dyn ThreadFn>, Option<ThreadParam>) -> Result<ThreadParam>,
@@ -702,7 +702,7 @@ impl ThreadFn for Thread {
     /// value through `ret_val` if that pointer is non-null.
     ///
     /// FreeRTOS has no `pthread_join`, so this waits on the per-thread exit
-    /// latch [`JoinState`] that `spawn`/`spawn_simple` allocate. The task
+    /// latch `JoinState` that `spawn`/`spawn_simple` allocate. The task
     /// deletes itself once its callback returns, so - unlike the older
     /// behaviour of this method - joining does *not* delete anything, and
     /// calling [`ThreadFn::delete`] afterwards is a no-op rather than a

@@ -1,7 +1,7 @@
 /***************************************************************************
  *
  * osal-rs-serde - Integration Example
- * Copyright (C) 2026 Antonio Salsi <passy.linux@zresa.it>
+ * Copyright (C) 2026/2027 Antonio Salsi <passy.linux@zresa.it>
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
